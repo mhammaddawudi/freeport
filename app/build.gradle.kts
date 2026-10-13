@@ -24,7 +24,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "1.6.0"
+        versionName = "1.0"
 
         ndk {
             // The four ABIs cargo-ndk builds libaether.so for. Trim this list to
