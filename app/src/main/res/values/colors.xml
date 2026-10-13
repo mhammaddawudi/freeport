@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="aether_background">#FF03050A</color>
+    <!-- The tile the mark was drawn on, flattened: the artwork's own tile and
+         its outer field are dropped so the launcher's mask is the only shape. -->
+    <color name="ic_launcher_background">#FF16161C</color>
+</resources>

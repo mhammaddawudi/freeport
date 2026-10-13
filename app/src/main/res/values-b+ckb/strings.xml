@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kurdish (Sorani). The language is chosen in Settings, not by the phone. -->
+<resources>
+    <string name="app_name">Freeport</string>
+    <string name="core_missing">کەرنێل بار نەبوو — تۆمار ببینە</string>
+
+    <string name="tab_home">پەیوەندی</string>
+    <string name="tab_settings">ڕێکخستن</string>
+    <string name="tab_logs">تۆمار</string>
+
+    <string name="state_idle">پەیوەست نییە</string>
+    <string name="state_preparing">ئامادەکردن</string>
+    <string name="state_scanning">گەڕان بۆ ڕێگا</string>
+    <string name="state_connecting">کردنەوەی تونێل</string>
+    <string name="state_connected">پارێزراو</string>
+    <string name="state_reconnecting">پەیوەندی دووبارە</string>
+    <string name="state_failed">پەیوەندی سەرنەکەوت</string>
+
+    <string name="action_connect">پەیوەست بە</string>
+    <string name="action_disconnect">پچڕاندن</string>
+    <string name="action_cancel">هەڵوەشاندنەوە</string>
+    <string name="action_reconnect">دووبارە</string>
+
+    <string name="notification_channel_name">دۆخی تونێل</string>
+    <string name="notification_channel_description">پیشان دەدات تونێل هەڵگیراوە یان نا.</string>
+    <string name="vpn_permission_denied">ئەندرۆید پێویستی بە مۆڵەتی VPN هەیە پێش ئەوەی ترافیک بگوازرێتەوە.</string>
+
+    <string name="settings_title">ڕێکخستن</string>
+    <string name="settings_changes_pending">گۆڕانکارییەکان لە پەیوەندی داهاتوودا کاردەکەن</string>
+
+    <string name="section_routing">ڕێڕەو</string>
+    <string name="routing_apps_title">ئەپەکانی ناو تونێل</string>
+    <string name="routing_apps_none">هیچ</string>
+    <string name="routing_apps_count">%1$d ئەپ</string>
+
+    <string name="section_tunnel">تونێل</string>
+    <string name="tunnel_scan">شێوازی گەڕان</string>
+    <string name="tunnel_noize">شاردنەوە</string>
+    <string name="tunnel_ip">ئایپی</string>
+
+    <string name="routing_whole">هەموو ئامێر</string>
+    <string name="routing_whole_desc">ترافیکی هەموو ئەپەکان بە تونێلدا دەڕوات.</string>
+    <string name="routing_selected">ئەپی هەڵبژێردراو</string>
+    <string name="routing_selected_desc">تەنها ئەو ئەپانەی هەڵدەبژێریت بە تونێلدا دەڕۆن.</string>
+
+    <string name="section_appearance">زمان</string>
+    <string name="language_title">زمانی ئەپ</string>
+    <string name="language_kurdish">کوردی</string>
+    <string name="language_english">English</string>
+
+    <string name="scan_turbo">خێرا</string>
+    <string name="scan_turbo_desc">لە یەکەم ڕێگای وەڵامدەر دەوەستێت.</string>
+    <string name="scan_balanced">هاوسەنگ</string>
+    <string name="scan_balanced_desc">بنەڕەتی. لە زۆربەی تۆڕەکاندا باشە.</string>
+    <string name="scan_thorough">ورد</string>
+    <string name="scan_thorough_desc">کاتێک هەموو شتێک داخراوە، هەموو مەودا دەپشکنێت.</string>
+    <string name="scan_stealth">بێدەنگ</string>
+    <string name="scan_stealth_desc">کەم دەپشکنێت، بۆ تۆڕی چاودێریکراو.</string>
+    <string name="scan_ironclad">دڵنیا</string>
+    <string name="scan_ironclad_desc">بۆ هەر ڕێگایەک تونێلی ڕاستەقینە دەکاتەوە و تاقی دەکاتەوە.</string>
+
+    <string name="noize_off">کوژاوە</string>
+    <string name="noize_off_desc">بێ پڕکردنەوە. خێراترین، ئاسانترین بۆ ناسینەوە.</string>
+    <string name="noize_light">سووک</string>
+    <string name="noize_light_desc">گۆڕانێکی کەم لە شێوەی ترافیک.</string>
+    <string name="noize_firewall">ئاسایی</string>
+    <string name="noize_firewall_desc">هاوسەنگ. بێ کەمکردنەوەی زۆری خێرایی تێدەپەڕێت.</string>
+    <string name="noize_heavy">قورس</string>
+    <string name="noize_heavy_desc">قورسترین شێواز، بۆ پشکنینی قووڵ.</string>
+    <string name="noize_balanced">هاوسەنگ</string>
+    <string name="noize_balanced_desc">بنەڕەتی WireGuard.</string>
+    <string name="noize_aggressive">توند</string>
+    <string name="noize_aggressive_desc">قورسترین پڕکردنەوەی WireGuard.</string>
+
+    <string name="ip_v4">IPv4</string>
+    <string name="ip_v6">IPv6</string>
+    <string name="ip_dual">هەردوو</string>
+
+    <string name="about_developer">گەشەپێدەر</string>
+
+    <string name="section_advanced">پێشکەوتوو</string>
+    <string name="advanced_title">ڕێکخستنی وردتر</string>
+    <string name="advanced_subtitle">پۆرت، پەرتکردن، کیپەلایڤ، پیەری دیاریکراو</string>
+    <string name="advanced_socks_port">پۆرتی SOCKS5</string>
+    <string name="advanced_http_proxy">پرۆکسی HTTP</string>
+    <string name="advanced_http_proxy_desc">بۆ ئەو ئەپانەی تەنها پرۆکسی HTTP دەناسن</string>
+    <string name="advanced_http_port">پۆرتی HTTP</string>
+    <string name="advanced_fragment">پەرتکردنی دەستپێکی TLS</string>
+    <string name="advanced_fragment_desc">دەستپێک لەت دەکات تا ناوی سایت لە یەک پاکەتدا نەبێت</string>
+    <string name="advanced_fragment_tcp_only">تەنها بۆ MASQUE H2 کە بەسەر TCP دەڕوات</string>
+    <string name="advanced_fragment_size">قەبارەی پارچە</string>
+    <string name="advanced_fragment_delay">دواخستنی پارچە</string>
+    <string name="advanced_ech">شاردنەوەی ناوی سایت (ECH)</string>
+    <string name="advanced_ech_desc">پێش دەستپێک ڕێکخستنی ECH وەردەگرێت</string>
+    <string name="advanced_keepalive">کیپەلایڤ</string>
+    <string name="advanced_bypass_lan">تێپەڕاندنی تۆڕی ناوخۆیی</string>
+    <string name="advanced_bypass_lan_desc">چاپکەر و ڕووتەر لە دەستڕاگەیشتوودا دەمێننەوە</string>
+    <string name="advanced_bypass_lan_needs13">پێویستی بە ئەندرۆید ١٣ یان نوێترە</string>
+    <string name="advanced_peer">پیەری دیاریکراو</string>
+    <string name="advanced_peer_helper">گەڕان تەواو دەبەزێنێت. بەتاڵی بهێڵەوە بۆ گەڕان.</string>
+    <string name="advanced_peer_error">شێوەی دروست: ئایپی:پۆرت</string>
+    <string name="advanced_port_helper">لەسەر ١٢٧.٠.٠.١ گوێ دەگرێت</string>
+    <string name="advanced_port_error">پۆرت لە نێوان ١٠٢٤ و ٦٥٥٣٥ بێت</string>
+    <string name="advanced_port_conflict">ئەم پۆرتە لەلایەن پرۆکسیەکەی تر بەکارهاتووە</string>
+    <string name="advanced_battery">سنووری باتری</string>
+    <string name="advanced_battery_value">ڕێکخستن</string>
+    <string name="advanced_system_vpn">ڕێکخستنی VPN ی سیستەم</string>
+    <string name="advanced_system_vpn_value">سیستەم</string>
+
+    <string name="section_about">دەربارە</string>
+    <string name="about_core">کەرنێل</string>
+    <string name="about_core_mock">کەرنێلی تاقیکاری</string>
+    <string name="about_capture">گرتنی ترافیک</string>
+    <string name="about_capture_proxy">تەنها پرۆکسی</string>
+    <string name="about_device">ئامێر</string>
+    <string name="about_device_none">هێشتا دروست نەکراوە</string>
+    <string name="about_license">مۆڵەت</string>
+
+    <string name="apps_title">ئەپەکانی ناو تونێل</string>
+    <string name="apps_selected">%1$d هەڵبژێردراو</string>
+    <string name="apps_search">گەڕان بەدوای ئەپ</string>
+
+    <string name="logs_title">تۆمار</string>
+    <string name="logs_subtitle">%1$d دێڕ</string>
+    <string name="logs_follow">شوێنکەوتن</string>
+    <string name="logs_copy">کۆپی</string>
+    <string name="logs_clear">سڕینەوە</string>
+    <string name="logs_empty">هێشتا هیچ تۆمارێک نییە</string>
+    <string name="logs_empty_hint">پەیوەست بە تا کارەکان ببینیت</string>
+
+    <string name="sheet_scan_title">شێوازی گەڕان</string>
+    <string name="sheet_scan_subtitle">چەند بە وردی بەدوای ڕێگایەکی کراوەدا بگەڕێت</string>
+    <string name="sheet_noize_title">شاردنەوە</string>
+    <string name="sheet_noize_subtitle">پڕکردنەوەی پاکەت بۆ گۆڕینی شێوەی ترافیک</string>
+    <string name="sheet_ip_title">جۆری ئایپی</string>
+    <string name="sheet_ip_subtitle">کام ناونیشان تاقی بکرێتەوە</string>
+</resources>

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English: the default. Kurdish lives in values-b+ckb. -->
+<resources>
+    <string name="app_name">Freeport</string>
+    <string name="core_missing">The core did not load — check the log</string>
+
+    <string name="tab_home">Connect</string>
+    <string name="tab_settings">Settings</string>
+    <string name="tab_logs">Log</string>
+
+    <string name="state_idle">Not connected</string>
+    <string name="state_preparing">Preparing</string>
+    <string name="state_scanning">Finding a route</string>
+    <string name="state_connecting">Opening the tunnel</string>
+    <string name="state_connected">Connected</string>
+    <string name="state_reconnecting">Reconnecting</string>
+    <string name="state_failed">Connection failed</string>
+
+    <string name="action_connect">Connect</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_reconnect">Again</string>
+
+    <string name="notification_channel_name">Tunnel status</string>
+    <string name="notification_channel_description">Shows whether the tunnel is up.</string>
+    <string name="vpn_permission_denied">Android needs VPN permission before traffic can be carried.</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_changes_pending">Changes apply on the next connection</string>
+
+    <string name="section_routing">Routing</string>
+    <string name="routing_apps_title">Apps in the tunnel</string>
+    <string name="routing_apps_none">None</string>
+    <string name="routing_apps_count">%1$d apps</string>
+    <string name="routing_whole">Whole device</string>
+    <string name="routing_whole_desc">Every app\'s traffic goes through the tunnel.</string>
+    <string name="routing_selected">Selected apps</string>
+    <string name="routing_selected_desc">Only the apps you pick go through the tunnel.</string>
+
+    <string name="section_tunnel">Tunnel</string>
+    <string name="tunnel_scan">Scan mode</string>
+    <string name="tunnel_noize">Obfuscation</string>
+    <string name="tunnel_ip">IP</string>
+
+    <string name="section_appearance">Language</string>
+    <string name="language_title">App language</string>
+    <string name="language_kurdish">کوردی</string>
+    <string name="language_english">English</string>
+
+    <string name="section_advanced">Advanced</string>
+    <string name="advanced_title">Finer settings</string>
+    <string name="advanced_subtitle">Ports, fragmenting, keepalive, a pinned peer</string>
+    <string name="advanced_socks_port">SOCKS5 port</string>
+    <string name="advanced_http_proxy">HTTP proxy</string>
+    <string name="advanced_http_proxy_desc">For apps that only understand HTTP proxies</string>
+    <string name="advanced_http_port">HTTP port</string>
+    <string name="advanced_fragment">Fragment the TLS hello</string>
+    <string name="advanced_fragment_desc">Splits the handshake so the site name is not in one packet</string>
+    <string name="advanced_fragment_tcp_only">Only for MASQUE H2, which runs over TCP</string>
+    <string name="advanced_fragment_size">Fragment size</string>
+    <string name="advanced_fragment_delay">Fragment delay</string>
+    <string name="advanced_ech">Encrypted hello (ECH)</string>
+    <string name="advanced_ech_desc">Fetches an ECH config before the handshake</string>
+    <string name="advanced_keepalive">Keepalive</string>
+    <string name="advanced_bypass_lan">Bypass the local network</string>
+    <string name="advanced_bypass_lan_desc">Printers and the router stay reachable</string>
+    <string name="advanced_bypass_lan_needs13">Needs Android 13 or newer</string>
+    <string name="advanced_peer">Pinned peer</string>
+    <string name="advanced_peer_helper">Skips the scan entirely. Leave empty to scan.</string>
+    <string name="advanced_peer_error">Expected ip:port</string>
+    <string name="advanced_port_helper">Listens on 127.0.0.1</string>
+    <string name="advanced_port_error">Use a port between 1024 and 65535</string>
+    <string name="advanced_port_conflict">Already used by the other proxy</string>
+    <string name="advanced_battery">Battery limits</string>
+    <string name="advanced_battery_value">Settings</string>
+    <string name="advanced_system_vpn">System VPN settings</string>
+    <string name="advanced_system_vpn_value">System</string>
+
+    <string name="section_about">About</string>
+    <string name="about_core">Core</string>
+    <string name="about_core_mock">Simulated core</string>
+    <string name="about_capture">Traffic capture</string>
+    <string name="about_capture_proxy">Proxy only</string>
+    <string name="about_device">Device</string>
+    <string name="about_device_none">Not provisioned yet</string>
+    <string name="about_license">License</string>
+    <string name="about_developer">Developer</string>
+
+    <string name="apps_title">Apps in the tunnel</string>
+    <string name="apps_selected">%1$d selected</string>
+    <string name="apps_search">Search apps</string>
+
+    <string name="logs_title">Log</string>
+    <string name="logs_subtitle">%1$d lines</string>
+    <string name="logs_follow">Follow</string>
+    <string name="logs_copy">Copy</string>
+    <string name="logs_clear">Clear</string>
+    <string name="logs_empty">Nothing logged yet</string>
+    <string name="logs_empty_hint">Connect to watch it work</string>
+
+    <string name="sheet_scan_title">Scan mode</string>
+    <string name="sheet_scan_subtitle">How hard to look for an open route</string>
+    <string name="sheet_noize_title">Obfuscation</string>
+    <string name="sheet_noize_subtitle">Padding that changes the shape of the traffic</string>
+    <string name="sheet_ip_title">IP family</string>
+    <string name="sheet_ip_subtitle">Which addresses to probe</string>
+
+    <string name="scan_turbo">Fast</string>
+    <string name="scan_turbo_desc">Stops at the first route that answers.</string>
+    <string name="scan_balanced">Balanced</string>
+    <string name="scan_balanced_desc">The default. Good on most networks.</string>
+    <string name="scan_thorough">Thorough</string>
+    <string name="scan_thorough_desc">Sweeps whole ranges when everything looks blocked.</string>
+    <string name="scan_stealth">Quiet</string>
+    <string name="scan_stealth_desc">Few probes at a time, for networks that watch.</string>
+    <string name="scan_ironclad">Certain</string>
+    <string name="scan_ironclad_desc">Opens a real tunnel and tests each candidate.</string>
+
+    <string name="noize_off">Off</string>
+    <string name="noize_off_desc">No padding. Fastest, easiest to recognise.</string>
+    <string name="noize_light">Light</string>
+    <string name="noize_light_desc">A small change to the shape of the traffic.</string>
+    <string name="noize_firewall">Normal</string>
+    <string name="noize_firewall_desc">Balanced. Gets through without costing much speed.</string>
+    <string name="noize_heavy">Heavy</string>
+    <string name="noize_heavy_desc">The heaviest profile, for deep inspection.</string>
+    <string name="noize_balanced">Balanced</string>
+    <string name="noize_balanced_desc">The WireGuard default.</string>
+    <string name="noize_aggressive">Aggressive</string>
+    <string name="noize_aggressive_desc">The heaviest WireGuard padding.</string>
+
+    <string name="ip_v4">IPv4</string>
+    <string name="ip_v6">IPv6</string>
+    <string name="ip_dual">Both</string>
+</resources>
