@@ -93,7 +93,7 @@ keyPassword=…
 app/src/main/
 ├── cpp/aether_jni.c          JNI shim over the core's C API, plus its log pipe
 ├── jniLibs/                  the three native libraries (built, not in git)
-└── java/studio/cluvex/aether/
+└── java/io/github/mhammaddawudi/freeport/
     ├── core/                 the seam to the core: job API as suspend calls,
     │                         a simulated implementation, the session engine
     ├── data/                 settings and the enums that mirror the core's

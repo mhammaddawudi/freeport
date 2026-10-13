@@ -14,13 +14,13 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "studio.cluvex.aether"
+    namespace = "io.github.mhammaddawudi.freeport"
     compileSdk = 34
     // The SDK on this machine has platform 34; 35 is not needed by anything here.
     buildToolsVersion = "34.0.0"
 
     defaultConfig {
-        applicationId = "studio.cluvex.aether"
+        applicationId = "io.github.mhammaddawudi.freeport"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

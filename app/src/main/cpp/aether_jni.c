@@ -42,7 +42,7 @@ static jstring take_reply(JNIEnv *env, char *reply) {
     return result;
 }
 
-#define JNI_FN(name) Java_studio_cluvex_aether_core_NativeAetherCore_##name
+#define JNI_FN(name) Java_io_github_mhammaddawudi_freeport_core_NativeAetherCore_##name
 
 /*
  * The core logs through env_logger, which writes to stderr. On Android
@@ -94,7 +94,7 @@ JNIEXPORT jstring JNICALL JNI_FN(nativeCaptureLogs)(JNIEnv *env, jobject self) {
         return (*env)->NewStringUTF(env, "{\"ok\":true,\"capturing\":true}");
     }
     (*env)->GetJavaVM(env, &g_vm);
-    jclass local = (*env)->FindClass(env, "studio/cluvex/aether/core/CoreLog");
+    jclass local = (*env)->FindClass(env, "io/github/mhammaddawudi/freeport/core/CoreLog");
     if (local == NULL) {
         return (*env)->NewStringUTF(env, "{\"ok\":false,\"error\":\"CoreLog is missing\"}");
     }

@@ -8,7 +8,7 @@ package hev.htproxy
  * its four natives onto it. So the class has to live here, under this name,
  * even though nothing else in the app uses that package.
  *
- * Wrapped by [studio.cluvex.aether.vpn.HevTunBridge]; call that instead.
+ * Wrapped by [io.github.mhammaddawudi.freeport.vpn.HevTunBridge]; call that instead.
  */
 object TProxyService {
     external fun TProxyStartService(configPath: String, fd: Int): Boolean
