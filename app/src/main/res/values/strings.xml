@@ -46,6 +46,7 @@
     <string name="language_title">App language</string>
     <string name="language_kurdish">کوردی</string>
     <string name="language_english">English</string>
+    <string name="language_persian">فارسی</string>
 
     <string name="section_advanced">Advanced</string>
     <string name="advanced_title">Finer settings</string>

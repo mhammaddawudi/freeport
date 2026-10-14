@@ -32,14 +32,14 @@ private fun darkScheme(p: AetherPalette) = darkColorScheme(
  */
 @Composable
 fun AetherTheme(
-    language: AppLanguage = AppLanguage.Kurdish,
+    language: AppLanguage = AppLanguage.English,
     content: @Composable () -> Unit,
 ) {
     val palette = DarkPalette
-    // Kurdish reads right to left; English does not.
+    // Kurdish and Persian read right to left; English does not.
     CompositionLocalProvider(
         LocalAetherPalette provides palette,
-        LocalLayoutDirection provides if (language == AppLanguage.Kurdish) {
+        LocalLayoutDirection provides if (language.rightToLeft) {
             LayoutDirection.Rtl
         } else {
             LayoutDirection.Ltr

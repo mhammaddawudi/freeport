@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds the native half of the app for arm64 Android:
+# Builds the native half of the app for every ABI the app ships:
 #
 #   libaether.so            the Aether core (Rust)
 #   libaether_jni.so        the JNI shim in app/src/main/cpp
@@ -23,6 +23,7 @@ AETHER_SRC="${AETHER_SRC:-$ROOT/../aether-src}"
 AETHER_REF="${AETHER_REF:-main}"
 HEV_SRC="${HEV_SRC:-$ROOT/../hev-socks5-tunnel}"
 API="${ANDROID_API:-26}"
+ABIS="${ABIS:-arm64-v8a armeabi-v7a x86_64}"
 WORK="${WORK:-$ROOT/.native-build}"
 JNILIBS="$ROOT/app/src/main/jniLibs"
 
@@ -33,7 +34,7 @@ HOST_TAG="$(uname -s | tr '[:upper:]' '[:lower:]')-x86_64"
 TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$HOST_TAG"
 [ -d "$TOOLCHAIN" ] || { echo "no NDK toolchain at $TOOLCHAIN" >&2; exit 1; }
 
-mkdir -p "$WORK" "$JNILIBS/arm64-v8a"
+mkdir -p "$WORK" "$JNILIBS"
 
 echo "==> sources"
 [ -d "$AETHER_SRC/aether" ] || git clone --depth 1 --branch "$AETHER_REF" \
@@ -41,49 +42,99 @@ echo "==> sources"
 [ -d "$HEV_SRC" ] || git clone --recursive --depth 1 \
   https://github.com/heiher/hev-socks5-tunnel.git "$HEV_SRC"
 
-echo "==> rust target"
-rustup target add aarch64-linux-android
+# Each ABI needs its own BoringSSL, core and shim.
+#
+# Two naming traps live here. cc-rs guesses "arm-linux-androideabi-clang" for
+# 32-bit ARM, but the NDK ships "armv7a-linux-androideabiAPI-clang", so the
+# tools are named explicitly. And rust-std tarballs live under the release
+# date, not the commit date rustc reports, so the date is probed rather than
+# computed.
+triple_of () {
+  case "$1" in
+    arm64-v8a)    echo aarch64-linux-android ;;
+    armeabi-v7a)  echo armv7-linux-androideabi ;;
+    x86_64)       echo x86_64-linux-android ;;
+    *) echo "unknown ABI: $1" >&2; exit 1 ;;
+  esac
+}
 
-echo "==> boringssl"
-# The source is vendored in the boring-sys crate, so fetch the crates first.
+compiler_of () {
+  case "$1" in
+    arm64-v8a)    echo "aarch64-linux-android$API" ;;
+    armeabi-v7a)  echo "armv7a-linux-androideabi$API" ;;
+    x86_64)       echo "x86_64-linux-android$API" ;;
+  esac
+}
+
+install_std () {
+  local triple="$1" ver commit day url=""
+  rustup target list --installed | grep -qx "$triple" && return 0
+  rustup target add "$triple" && return 0
+  ver=$(rustc --version | awk '{print $2}')
+  commit=$(rustc --version --verbose | awk '/^commit-date/{print $2}')
+  for offset in 0 1 2 3 4 5 6 7; do
+    day=$(date -j -v+${offset}d -f "%Y-%m-%d" "$commit" "+%Y-%m-%d" 2>/dev/null) || continue
+    if curl -fsS -o /dev/null -r 0-100 --max-time 20 \
+       "https://static.rust-lang.org/dist/$day/rust-std-$ver-$triple.tar.xz" 2>/dev/null; then
+      url="https://static.rust-lang.org/dist/$day/rust-std-$ver-$triple.tar.xz"
+      break
+    fi
+  done
+  [ -n "$url" ] || { echo "no rust-std published for $triple" >&2; return 1; }
+  curl -fL -C - --retry 10 --retry-all-errors -o "$WORK/std-$triple.tar.xz" "$url"
+  rm -rf "$WORK/std-$triple" && mkdir -p "$WORK/std-$triple"
+  tar xJf "$WORK/std-$triple.tar.xz" -C "$WORK/std-$triple"
+  cp -R "$(find "$WORK/std-$triple" -type d -name "$triple" -path '*rustlib*' | head -1)" \
+     "$(rustc --print sysroot)/lib/rustlib/"
+}
+
 (cd "$AETHER_SRC/aether" && cargo fetch --quiet)
 BSSL_SRC="$(ls -d "$HOME"/.cargo/registry/src/*/boring-sys-*/deps/boringssl 2>/dev/null | head -1)"
 [ -n "$BSSL_SRC" ] || { echo "could not find the vendored boringssl source" >&2; exit 1; }
-if [ ! -f "$WORK/bssl/libcrypto.a" ]; then
-  cmake -S "$BSSL_SRC" -B "$WORK/bssl/build" \
-    -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM="android-$API" -DANDROID_STL=c++_static \
-    -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-    -DCMAKE_AR="$TOOLCHAIN/bin/llvm-ar" -DCMAKE_RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
-  cmake --build "$WORK/bssl/build" --target crypto ssl -j "$(getconf _NPROCESSORS_ONLN)"
-  mkdir -p "$WORK/bssl"
-  find "$WORK/bssl/build" -name 'libcrypto.a' -o -name 'libssl.a' | xargs -I{} cp {} "$WORK/bssl/"
-fi
 
-echo "==> core"
-export ANDROID_NDK_HOME ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
-export PATH="$TOOLCHAIN/bin:$PATH"
-export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
-export RANLIB_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ranlib"
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/aarch64-linux-android$API-clang"
-export CFLAGS_aarch64_linux_android="--target=aarch64-linux-android$API"
-export CXXFLAGS_aarch64_linux_android="--target=aarch64-linux-android$API"
-export BORING_BSSL_PATH="$WORK/bssl"
-export BORING_BSSL_INCLUDE_PATH="$BSSL_SRC/src/include"
-[ -d "$BORING_BSSL_INCLUDE_PATH" ] || export BORING_BSSL_INCLUDE_PATH="$BSSL_SRC/include"
-export BORING_BSSL_ASSUME_PATCHED=1
-# 16 KB pages: newer devices refuse a library laid out for 4 KB ones.
-# --no-undefined: fail the link instead of shipping a .so that cannot resolve
-# its symbols, which otherwise only shows up as a dlopen error on the phone.
-export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,--no-undefined"
-(cd "$AETHER_SRC/aether" && cargo build --release --target aarch64-linux-android --lib)
-cp "$AETHER_SRC/aether/target/aarch64-linux-android/release/libaether.so" "$JNILIBS/arm64-v8a/"
+for abi in $ABIS; do
+  triple="$(triple_of "$abi")"
+  cc="$(compiler_of "$abi")"
+  echo "==> $abi ($triple)"
+  install_std "$triple"
 
-echo "==> jni shim"
-"$TOOLCHAIN/bin/aarch64-linux-android$API-clang" -shared -fPIC -O2 \
-  -Wl,-z,max-page-size=16384 -Wl,--no-undefined \
-  -o "$JNILIBS/arm64-v8a/libaether_jni.so" "$ROOT/app/src/main/cpp/aether_jni.c" \
-  -L"$JNILIBS/arm64-v8a" -laether -llog
+  if [ ! -f "$WORK/bssl-$abi/libcrypto.a" ]; then
+    cmake -S "$BSSL_SRC" -B "$WORK/bssl-$abi/build" \
+      -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+      -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$API" -DANDROID_STL=c++_static \
+      -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+      -DCMAKE_AR="$TOOLCHAIN/bin/llvm-ar" -DCMAKE_RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
+    cmake --build "$WORK/bssl-$abi/build" --target crypto ssl -j "$(getconf _NPROCESSORS_ONLN)"
+    mkdir -p "$WORK/bssl-$abi"
+    find "$WORK/bssl-$abi/build" -name 'libcrypto.a' -o -name 'libssl.a' | xargs -I{} cp {} "$WORK/bssl-$abi/"
+  fi
+
+  underscored="$(echo "$triple" | tr '-' '_')"
+  upper="$(echo "$underscored" | tr '[:lower:]' '[:upper:]')"
+  export CC_${underscored}="$TOOLCHAIN/bin/$cc-clang"
+  export CXX_${underscored}="$TOOLCHAIN/bin/$cc-clang++"
+  export AR_${underscored}="$TOOLCHAIN/bin/llvm-ar"
+  export RANLIB_${underscored}="$TOOLCHAIN/bin/llvm-ranlib"
+  export CARGO_TARGET_${upper}_LINKER="$TOOLCHAIN/bin/$cc-clang"
+  export CFLAGS_${underscored}="--target=$cc"
+  export CXXFLAGS_${underscored}="--target=$cc"
+  export BORING_BSSL_PATH="$WORK/bssl-$abi"
+  export BORING_BSSL_INCLUDE_PATH="$BSSL_SRC/src/include"
+  [ -d "$BORING_BSSL_INCLUDE_PATH" ] || export BORING_BSSL_INCLUDE_PATH="$BSSL_SRC/include"
+  export BORING_BSSL_ASSUME_PATCHED=1
+  # 16 KB pages: newer devices refuse a library laid out for 4 KB ones.
+  # --no-undefined: fail the link rather than ship a .so whose symbols only
+  # turn out to be missing when the phone tries to load it.
+  export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,--no-undefined"
+
+  (cd "$AETHER_SRC/aether" && cargo build --release --target "$triple" --lib)
+  mkdir -p "$JNILIBS/$abi"
+  cp "$AETHER_SRC/aether/target/$triple/release/libaether.so" "$JNILIBS/$abi/"
+  "$TOOLCHAIN/bin/$cc-clang" -shared -fPIC -O2 \
+    -Wl,-z,max-page-size=16384 -Wl,--no-undefined \
+    -o "$JNILIBS/$abi/libaether_jni.so" "$ROOT/app/src/main/cpp/aether_jni.c" \
+    -L"$JNILIBS/$abi" -laether -llog
+done
 
 echo "==> tun2socks"
 (cd "$HEV_SRC" && "$ANDROID_NDK_HOME/ndk-build" NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk \

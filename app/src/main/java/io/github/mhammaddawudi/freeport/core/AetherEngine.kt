@@ -138,14 +138,28 @@ class AetherEngine(
 
     private suspend fun runSession(host: TunnelHost) {
         var attempt = 0
+        var fallback = 0
         try {
             while (true) {
-                val current = settings.current()
+                val chosen = settings.current()
+                // After a few failures in a row, try another transport. A
+                // network that blocks one of them usually still carries
+                // another, and the person cannot be expected to know which.
+                val current = if (fallback == 0) chosen else chosen.copy(protocol = alternatives(chosen.protocol)[fallback - 1])
+                if (fallback > 0) {
+                    log.info("[*] ${chosen.protocol.displayName} is not getting through, trying ${current.protocol.displayName}")
+                }
                 val outcome = attemptOnce(current, host)
                 host.onTunnelDown()
 
-                if (outcome.connectedForMs >= STABLE_MS) attempt = 0
+                if (outcome.connectedForMs >= STABLE_MS) {
+                    attempt = 0
+                    fallback = 0
+                }
                 attempt++
+                if (attempt % ATTEMPTS_PER_TRANSPORT == 0) {
+                    fallback = (fallback + 1) % (alternatives(chosen.protocol).size + 1)
+                }
                 // Never give up on its own. A tunnel usually drops because the
                 // screen went off, the network changed or coverage came back —
                 // all of which fix themselves. The session ends when the user
@@ -291,6 +305,20 @@ class AetherEngine(
         }
     }
 
+    /**
+     * The other transports, in the order worth trying when one is blocked.
+     *
+     * Deliberately starts with the one that looks least like the chosen one:
+     * if MASQUE over QUIC is being dropped, the next thing to try is not the
+     * other MASQUE but a different protocol entirely.
+     */
+    private fun alternatives(chosen: Protocol): List<Protocol> = when (chosen) {
+        Protocol.Gool -> listOf(Protocol.MasqueH3, Protocol.WireGuard, Protocol.MasqueH2)
+        Protocol.MasqueH3 -> listOf(Protocol.WireGuard, Protocol.MasqueH2, Protocol.Gool)
+        Protocol.MasqueH2 -> listOf(Protocol.MasqueH3, Protocol.WireGuard, Protocol.Gool)
+        Protocol.WireGuard -> listOf(Protocol.MasqueH3, Protocol.MasqueH2, Protocol.Gool)
+    }
+
     /** Picks a local port nothing is sitting on, starting from the chosen one. */
     private fun withFreePort(settings: AetherSettings): AetherSettings {
         val loopback = InetAddress.getByName("127.0.0.1")
@@ -343,6 +371,9 @@ class AetherEngine(
 
         /** Long enough to stop draining the battery while out of coverage. */
         const val MAX_BACKOFF_MS = 60_000L
+
+        /** Failures on one transport before the next one is worth a try. */
+        const val ATTEMPTS_PER_TRANSPORT = 2
         /** A direct tunnel should be serving within this long, or it is stuck. */
         const val TUNNEL_STARTUP_MS = 45_000L
         const val POLL_MS = 1_000L

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Persian. The language is chosen in Settings, not by the phone. -->
+<resources>
+    <string name="app_name">Freeport</string>
+    <string name="core_missing">هسته بارگذاری نشد — گزارش را ببینید</string>
+
+    <string name="tab_home">اتصال</string>
+    <string name="tab_settings">تنظیمات</string>
+    <string name="tab_logs">گزارش</string>
+
+    <string name="state_idle">وصل نیست</string>
+    <string name="state_preparing">آماده‌سازی</string>
+    <string name="state_scanning">جست‌وجوی مسیر</string>
+    <string name="state_connecting">باز کردن تونل</string>
+    <string name="state_connected">متصل</string>
+    <string name="state_reconnecting">اتصال دوباره</string>
+    <string name="state_failed">اتصال ناموفق</string>
+
+    <string name="action_connect">اتصال</string>
+    <string name="action_disconnect">قطع اتصال</string>
+    <string name="action_cancel">انصراف</string>
+    <string name="action_reconnect">دوباره</string>
+
+    <string name="notification_channel_name">وضعیت تونل</string>
+    <string name="notification_channel_description">نشان می‌دهد تونل برقرار است یا نه.</string>
+    <string name="vpn_permission_denied">اندروید پیش از عبور ترافیک به اجازه‌ی VPN نیاز دارد.</string>
+
+    <string name="settings_title">تنظیمات</string>
+    <string name="settings_changes_pending">تغییرات در اتصال بعدی اعمال می‌شوند</string>
+
+    <string name="section_routing">مسیردهی</string>
+    <string name="routing_apps_title">برنامه‌های داخل تونل</string>
+    <string name="routing_apps_none">هیچ‌کدام</string>
+    <string name="routing_apps_count">%1$d برنامه</string>
+    <string name="routing_whole">کل دستگاه</string>
+    <string name="routing_whole_desc">ترافیک همه‌ی برنامه‌ها از تونل عبور می‌کند.</string>
+    <string name="routing_selected">برنامه‌های انتخابی</string>
+    <string name="routing_selected_desc">فقط برنامه‌هایی که انتخاب می‌کنید از تونل عبور می‌کنند.</string>
+
+    <string name="section_tunnel">تونل</string>
+    <string name="tunnel_scan">حالت جست‌وجو</string>
+    <string name="tunnel_noize">پنهان‌سازی</string>
+    <string name="tunnel_ip">آی‌پی</string>
+
+    <string name="section_appearance">زبان</string>
+    <string name="language_title">زبان برنامه</string>
+    <string name="language_kurdish">کوردی</string>
+    <string name="language_english">English</string>
+    <string name="language_persian">فارسی</string>
+
+    <string name="section_advanced">پیشرفته</string>
+    <string name="advanced_title">تنظیمات دقیق‌تر</string>
+    <string name="advanced_subtitle">پورت، تکه‌تکه کردن، کیپ‌الایو، سرور ثابت</string>
+    <string name="advanced_socks_port">پورت SOCKS5</string>
+    <string name="advanced_http_proxy">پراکسی HTTP</string>
+    <string name="advanced_http_proxy_desc">برای برنامه‌هایی که فقط پراکسی HTTP می‌شناسند</string>
+    <string name="advanced_http_port">پورت HTTP</string>
+    <string name="advanced_fragment">تکه‌تکه کردن دست‌دادن TLS</string>
+    <string name="advanced_fragment_desc">دست‌دادن را تکه می‌کند تا نام سایت در یک بسته نباشد</string>
+    <string name="advanced_fragment_tcp_only">فقط برای MASQUE H2 که روی TCP اجرا می‌شود</string>
+    <string name="advanced_fragment_size">اندازه‌ی تکه</string>
+    <string name="advanced_fragment_delay">تأخیر بین تکه‌ها</string>
+    <string name="advanced_ech">پنهان‌سازی نام سایت (ECH)</string>
+    <string name="advanced_ech_desc">پیش از دست‌دادن، تنظیمات ECH را می‌گیرد</string>
+    <string name="advanced_keepalive">کیپ‌الایو</string>
+    <string name="advanced_bypass_lan">عبور از شبکه‌ی محلی</string>
+    <string name="advanced_bypass_lan_desc">چاپگر و روتر در دسترس می‌مانند</string>
+    <string name="advanced_bypass_lan_needs13">به اندروید ۱۳ یا جدیدتر نیاز دارد</string>
+    <string name="advanced_peer">سرور ثابت</string>
+    <string name="advanced_peer_helper">جست‌وجو را کامل رد می‌کند. برای جست‌وجو خالی بگذارید.</string>
+    <string name="advanced_peer_error">قالب درست: آی‌پی:پورت</string>
+    <string name="advanced_port_helper">روی ۱۲۷.۰.۰.۱ گوش می‌دهد</string>
+    <string name="advanced_port_error">پورتی بین ۱۰۲۴ و ۶۵۵۳۵ بگذارید</string>
+    <string name="advanced_port_conflict">پراکسی دیگر از این پورت استفاده می‌کند</string>
+    <string name="advanced_battery">محدودیت باتری</string>
+    <string name="advanced_battery_value">تنظیمات</string>
+    <string name="advanced_system_vpn">تنظیمات VPN سیستم</string>
+    <string name="advanced_system_vpn_value">سیستم</string>
+
+    <string name="section_about">درباره</string>
+    <string name="about_core">هسته</string>
+    <string name="about_core_mock">هسته‌ی شبیه‌ساز</string>
+    <string name="about_capture">گرفتن ترافیک</string>
+    <string name="about_capture_proxy">فقط پراکسی</string>
+    <string name="about_device">دستگاه</string>
+    <string name="about_device_none">هنوز ساخته نشده</string>
+    <string name="about_license">مجوز</string>
+    <string name="about_developer">توسعه‌دهنده</string>
+
+    <string name="apps_title">برنامه‌های داخل تونل</string>
+    <string name="apps_selected">%1$d انتخاب‌شده</string>
+    <string name="apps_search">جست‌وجوی برنامه</string>
+
+    <string name="logs_title">گزارش</string>
+    <string name="logs_subtitle">%1$d خط</string>
+    <string name="logs_follow">دنبال کردن</string>
+    <string name="logs_copy">کپی</string>
+    <string name="logs_clear">پاک کردن</string>
+    <string name="logs_empty">هنوز چیزی ثبت نشده</string>
+    <string name="logs_empty_hint">برای دیدن کارها وصل شوید</string>
+
+    <string name="sheet_scan_title">حالت جست‌وجو</string>
+    <string name="sheet_scan_subtitle">چقدر دقیق دنبال مسیر باز بگردد</string>
+    <string name="sheet_noize_title">پنهان‌سازی</string>
+    <string name="sheet_noize_subtitle">پرکردنی که شکل ترافیک را عوض می‌کند</string>
+    <string name="sheet_ip_title">نوع آی‌پی</string>
+    <string name="sheet_ip_subtitle">کدام نشانی‌ها بررسی شوند</string>
+
+    <string name="scan_turbo">سریع</string>
+    <string name="scan_turbo_desc">در اولین مسیری که جواب بدهد می‌ایستد.</string>
+    <string name="scan_balanced">متعادل</string>
+    <string name="scan_balanced_desc">پیش‌فرض. در بیشتر شبکه‌ها خوب است.</string>
+    <string name="scan_thorough">دقیق</string>
+    <string name="scan_thorough_desc">وقتی همه‌چیز بسته است، کل محدوده را می‌گردد.</string>
+    <string name="scan_stealth">بی‌صدا</string>
+    <string name="scan_stealth_desc">هر بار کم بررسی می‌کند، برای شبکه‌های تحت نظر.</string>
+    <string name="scan_ironclad">مطمئن</string>
+    <string name="scan_ironclad_desc">برای هر مسیر تونل واقعی باز می‌کند و آزمایش می‌کند.</string>
+
+    <string name="noize_off">خاموش</string>
+    <string name="noize_off_desc">بدون پرکردن. سریع‌ترین و قابل‌تشخیص‌ترین.</string>
+    <string name="noize_light">سبک</string>
+    <string name="noize_light_desc">تغییر کمی در شکل ترافیک.</string>
+    <string name="noize_firewall">معمولی</string>
+    <string name="noize_firewall_desc">متعادل. بدون افت زیاد سرعت رد می‌شود.</string>
+    <string name="noize_heavy">سنگین</string>
+    <string name="noize_heavy_desc">سنگین‌ترین حالت، برای بازرسی عمیق.</string>
+    <string name="noize_balanced">متعادل</string>
+    <string name="noize_balanced_desc">پیش‌فرض WireGuard.</string>
+    <string name="noize_aggressive">تهاجمی</string>
+    <string name="noize_aggressive_desc">سنگین‌ترین پرکردن WireGuard.</string>
+
+    <string name="ip_v4">IPv4</string>
+    <string name="ip_v6">IPv6</string>
+    <string name="ip_dual">هر دو</string>
+</resources>

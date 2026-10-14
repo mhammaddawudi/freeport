@@ -1,8 +1,8 @@
 # Freeport
 
 An Android client for [Aether](https://github.com/CluvexStudio/Aether), the
-censorship-circumvention core by CluvexStudio. Kurdish and English interface,
-four transports, per-app routing.
+censorship-circumvention core by CluvexStudio. English, Persian and Kurdish
+interface, four transports, per-app routing.
 
 ## What it does
 
@@ -10,6 +10,11 @@ four transports, per-app routing.
 |---|---|
 | **Connect** | One button that fills as the connection is made — the scan's real progress while it looks for a route, then a closed green ring once traffic is flowing. The four transports below it. |
 | **Settings** | Routing (whole device or chosen apps) · scan mode, obfuscation, IP family · language · advanced core flags, folded away · about |
+
+If a transport stops getting through, the app moves to another on its own
+after a couple of failed attempts, and returns to the chosen one once a
+connection holds. The order is deliberate: when MASQUE over QUIC is being
+dropped, the next thing tried is WireGuard rather than the other MASQUE.
 | **Log** | The app's own steps and the core's, in the order they happened |
 
 ## Transports
@@ -69,8 +74,8 @@ ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/26.1.10909125 scripts/build-core.sh
 ```
 
 That script builds BoringSSL against the NDK toolchain, then the core, the
-JNI shim and tun2socks, and drops all three into `app/src/main/jniLibs/`.
-arm64 only; on other ABIs the app falls back to the simulated core.
+JNI shim and tun2socks, for arm64-v8a, armeabi-v7a and x86_64, and drops them
+all into `app/src/main/jniLibs/`. Set `ABIS` to narrow it down.
 
 Release builds are signed with the key named in `keystore.properties`, which
 is not in version control. Create your own:

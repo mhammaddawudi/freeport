@@ -157,11 +157,16 @@ enum class IpVersion(val wire: String, @StringRes val labelRes: Int) {
 }
 
 /** The two languages the interface ships in. */
-enum class AppLanguage(val tag: String, @StringRes val labelRes: Int) {
-    Kurdish("ckb", R.string.language_kurdish),
-    English("en", R.string.language_english);
+enum class AppLanguage(
+    val tag: String,
+    @StringRes val labelRes: Int,
+    val rightToLeft: Boolean,
+) {
+    English("en", R.string.language_english, rightToLeft = false),
+    Persian("fa", R.string.language_persian, rightToLeft = true),
+    Kurdish("ckb", R.string.language_kurdish, rightToLeft = true);
 
     companion object {
-        fun fromTag(tag: String?): AppLanguage = entries.firstOrNull { it.tag == tag } ?: Kurdish
+        fun fromTag(tag: String?): AppLanguage = entries.firstOrNull { it.tag == tag } ?: English
     }
 }
