@@ -7,7 +7,7 @@ import java.util.Locale
 /**
  * Applies the language chosen in Settings, rather than the phone's.
  *
- * The app ships in two languages and the choice belongs to the user: someone
+ * The app ships in several languages and the choice belongs to the user: someone
  * on an English phone may well want the Kurdish interface, and the reverse.
  * Every entry point — the activity, the application, the VPN service — wraps
  * its base context through here so notifications read the same as the screen.

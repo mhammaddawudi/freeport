@@ -23,13 +23,21 @@ android {
         applicationId = "io.github.mhammaddawudi.freeport"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
+    }
 
-        ndk {
-            // The four ABIs cargo-ndk builds libaether.so for. Trim this list to
-            // shrink the apk once you know which devices you ship to.
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+    // One apk per phone architecture plus a universal one. The per-ABI apks
+    // are what most people should install — they are less than half the size.
+    // The universal apk carries every ABI in jniLibs (arm64-v8a, armeabi-v7a,
+    // x86_64). All of them share one versionCode, so any of them can be
+    // installed over any other.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true
         }
     }
 
@@ -41,6 +49,12 @@ android {
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
+                // AGP drops the v1 (JAR) signature when minSdk >= 24. Some
+                // third-party installers and file managers still check it,
+                // so sign with every scheme.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }

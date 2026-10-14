@@ -19,3 +19,6 @@ keystore.properties
 
 # Native libraries are build products; scripts/build-core.sh makes them.
 # To ship a self-contained private repo instead, delete these three lines.
+
+# Renamed release apks
+dist/

@@ -36,7 +36,7 @@ fun AetherTheme(
     content: @Composable () -> Unit,
 ) {
     val palette = DarkPalette
-    // Kurdish and Persian read right to left; English does not.
+    // Sorani and Persian read right to left; English and Kurmanji do not.
     CompositionLocalProvider(
         LocalAetherPalette provides palette,
         LocalLayoutDirection provides if (language.rightToLeft) {

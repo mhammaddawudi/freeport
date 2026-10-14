@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kurdish (Kurmanji, Latin script). The language is chosen in Settings, not by the phone. -->
+<resources>
+    <string name="app_name">Freeport</string>
+    <string name="core_missing">Navend bar nebû — li tomarê binêre</string>
+
+    <string name="tab_home">Girêdan</string>
+    <string name="tab_settings">Mîheng</string>
+    <string name="tab_logs">Tomar</string>
+
+    <string name="state_idle">Ne girêdayî ye</string>
+    <string name="state_preparing">Amade dibe</string>
+    <string name="state_scanning">Rê tê lêgerîn</string>
+    <string name="state_connecting">Tunel vedibe</string>
+    <string name="state_connected">Girêdayî</string>
+    <string name="state_reconnecting">Dîsa tê girêdan</string>
+    <string name="state_failed">Girêdan bi ser neket</string>
+
+    <string name="action_connect">Girê bide</string>
+    <string name="action_disconnect">Qut bike</string>
+    <string name="action_cancel">Betal bike</string>
+    <string name="action_reconnect">Dîsa</string>
+
+    <string name="notification_channel_name">Rewşa tunelê</string>
+    <string name="notification_channel_description">Nîşan dide ka tunel vekirî ye an na.</string>
+    <string name="vpn_permission_denied">Berî ku tevger derbas bibe, Android destûra VPN dixwaze.</string>
+
+    <string name="settings_title">Mîheng</string>
+    <string name="settings_changes_pending">Guhertin di girêdana din de derbas dibin</string>
+
+    <string name="section_routing">Rêvebirin</string>
+    <string name="routing_apps_title">Sepanên di tunelê de</string>
+    <string name="routing_apps_none">Tune</string>
+    <string name="routing_apps_count">%1$d sepan</string>
+    <string name="routing_whole">Hemû cîhaz</string>
+    <string name="routing_whole_desc">Tevgera hemû sepanan di tunelê re derbas dibe.</string>
+    <string name="routing_selected">Sepanên bijartî</string>
+    <string name="routing_selected_desc">Tenê sepanên ku tu dibijêrî di tunelê re derbas dibin.</string>
+
+    <string name="section_tunnel">Tunel</string>
+    <string name="tunnel_scan">Awayê lêgerînê</string>
+    <string name="tunnel_noize">Veşartin</string>
+    <string name="tunnel_ip">IP</string>
+
+    <string name="section_appearance">Ziman</string>
+    <string name="language_title">Zimanê sepanê</string>
+    <string name="language_kurdish">کوردی</string>
+    <string name="language_kurmanji">Kurdî</string>
+    <string name="language_english">English</string>
+    <string name="language_persian">فارسی</string>
+
+    <string name="section_advanced">Pêşketî</string>
+    <string name="advanced_title">Mîhengên hûrtir</string>
+    <string name="advanced_subtitle">Port, perçekirin, keepalive, peerê sabît</string>
+    <string name="advanced_socks_port">Porta SOCKS5</string>
+    <string name="advanced_http_proxy">Proxya HTTP</string>
+    <string name="advanced_http_proxy_desc">Ji bo sepanên ku tenê proxya HTTP fam dikin</string>
+    <string name="advanced_http_port">Porta HTTP</string>
+    <string name="advanced_fragment">Silava TLS perçe bike</string>
+    <string name="advanced_fragment_desc">Destpêkê parçe dike da ku navê malperê di yek pakêtê de nebe</string>
+    <string name="advanced_fragment_tcp_only">Tenê ji bo MASQUE H2, ku li ser TCP dixebite</string>
+    <string name="advanced_fragment_size">Mezinahiya perçeyê</string>
+    <string name="advanced_fragment_delay">Derengiya perçeyê</string>
+    <string name="advanced_ech">Silava şîfrekirî (ECH)</string>
+    <string name="advanced_ech_desc">Berî destpêkê mîhenga ECH digire</string>
+    <string name="advanced_keepalive">Keepalive</string>
+    <string name="advanced_bypass_lan">Tora herêmî derbas bike</string>
+    <string name="advanced_bypass_lan_desc">Çapker û router gihîştî dimînin</string>
+    <string name="advanced_bypass_lan_needs13">Android 13 an nûtir divê</string>
+    <string name="advanced_peer">Peerê sabît</string>
+    <string name="advanced_peer_helper">Lêgerînê bi tevahî derbas dike. Ji bo lêgerînê vala bihêle.</string>
+    <string name="advanced_peer_error">ip:port tê hêvîkirin</string>
+    <string name="advanced_port_helper">Li ser 127.0.0.1 guhdarî dike</string>
+    <string name="advanced_port_error">Portek di navbera 1024 û 65535 de bikar bîne</string>
+    <string name="advanced_port_conflict">Ji aliyê proxya din ve tê bikaranîn</string>
+    <string name="advanced_battery">Sînorên bateriyê</string>
+    <string name="advanced_battery_value">Mîheng</string>
+    <string name="advanced_system_vpn">Mîhengên VPN ên sîstemê</string>
+    <string name="advanced_system_vpn_value">Sîstem</string>
+
+    <string name="section_about">Derbarê</string>
+    <string name="about_core">Navend</string>
+    <string name="about_core_mock">Navenda simulasyonê</string>
+    <string name="about_capture">Girtina tevgerê</string>
+    <string name="about_capture_proxy">Tenê proxy</string>
+    <string name="about_device">Cîhaz</string>
+    <string name="about_device_none">Hîn nehatiye amadekirin</string>
+    <string name="about_license">Lîsans</string>
+    <string name="about_developer">Pêşdebir</string>
+
+    <string name="apps_title">Sepanên di tunelê de</string>
+    <string name="apps_selected">%1$d hatin bijartin</string>
+    <string name="apps_search">Li sepanan bigere</string>
+
+    <string name="logs_title">Tomar</string>
+    <string name="logs_subtitle">%1$d rêz</string>
+    <string name="logs_follow">Bişopîne</string>
+    <string name="logs_copy">Kopî bike</string>
+    <string name="logs_clear">Paqij bike</string>
+    <string name="logs_empty">Hîn tiştek nehatiye tomarkirin</string>
+    <string name="logs_empty_hint">Girê bide da ku bibînî çawa dixebite</string>
+
+    <string name="sheet_scan_title">Awayê lêgerînê</string>
+    <string name="sheet_scan_subtitle">Çiqas bi hûrgilî li rêyek vekirî bigere</string>
+    <string name="sheet_noize_title">Veşartin</string>
+    <string name="sheet_noize_subtitle">Dagirtinek ku şiklê tevgerê diguherîne</string>
+    <string name="sheet_ip_title">Malbata IP</string>
+    <string name="sheet_ip_subtitle">Kîjan navnîşan werin ceribandin</string>
+
+    <string name="scan_turbo">Bilez</string>
+    <string name="scan_turbo_desc">Li rêya yekem a ku bersiv dide radiweste.</string>
+    <string name="scan_balanced">Hevseng</string>
+    <string name="scan_balanced_desc">Standard. Li ser piraniya toran baş e.</string>
+    <string name="scan_thorough">Bi hûrgilî</string>
+    <string name="scan_thorough_desc">Dema her tişt girtî xuya dike, hemû rêzan dikole.</string>
+    <string name="scan_stealth">Bêdeng</string>
+    <string name="scan_stealth_desc">Di carekê de çend ceribandin, ji bo torên ku temaşe dikin.</string>
+    <string name="scan_ironclad">Misoger</string>
+    <string name="scan_ironclad_desc">Tunelek rastîn vedike û her berendamekî diceribîne.</string>
+
+    <string name="noize_off">Girtî</string>
+    <string name="noize_off_desc">Bê dagirtin. Bileztirîn, hêsantirîn ku were naskirin.</string>
+    <string name="noize_light">Sivik</string>
+    <string name="noize_light_desc">Guhertinek piçûk di şiklê tevgerê de.</string>
+    <string name="noize_firewall">Asayî</string>
+    <string name="noize_firewall_desc">Hevseng. Bêyî ku gelek lezê bixwe derbas dibe.</string>
+    <string name="noize_heavy">Giran</string>
+    <string name="noize_heavy_desc">Profîla herî giran, ji bo kontrola kûr.</string>
+    <string name="noize_balanced">Hevseng</string>
+    <string name="noize_balanced_desc">Standarda WireGuard.</string>
+    <string name="noize_aggressive">Tund</string>
+    <string name="noize_aggressive_desc">Dagirtina herî giran a WireGuard.</string>
+
+    <string name="ip_v4">IPv4</string>
+    <string name="ip_v6">IPv6</string>
+    <string name="ip_dual">Herdu</string>
+</resources>

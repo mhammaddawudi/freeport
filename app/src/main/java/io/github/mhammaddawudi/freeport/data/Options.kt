@@ -164,7 +164,8 @@ enum class AppLanguage(
 ) {
     English("en", R.string.language_english, rightToLeft = false),
     Persian("fa", R.string.language_persian, rightToLeft = true),
-    Kurdish("ckb", R.string.language_kurdish, rightToLeft = true);
+    Kurdish("ckb", R.string.language_kurdish, rightToLeft = true),
+    Kurmanji("kmr", R.string.language_kurmanji, rightToLeft = false);
 
     companion object {
         fun fromTag(tag: String?): AppLanguage = entries.firstOrNull { it.tag == tag } ?: English

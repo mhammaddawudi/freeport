@@ -1,7 +1,7 @@
 # Freeport
 
 An Android client for [Aether](https://github.com/CluvexStudio/Aether), the
-censorship-circumvention core by CluvexStudio. English, Persian and Kurdish
+censorship-circumvention core by CluvexStudio. English, Persian, Kurdish (Sorani) and Kurdî (Kurmanji)
 interface, four transports, per-app routing.
 
 ## What it does
@@ -62,6 +62,11 @@ Needs Android Studio (or the command line tools) with a JDK 17 or 21.
 ```bash
 ./gradlew assembleRelease
 ```
+
+This produces three apks in `app/build/outputs/apk/release/`: one for
+`arm64-v8a` (almost every phone from the last several years), one for
+`armeabi-v7a` (older and budget 32-bit phones) and a universal one that
+carries every ABI. They share a version code, so any can replace any other.
 
 Without `libaether.so` the app runs on a simulated core: the interface works,
 nothing is tunnelled, and the connect screen says so.
