@@ -86,6 +86,9 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val protocol = settings.protocol
+    // Automatic may end up on any transport, so every option stays open for it.
+    val auto = protocol == Protocol.Auto
+    val fragmentApplies = protocol.isTcp || auto
     val cardPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
     var sheet by remember { mutableStateOf<TuningSheet?>(null) }
     var advanced by rememberSaveable { mutableStateOf(false) }
@@ -168,7 +171,7 @@ fun SettingsScreen(
         }
 
         // ---- how the tunnel behaves -----------------------------------------
-        SectionLabel(stringResource(R.string.section_tunnel), trailing = protocol.displayName)
+        SectionLabel(stringResource(R.string.section_tunnel), trailing = if (auto) stringResource(R.string.protocol_auto) else protocol.displayName)
         GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
             InfoRow(
                 title = stringResource(R.string.tunnel_scan),
@@ -258,15 +261,15 @@ fun SettingsScreen(
                         title = stringResource(R.string.advanced_fragment),
                         checked = settings.fragmentEnabled,
                         onCheckedChange = { on -> onUpdateSettings { it.copy(fragmentEnabled = on) } },
-                        subtitle = if (protocol.isTcp) {
+                        subtitle = if (fragmentApplies) {
                             stringResource(R.string.advanced_fragment_desc)
                         } else {
                             stringResource(R.string.advanced_fragment_tcp_only)
                         },
-                        enabled = protocol.isTcp,
+                        enabled = fragmentApplies,
                         accent = AetherColors.Control,
                     )
-                    AnimatedVisibility(visible = settings.fragmentEnabled && protocol.isTcp) {
+                    AnimatedVisibility(visible = settings.fragmentEnabled && fragmentApplies) {
                         Column {
                             SliderRow(
                                 title = stringResource(R.string.advanced_fragment_size),
@@ -294,7 +297,7 @@ fun SettingsScreen(
                         checked = settings.fetchEch,
                         onCheckedChange = { on -> onUpdateSettings { it.copy(fetchEch = on) } },
                         subtitle = stringResource(R.string.advanced_ech_desc),
-                        enabled = protocol == Protocol.MasqueH3,
+                        enabled = protocol == Protocol.MasqueH3 || auto,
                     )
                     val canExclude = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                     SwitchRow(
@@ -310,7 +313,7 @@ fun SettingsScreen(
                         range = 0..60,
                         unit = "s",
                         onChange = { seconds -> onUpdateSettings { it.copy(keepaliveSeconds = seconds) } },
-                        enabled = protocol == Protocol.WireGuard || protocol == Protocol.Gool,
+                        enabled = protocol == Protocol.WireGuard || protocol == Protocol.Gool || auto,
                         accent = AetherColors.Control,
                     )
                     val peerError = settings.pinnedPeer

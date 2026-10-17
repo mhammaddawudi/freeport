@@ -134,4 +134,6 @@
     <string name="ip_v4">IPv4</string>
     <string name="ip_v6">IPv6</string>
     <string name="ip_dual">Both</string>
+    <string name="protocol_auto">Automatic</string>
+    <string name="protocol_auto_desc">Pings every protocol and connects with the fastest</string>
 </resources>

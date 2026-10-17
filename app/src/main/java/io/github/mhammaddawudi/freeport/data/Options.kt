@@ -19,7 +19,8 @@ import io.github.mhammaddawudi.freeport.R
  * The core's own [`Transport`] enum has only two members — masque and
  * wireguard. The two extra rows here are the transport plus a switch the core
  * reads elsewhere: h2 flips `AETHER_MASQUE_HTTP2`, and gool is the nested
- * wireguard mode the CLI drives with `--gool`.
+ * wireguard mode the CLI drives with `--gool`. [Auto] is resolved by the
+ * engine into one of the others before anything reaches the core.
  */
 enum class Protocol(
     val id: String,
@@ -31,7 +32,22 @@ enum class Protocol(
     val defaultPort: Int,
     val defaultNoize: String,
 ) {
-    /** Warp in warp. The default: two hops cost latency and buy the most cover. */
+    /**
+     * Not a transport of its own: the engine pings MASQUE, MASQUE H2 and
+     * WireGuard side by side and connects with whichever answers fastest,
+     * falling back to warp in warp when none of them does. The default,
+     * because which one gets through differs from one network to the next.
+     */
+    Auto(
+        id = "auto",
+        displayName = "Automatic",
+        transport = "masque",
+        coreArguments = emptyList(),
+        defaultPort = 443,
+        defaultNoize = "firewall",
+    ),
+
+    /** Warp in warp: two hops cost latency and buy the most cover. */
     Gool(
         id = "gool",
         displayName = "Warp in Warp",
@@ -71,12 +87,12 @@ enum class Protocol(
     /** MASQUE and WireGuard take different obfuscation vocabularies. */
     val noizeProfiles: List<NoizeProfile>
         get() = when (this) {
-            MasqueH3, MasqueH2 -> NoizeProfile.masqueProfiles
+            Auto, MasqueH3, MasqueH2 -> NoizeProfile.masqueProfiles
             WireGuard, Gool -> NoizeProfile.wireguardProfiles
         }
 
     companion object {
-        fun fromId(id: String?): Protocol = entries.firstOrNull { it.id == id } ?: Gool
+        fun fromId(id: String?): Protocol = entries.firstOrNull { it.id == id } ?: Auto
     }
 }
 

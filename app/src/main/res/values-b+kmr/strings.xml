@@ -134,4 +134,6 @@
     <string name="ip_v4">IPv4</string>
     <string name="ip_v6">IPv6</string>
     <string name="ip_dual">Herdu</string>
+    <string name="protocol_auto">Otomatîk</string>
+    <string name="protocol_auto_desc">Hemû protokolan ping dike û bi yê herî bilez ve girê dide</string>
 </resources>

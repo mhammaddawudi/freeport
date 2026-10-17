@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Everything the user can change, in one immutable snapshot. */
 data class AetherSettings(
-    val protocol: Protocol = Protocol.Gool,
+    val protocol: Protocol = Protocol.Auto,
     val language: AppLanguage = AppLanguage.English,
     /** Whole device, or only the apps in [tunneledApps]. */
     val tunnelMode: TunnelMode = TunnelMode.WholeDevice,

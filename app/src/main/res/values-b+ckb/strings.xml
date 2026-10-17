@@ -136,4 +136,6 @@
     <string name="sheet_noize_subtitle">پڕکردنەوەی پاکەت بۆ گۆڕینی شێوەی ترافیک</string>
     <string name="sheet_ip_title">جۆری ئایپی</string>
     <string name="sheet_ip_subtitle">کام ناونیشان تاقی بکرێتەوە</string>
+    <string name="protocol_auto">ئۆتۆماتیک</string>
+    <string name="protocol_auto_desc">هەموو پرۆتۆکۆڵەکان پینگ دەکات و بە خێراترینیان دەبەسترێتەوە</string>
 </resources>

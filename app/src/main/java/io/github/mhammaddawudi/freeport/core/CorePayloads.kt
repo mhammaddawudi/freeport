@@ -75,14 +75,17 @@ internal object CorePayloads {
         // Always rescan: see AetherEngine.clearGatewayCache.
         put("AETHER_QUICK_RECONNECT", "0")
 
-        if (settings.protocol.isTcp) {
-            put("AETHER_MASQUE_HTTP2", "1")
-            if (settings.fragmentEnabled) {
-                put("AETHER_MASQUE_H2_FRAGMENT", "1")
-                put("AETHER_MASQUE_H2_FRAGMENT_SIZE", settings.fragmentSize.toString())
-                put("AETHER_MASQUE_H2_FRAGMENT_DELAY", settings.fragmentDelayMs.toString())
-            }
-        } else {
+        // Written both ways every time: a variable is only ever overwritten,
+        // never removed, so an "on" left by an earlier MASQUE H2 session would
+        // otherwise turn the next plain MASQUE one into H2 as well.
+        val fragment = settings.protocol.isTcp && settings.fragmentEnabled
+        put("AETHER_MASQUE_HTTP2", if (settings.protocol.isTcp) "1" else "0")
+        put("AETHER_MASQUE_H2_FRAGMENT", if (fragment) "1" else "0")
+        if (fragment) {
+            put("AETHER_MASQUE_H2_FRAGMENT_SIZE", settings.fragmentSize.toString())
+            put("AETHER_MASQUE_H2_FRAGMENT_DELAY", settings.fragmentDelayMs.toString())
+        }
+        if (!settings.protocol.isTcp) {
             put("AETHER_WG_KEEPALIVE", settings.keepaliveSeconds.toString())
         }
 

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,8 +24,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
 
@@ -45,7 +49,15 @@ fun ProtocolGrid(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Protocol.entries.chunked(2).forEach { row ->
+        // Automatic gets the first row to itself, as wide as two cards: it is
+        // the one most people should leave selected.
+        ProtocolCard(
+            protocol = Protocol.Auto,
+            selected = selected == Protocol.Auto,
+            onClick = { onSelect(Protocol.Auto) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Protocol.entries.filter { it != Protocol.Auto }.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { protocol ->
                     ProtocolCard(
@@ -103,12 +115,23 @@ private fun ProtocolCard(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                protocol.displayName,
+                if (protocol == Protocol.Auto) stringResource(R.string.protocol_auto) else protocol.displayName,
                 style = MaterialTheme.typography.titleMedium,
                 color = lerpColor(AetherColors.InkMuted, accent, lit),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (protocol == Protocol.Auto) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.protocol_auto_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AetherColors.InkMuted,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
