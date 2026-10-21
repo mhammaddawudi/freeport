@@ -23,7 +23,12 @@ class HevTunBridge(private val context: Context) : TunBridge {
             .isSuccess
     }
 
-    override fun start(fd: Int, mtu: Int, socksPort: Int) {
+    /**
+     * With [mappedDns], placeholder addresses come from 198.19.0.0/16, the
+     * half of the benchmark range the resolver itself does not sit in:
+     * nothing real lives there, so they never shadow a real destination.
+     */
+    override fun start(fd: Int, mtu: Int, socksPort: Int, mappedDns: Boolean) {
         if (!isAvailable) return
         // A previous session that ended badly can leave the library running,
         // and it refuses to start twice. Clear that first.
@@ -32,18 +37,32 @@ class HevTunBridge(private val context: Context) : TunBridge {
             runCatching { TProxyService.TProxyStopService() }
         }
         val config = File(context.cacheDir, "tun2socks.yml")
+        val mapped = if (mappedDns) {
+            """
+            |mapdns:
+            |  address: $MAPPED_DNS
+            |  port: 53
+            |  network: 198.19.0.0
+            |  netmask: 255.255.0.0
+            |  cache-size: 10000
+            |
+            """.trimMargin()
+        } else {
+            ""
+        }
         config.writeText(
             """
-            tunnel:
-              mtu: $mtu
-            socks5:
-              address: 127.0.0.1
-              port: $socksPort
-              udp: 'udp'
-            misc:
-              task-stack-size: 20480
-              log-level: warn
-            """.trimIndent(),
+            |tunnel:
+            |  mtu: $mtu
+            |socks5:
+            |  address: 127.0.0.1
+            |  port: $socksPort
+            |  udp: 'udp'
+            |$mapped
+            |misc:
+            |  task-stack-size: 20480
+            |  log-level: warn
+            """.trimMargin(),
         )
         val started = runCatching { TProxyService.TProxyStartService(config.absolutePath, fd) }
             .getOrElse {

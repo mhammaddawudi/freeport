@@ -14,7 +14,7 @@ data class AetherSettings(
     val tunnelMode: TunnelMode = TunnelMode.WholeDevice,
     /** Package names to route, used only in [TunnelMode.SelectedApps]. */
     val tunneledApps: Set<String> = emptySet(),
-    val scanMode: ScanMode = ScanMode.Balanced,
+    val scanMode: ScanMode = ScanMode.Swift,
     val noize: NoizeProfile = NoizeProfile.Firewall,
     val ipVersion: IpVersion = IpVersion.V4,
     val socksPort: Int = DEFAULT_SOCKS_PORT,
@@ -28,6 +28,13 @@ data class AetherSettings(
     val fragmentDelayMs: Int = 20,
     val pinnedPeer: String = "",
     val bypassLan: Boolean = true,
+    /**
+     * Leave through a Psiphon server abroad instead of Cloudflare's own
+     * exit, which geolocates to the country the phone is in.
+     */
+    val regionUnlock: Boolean = false,
+    /** Two-letter country for that exit, or empty for whichever is quickest. */
+    val exitCountry: String = "",
 ) {
     /** The obfuscation profile, corrected if the protocol changed under it. */
     val effectiveNoize: NoizeProfile
@@ -65,6 +72,7 @@ class SettingsRepository(context: Context) {
     fun current(): AetherSettings = _settings.value
 
     private fun read(): AetherSettings {
+        migrate()
         val defaults = AetherSettings()
         val protocol = Protocol.fromId(prefs.getString(KEY_PROTOCOL, null))
         return AetherSettings(
@@ -89,7 +97,24 @@ class SettingsRepository(context: Context) {
             fragmentDelayMs = prefs.getInt(KEY_FRAGMENT_DELAY, defaults.fragmentDelayMs),
             pinnedPeer = prefs.getString(KEY_PEER, null) ?: defaults.pinnedPeer,
             bypassLan = prefs.getBoolean(KEY_BYPASS_LAN, defaults.bypassLan),
+            regionUnlock = prefs.getBoolean(KEY_REGION_UNLOCK, defaults.regionUnlock),
+            exitCountry = ExitCountries.normalise(prefs.getString(KEY_EXIT_COUNTRY, null)),
         )
+    }
+
+    /**
+     * Every write stores the scan mode, so everyone who never touched it has
+     * the old default, balanced, on disk. Move them to swift once; anyone
+     * who picks balanced again afterwards keeps it.
+     */
+    private fun migrate() {
+        val version = prefs.getInt(KEY_VERSION, 1)
+        if (version >= SCHEMA_VERSION) return
+        val editor = prefs.edit()
+        if (prefs.getString(KEY_SCAN, null) == ScanMode.Balanced.wire) {
+            editor.putString(KEY_SCAN, ScanMode.Swift.wire)
+        }
+        editor.putInt(KEY_VERSION, SCHEMA_VERSION).apply()
     }
 
     private fun write(value: AetherSettings) {
@@ -111,6 +136,8 @@ class SettingsRepository(context: Context) {
             .putInt(KEY_FRAGMENT_DELAY, value.fragmentDelayMs)
             .putString(KEY_PEER, value.pinnedPeer)
             .putBoolean(KEY_BYPASS_LAN, value.bypassLan)
+            .putBoolean(KEY_REGION_UNLOCK, value.regionUnlock)
+            .putString(KEY_EXIT_COUNTRY, value.exitCountry)
             .apply()
     }
 
@@ -124,6 +151,8 @@ class SettingsRepository(context: Context) {
         )
 
         const val FILE = "aether.settings"
+        const val KEY_VERSION = "schema_version"
+        const val SCHEMA_VERSION = 2
         const val KEY_LANGUAGE = "language"
         const val KEY_PROTOCOL = "protocol"
         const val KEY_TUNNEL_MODE = "tunnel_mode"
@@ -141,5 +170,7 @@ class SettingsRepository(context: Context) {
         const val KEY_FRAGMENT_DELAY = "fragment_delay"
         const val KEY_PEER = "pinned_peer"
         const val KEY_BYPASS_LAN = "bypass_lan"
+        const val KEY_REGION_UNLOCK = "region_unlock"
+        const val KEY_EXIT_COUNTRY = "exit_country"
     }
 }

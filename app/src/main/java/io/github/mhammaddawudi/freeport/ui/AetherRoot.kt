@@ -60,6 +60,9 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
     val identity by viewModel.identity.collectAsStateWithLifecycle()
     val logs by viewModel.logs.collectAsStateWithLifecycle()
     val coreVersion by viewModel.coreVersion.collectAsStateWithLifecycle()
+    val iphoneExport by viewModel.iphoneExport.collectAsStateWithLifecycle()
+    val traffic by viewModel.traffic.collectAsStateWithLifecycle()
+    val speedTest by viewModel.speedTest.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var tab by rememberSaveable { mutableStateOf(AetherTab.Home) }
@@ -122,8 +125,14 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
                     state = state,
                     settings = settings,
                     isNativeCore = viewModel.isNativeCore,
+                    traffic = traffic,
+                    speedTest = speedTest,
                     onToggle = onToggle,
                     onSelectProtocol = viewModel::selectProtocol,
+                    onRunSpeedTest = viewModel::runSpeedTest,
+                    onStopSpeedTest = viewModel::cancelSpeedTest,
+                    onRegionUnlock = viewModel::setRegionUnlock,
+                    onSelectExitCountry = viewModel::selectExitCountry,
                     contentPadding = contentPadding,
                 )
                 AetherTab.Settings -> SettingsScreen(
@@ -142,6 +151,9 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
                     },
                     onReconnect = viewModel::reconnect,
                     onOpenAppPicker = { appPickerOpen = true },
+                    iphoneExport = iphoneExport,
+                    onStartIphoneExport = viewModel::startIphoneExport,
+                    onResetIphoneExport = viewModel::resetIphoneExport,
                     contentPadding = contentPadding,
                 )
                 AetherTab.Logs -> LogsScreen(

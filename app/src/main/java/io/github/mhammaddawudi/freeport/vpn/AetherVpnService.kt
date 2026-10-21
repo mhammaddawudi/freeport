@@ -102,7 +102,7 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
         super.onDestroy()
     }
 
-    override fun onTunnelUp(settings: AetherSettings): TunMode {
+    override fun onTunnelUp(settings: AetherSettings, mappedDns: Boolean): TunMode {
         val bridge = app.tunBridge
         if (!bridge.isAvailable) return TunMode.ProxyOnly
 
@@ -125,13 +125,19 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
             // would quietly leave outside the tunnel.
             .addAddress(TUN_V6, 126)
             .addRoute("::", 0)
-            .addDnsServer("1.1.1.1")
-            .addDnsServer("1.0.0.1")
             .setConfigureIntent(
                 PendingIntent.getActivity(
                     this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
                 ),
             )
+
+        // The region-unlock exit carries no UDP, so DNS is answered by
+        // tun2socks itself and every name is resolved at the exit abroad.
+        if (mappedDns) {
+            builder.addDnsServer(MAPPED_DNS)
+        } else {
+            builder.addDnsServer("1.1.1.1").addDnsServer("1.0.0.1")
+        }
 
         if (settings.bypassLan && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             LAN_PREFIXES.forEach { (address, length) ->
@@ -152,7 +158,7 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
             tun?.close()
             tun = established
         }
-        bridge.start(established.fd, TUN_MTU, settings.socksPort)
+        bridge.start(established.fd, TUN_MTU, settings.socksPort, mappedDns)
         CoreLog.good("[+] capturing device traffic through ${bridge.name}")
         return TunMode.FullDevice
     }

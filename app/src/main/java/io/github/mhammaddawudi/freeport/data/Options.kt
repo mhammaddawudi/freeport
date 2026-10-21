@@ -124,13 +124,20 @@ enum class ScanMode(
     @StringRes val descriptionRes: Int,
 ) {
     Turbo("turbo", R.string.scan_turbo, R.string.scan_turbo_desc),
+
+    /**
+     * The default: keeps the fastest edge of those that answer within two
+     * seconds of the first one. Close to [Turbo] in time, close to
+     * [Balanced] in what it picks.
+     */
+    Swift("swift", R.string.scan_swift, R.string.scan_swift_desc),
     Balanced("balanced", R.string.scan_balanced, R.string.scan_balanced_desc),
     Thorough("thorough", R.string.scan_thorough, R.string.scan_thorough_desc),
     Stealth("stealth", R.string.scan_stealth, R.string.scan_stealth_desc),
     Ironclad("ironclad", R.string.scan_ironclad, R.string.scan_ironclad_desc);
 
     companion object {
-        fun fromWire(wire: String?): ScanMode = entries.firstOrNull { it.wire == wire } ?: Balanced
+        fun fromWire(wire: String?): ScanMode = entries.firstOrNull { it.wire == wire } ?: Swift
     }
 }
 
@@ -185,5 +192,29 @@ enum class AppLanguage(
 
     companion object {
         fun fromTag(tag: String?): AppLanguage = entries.firstOrNull { it.tag == tag } ?: English
+    }
+}
+
+/**
+ * Countries Psiphon can leave from, offered for the region-unlock exit.
+ *
+ * Kept short on purpose: these are the regions with the most servers, so
+ * picking one does not leave the client searching for a minute.
+ */
+object ExitCountries {
+    /** Empty means "any": Psiphon takes whichever server answers first. */
+    const val ANY = ""
+
+    val offered = listOf(ANY, "DE", "NL", "GB", "FR", "US", "CA", "SE", "FI", "AT", "SG", "JP")
+
+    fun normalise(code: String?): String {
+        val upper = code?.trim()?.uppercase().orEmpty()
+        return if (upper in offered) upper else ANY
+    }
+
+    /** The flag emoji for a two-letter country code. */
+    fun flag(code: String): String {
+        if (code.length != 2 || !code.all { it in 'A'..'Z' }) return "\uD83C\uDF10"
+        return code.map { Character.toChars(0x1F1E6 + (it - 'A')).concatToString() }.joinToString("")
     }
 }

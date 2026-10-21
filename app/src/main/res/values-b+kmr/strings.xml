@@ -110,7 +110,7 @@
     <string name="scan_turbo">Bilez</string>
     <string name="scan_turbo_desc">Li rêya yekem a ku bersiv dide radiweste.</string>
     <string name="scan_balanced">Hevseng</string>
-    <string name="scan_balanced_desc">Standard. Li ser piraniya toran baş e.</string>
+    <string name="scan_balanced_desc">Berî hilbijartinê li çend rêyan disekine. Girêdan hêdîtir e.</string>
     <string name="scan_thorough">Bi hûrgilî</string>
     <string name="scan_thorough_desc">Dema her tişt girtî xuya dike, hemû rêzan dikole.</string>
     <string name="scan_stealth">Bêdeng</string>
@@ -136,4 +136,65 @@
     <string name="ip_dual">Herdu</string>
     <string name="protocol_auto">Otomatîk</string>
     <string name="protocol_auto_desc">Hemû protokolan ping dike û bi yê herî bilez ve girê dide</string>
+
+    <!-- iPhone export -->
+    <string name="section_share">Parvekirin</string>
+    <string name="iphone_row">Mîhengê ji bo iPhone çêke</string>
+    <string name="iphone_row_value">WireGuard</string>
+    <string name="iphone_title">Mîhengê ji bo iPhone çêke</string>
+    <string name="iphone_subtitle">Mîhengekî WireGuard çêdike ku iPhone dikare wî bixe nav sepana belaş a WireGuard ji App Store. Ji bo wê hesabekî nû yê cuda tê çêkirin, ji ber vê girêdana te ya xwe qet nayê parvekirin.</string>
+    <string name="iphone_same_provider">Li ser heman pêşkêşkera înternetê ya ku pê hatiye çêkirin herî baş dixebite. Heke iPhone înternetek an xeteke mobîl a din bi kar tîne, mîhengê bi telefonekê çêke ku heman înternet heye.</string>
+    <string name="iphone_make">Mîhengê çêke</string>
+    <string name="iphone_make_another">Yekî din çêke</string>
+    <string name="iphone_registering">Hesabekî nû tê çêkirin…</string>
+    <string name="iphone_scanning">Li serverekî ku li ser vê înternetê dixebite tê gerîn…</string>
+    <string name="iphone_failed">Mîheng nehat çêkirin: %1$s</string>
+    <string name="iphone_retry">Dîsa biceribîne</string>
+    <string name="iphone_qr_description">Koda QR ya mîhengê WireGuard</string>
+    <string name="iphone_endpoint">Server %1$s · %2$d ms</string>
+    <string name="iphone_copy">Kopî bike</string>
+    <string name="iphone_share">Pelê .conf bişîne</string>
+    <string name="iphone_how_to">Li ser iPhone: WireGuard ji App Store saz bike, li + bitikîne, paşê «Create from QR code» hilbijêre û vê kodê bixwîne; an ji bo pelê .conf «Create from file or archive» hilbijêre.</string>
+
+    <!-- Home: protocols and speed -->
+    <string name="scan_swift">Çalak</string>
+    <string name="scan_swift_desc">Standard. Ji rêyên pêşîn ên ku bersiv didin yê herî bilez digire.</string>
+    <string name="section_protocol">Protokol</string>
+    <string name="section_speed">Lez</string>
+    <string name="protocol_trait_masque">HTTP/3 · herî bilez</string>
+    <string name="protocol_trait_masque_h2">TCP · herî zor tê astengkirin</string>
+    <string name="protocol_trait_wireguard">UDP · derengmayîna herî kêm</string>
+    <string name="protocol_trait_gool">Du qat · herî taybet</string>
+    <string name="protocol_best_for">Ji bo %1$s baş e</string>
+    <string name="protocol_now_using">Niha li ser %1$s</string>
+    <string name="protocol_live">Çalak</string>
+    <string name="protocol_trying">%1$s tê ceribandin</string>
+    <string name="auto_via">Otomatîk %1$s hilbijart</string>
+    <string name="speed_ping">Ping</string>
+    <string name="speed_download">Daxistin</string>
+    <string name="speed_upload">Barkirin</string>
+    <string name="speed_jitter">± %1$d ms</string>
+    <string name="speed_run">Biceribîne</string>
+    <string name="speed_again">Dîsa biceribîne</string>
+    <string name="speed_stop">Rawestîne</string>
+    <string name="speed_via_tunnel">Di nav tunelê de hate pîvandin</string>
+    <string name="speed_via_line">Li ser xeta te, bê tunel</string>
+    <string name="speed_failed">Ceribandin neqediya: %1$s</string>
+    <string name="speed_hint">Ji bo pîvandina ping, daxistin û barkirinê “Biceribîne” bitikîne</string>
+    <string name="traffic_down">Hatin</string>
+    <string name="traffic_up">Çûn</string>
+    <string name="traffic_session">Vê danişînê %1$s</string>
+    <string name="app_games">Lîstik</string>
+
+    <!-- Region unlock -->
+    <string name="region_title">Cihê derketinê</string>
+    <string name="region_unlock">Rakirina sînorê herêmê</string>
+    <string name="region_unlock_desc">Ji bo ChatGPT, Clash of Clans û muzîka Instagramê. Bi Psiphonê ji derve derdikeve; girêdan dirêjtir dikişîne.</string>
+    <string name="region_any">Herî bilez</string>
+    <string name="region_checking">Tê kontrolkirin…</string>
+    <string name="region_not_connected">Piştî girêdanê tê nîşandan</string>
+    <string name="region_warning">Malper Îranê dibînin, ji ber vê ChatGPT, lîstikên wek Clash of Clans û hin muzîkên Instagramê red dikin. Rakirina sînorê herêmê veke.</string>
+    <string name="region_warning_unlock_failed">Rakirina sînorê herêmê vê carê server nedît, loma malper hîn Îranê dibînin. Di girêdana din de dîsa diceribîne.</string>
+    <string name="region_ok">Malper vî welatî dibînin. Sepanên bi sînorê herêmê divê bixebitin.</string>
+    <string name="state_relaying">Derketin diçe derve</string>
 </resources>

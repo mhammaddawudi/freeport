@@ -52,6 +52,7 @@ import io.github.mhammaddawudi.freeport.ui.components.GlassCard
 import io.github.mhammaddawudi.freeport.ui.components.Glyph
 import io.github.mhammaddawudi.freeport.ui.components.GlyphKind
 import io.github.mhammaddawudi.freeport.ui.components.InfoRow
+import io.github.mhammaddawudi.freeport.ui.components.IphoneExportSheet
 import io.github.mhammaddawudi.freeport.ui.components.PortRow
 import io.github.mhammaddawudi.freeport.ui.components.RowDivider
 import io.github.mhammaddawudi.freeport.ui.components.SectionLabel
@@ -60,6 +61,7 @@ import io.github.mhammaddawudi.freeport.ui.components.SliderRow
 import io.github.mhammaddawudi.freeport.ui.components.SwitchRow
 import io.github.mhammaddawudi.freeport.ui.components.TuningSheet
 import io.github.mhammaddawudi.freeport.ui.components.TuningSheetHost
+import io.github.mhammaddawudi.freeport.ui.IphoneExportUi
 import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
 
 /**
@@ -82,6 +84,9 @@ fun SettingsScreen(
     onSelectLanguage: (AppLanguage) -> Unit,
     onReconnect: () -> Unit,
     onOpenAppPicker: () -> Unit,
+    iphoneExport: IphoneExportUi,
+    onStartIphoneExport: () -> Unit,
+    onResetIphoneExport: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     val context = LocalContext.current
@@ -92,6 +97,7 @@ fun SettingsScreen(
     val cardPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
     var sheet by remember { mutableStateOf<TuningSheet?>(null) }
     var advanced by rememberSaveable { mutableStateOf(false) }
+    var iphoneOpen by rememberSaveable { mutableStateOf(false) }
     val peerHint = stringResource(R.string.advanced_peer_error)
     val batteryUnrestricted = remember {
         context.getSystemService(PowerManager::class.java)
@@ -359,6 +365,18 @@ fun SettingsScreen(
             }
         }
 
+        // ---- sharing with an iPhone ------------------------------------------
+        SectionLabel(stringResource(R.string.section_share))
+        GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
+            InfoRow(
+                title = stringResource(R.string.iphone_row),
+                value = stringResource(R.string.iphone_row_value),
+                glyph = GlyphKind.Signal,
+                valueColor = AetherColors.Cyan,
+                onClick = { iphoneOpen = true },
+            )
+        }
+
         // ---- what the app currently is ---------------------------------------
         SectionLabel(stringResource(R.string.section_about))
         GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
@@ -405,6 +423,19 @@ fun SettingsScreen(
         onUpdateSettings = onUpdateSettings,
         onDismiss = { sheet = null },
     )
+
+    if (iphoneOpen) {
+        IphoneExportSheet(
+            state = iphoneExport,
+            onStart = onStartIphoneExport,
+            onDismiss = {
+                iphoneOpen = false
+                // A finished config is kept for when the sheet is reopened;
+                // only a half-done one is stopped.
+                if (iphoneExport is IphoneExportUi.Working) onResetIphoneExport()
+            },
+        )
+    }
 }
 
 @Composable

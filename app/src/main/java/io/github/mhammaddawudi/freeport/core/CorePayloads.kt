@@ -3,6 +3,8 @@ package io.github.mhammaddawudi.freeport.core
 import org.json.JSONArray
 import org.json.JSONObject
 import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.Protocol
+import io.github.mhammaddawudi.freeport.data.ScanMode
 
 /**
  * Builds the JSON payloads `ffi.rs` deserialises.
@@ -26,7 +28,7 @@ internal object CorePayloads {
     fun scan(settings: AetherSettings): String {
         val payload = JSONObject()
             .put("transport", settings.protocol.transport)
-            .put("mode", settings.scanMode.wire)
+            .put("mode", scanWire(settings))
             .put("ip", settings.ipVersion.wire)
             .put("profile", settings.effectiveNoize.wire)
             .put("ech", settings.fetchEch && !settings.protocol.isTcp)
@@ -69,7 +71,7 @@ internal object CorePayloads {
     fun environment(settings: AetherSettings): Map<String, String> = buildMap {
         put("AETHER_PROTOCOL", settings.protocol.transport)
         put("AETHER_SOCKS", "127.0.0.1:${settings.socksPort}")
-        put("AETHER_SCAN", settings.scanMode.wire)
+        put("AETHER_SCAN", scanWire(settings))
         put("AETHER_NOIZE", settings.effectiveNoize.wire)
         put("AETHER_IP", settings.ipVersion.wire)
         // Always rescan: see AetherEngine.clearGatewayCache.
@@ -101,7 +103,7 @@ internal object CorePayloads {
      */
     fun coreArguments(settings: AetherSettings, configDir: String): List<String> = buildList {
         addAll(settings.protocol.coreArguments)
-        add("--scan"); add(settings.scanMode.wire)
+        add("--scan"); add(scanWire(settings))
         add("--noize"); add(settings.effectiveNoize.wire)
         add(
             when (settings.ipVersion) {
@@ -126,6 +128,20 @@ internal object CorePayloads {
             add("--fragment-delay"); add(settings.fragmentDelayMs.toString())
         }
     }
+
+    /**
+     * The scan mode as the core should read it.
+     *
+     * Warp in warp keeps the balanced scan it has always had: its two hops
+     * are chosen by the core in one go, and picking the first hop on a two
+     * second window gave it noticeably slower routes.
+     */
+    fun scanWire(settings: AetherSettings): String =
+        if (settings.protocol == Protocol.Gool && settings.scanMode == ScanMode.Swift) {
+            ScanMode.Balanced.wire
+        } else {
+            settings.scanMode.wire
+        }
 
     /** Splits `1.2.3.4:443` or `[2606:4700::1]:443` into host and port. */
     fun parsePeer(raw: String): Pair<String, Int>? {

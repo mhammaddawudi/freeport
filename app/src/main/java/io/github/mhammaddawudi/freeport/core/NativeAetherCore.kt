@@ -117,7 +117,9 @@ class NativeAetherCore : AetherCore {
                 Socket().use { it.connect(InetSocketAddress("127.0.0.1", settings.socksPort), 250) }
             }.isSuccess
             if (listening) return@io null
-            delay(400)
+            // Short: every poll here is time the person spends watching the
+            // button, and a refused loopback connect costs next to nothing.
+            delay(150)
         }
         "the core did not open its proxy within ${timeoutMs / 1000}s"
     }

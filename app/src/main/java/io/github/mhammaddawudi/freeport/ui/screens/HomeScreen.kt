@@ -51,7 +51,13 @@ import io.github.mhammaddawudi.freeport.ui.components.ConnectOrb
 import io.github.mhammaddawudi.freeport.ui.components.Formats
 import io.github.mhammaddawudi.freeport.ui.components.Glyph
 import io.github.mhammaddawudi.freeport.ui.components.GlyphKind
+import io.github.mhammaddawudi.freeport.ui.components.ProtocolActivity
 import io.github.mhammaddawudi.freeport.ui.components.ProtocolGrid
+import io.github.mhammaddawudi.freeport.ui.components.RegionCard
+import io.github.mhammaddawudi.freeport.ui.components.SectionLabel
+import io.github.mhammaddawudi.freeport.ui.components.SpeedPanel
+import io.github.mhammaddawudi.freeport.ui.SpeedTestUi
+import io.github.mhammaddawudi.freeport.ui.TrafficUi
 import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
 import io.github.mhammaddawudi.freeport.ui.theme.NumericStyle
 import io.github.mhammaddawudi.freeport.ui.theme.Tone
@@ -71,8 +77,14 @@ fun HomeScreen(
     state: ConnectionState,
     settings: AetherSettings,
     isNativeCore: Boolean,
+    traffic: TrafficUi,
+    speedTest: SpeedTestUi,
     onToggle: () -> Unit,
     onSelectProtocol: (Protocol) -> Unit,
+    onRunSpeedTest: () -> Unit,
+    onStopSpeedTest: () -> Unit,
+    onRegionUnlock: (Boolean) -> Unit,
+    onSelectExitCountry: (String) -> Unit,
     contentPadding: PaddingValues,
 ) {
     val tone = Tones.of(state)
@@ -127,15 +139,46 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.height(26.dp))
+        Spacer(Modifier.height(22.dp))
         StatusBlock(state)
-        ConnectOrb(state = state, onClick = onToggle)
+        ConnectOrb(state = state, onClick = onToggle, diameter = 256.dp)
         SessionLine(state, tone)
 
-        Spacer(Modifier.height(22.dp))
-        ProtocolGrid(selected = settings.protocol, onSelect = onSelectProtocol)
+        Spacer(Modifier.height(18.dp))
+        RegionCard(
+            state = state,
+            regionUnlock = settings.regionUnlock,
+            exitCountry = settings.exitCountry,
+            onToggle = onRegionUnlock,
+            onSelectCountry = onSelectExitCountry,
+        )
+        Spacer(Modifier.height(12.dp))
+        SpeedPanel(
+            speed = speedTest,
+            traffic = traffic,
+            connected = state is ConnectionState.Connected,
+            onRun = onRunSpeedTest,
+            onStop = onStopSpeedTest,
+        )
+
+        SectionLabel(stringResource(R.string.section_protocol), Modifier.fillMaxWidth())
+        ProtocolGrid(
+            selected = settings.protocol,
+            activity = activityOf(state),
+            onSelect = onSelectProtocol,
+        )
         Spacer(Modifier.height(16.dp))
     }
+}
+
+/** The protocol on the wire right now, for the cards to mark. */
+private fun activityOf(state: ConnectionState): ProtocolActivity? = when (state) {
+    is ConnectionState.Connected -> ProtocolActivity(state.protocol, live = true, viaAuto = state.viaAuto)
+    is ConnectionState.Connecting -> ProtocolActivity(state.protocol, live = false, viaAuto = state.viaAuto)
+    is ConnectionState.Preparing -> ProtocolActivity(state.protocol, live = false, viaAuto = false)
+    is ConnectionState.Scanning -> ProtocolActivity(state.protocol, live = false, viaAuto = false)
+    is ConnectionState.Reconnecting -> ProtocolActivity(state.protocol, live = false, viaAuto = false)
+    else -> null
 }
 
 @Composable
@@ -145,22 +188,30 @@ private fun StatusBlock(state: ConnectionState) {
             ConnectionState.Idle, ConnectionState.Disconnecting -> R.string.state_idle
             is ConnectionState.Preparing -> R.string.state_preparing
             is ConnectionState.Scanning -> R.string.state_scanning
-            is ConnectionState.Connecting -> R.string.state_connecting
+            is ConnectionState.Connecting -> if (state.relaying) R.string.state_relaying else R.string.state_connecting
             is ConnectionState.Connected -> R.string.state_connected
             is ConnectionState.Reconnecting -> R.string.state_reconnecting
             is ConnectionState.Failed -> R.string.state_failed
         },
     )
     // One short line, and only when it says something the headline does not.
+    val carrier = when (state) {
+        is ConnectionState.Connected ->
+            if (state.viaAuto) stringResource(R.string.auto_via, state.protocol.displayName) else state.protocol.displayName
+        is ConnectionState.Connecting ->
+            if (state.viaAuto) stringResource(R.string.auto_via, state.protocol.displayName) else state.protocol.displayName
+        else -> null
+    }
     val detail = when (state) {
         is ConnectionState.Connected -> buildString {
-            append(state.endpoint?.socket.orEmpty())
+            append(carrier.orEmpty())
+            state.endpoint?.let { append(" · ").append(it.socket) }
             if (state.mode == TunMode.ProxyOnly) {
                 if (isNotEmpty()) append(" · ")
                 append("proxy")
             }
         }
-        is ConnectionState.Connecting -> state.endpoint?.socket.orEmpty()
+        is ConnectionState.Connecting -> listOfNotNull(carrier, state.endpoint?.socket).joinToString(" · ")
         is ConnectionState.Failed -> state.message
         is ConnectionState.Reconnecting -> state.reason
         else -> ""

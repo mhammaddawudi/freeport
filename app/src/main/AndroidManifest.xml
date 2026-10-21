@@ -37,6 +37,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Hands the exported iPhone config to other apps as a .conf file. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
+
         <service
             android:name=".vpn.AetherVpnService"
             android:exported="false"

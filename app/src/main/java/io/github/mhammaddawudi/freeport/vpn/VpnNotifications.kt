@@ -86,7 +86,10 @@ object VpnNotifications {
             }
         }
         is ConnectionState.Connecting -> state.endpoint?.socket ?: state.protocol.displayName
-        is ConnectionState.Connected -> state.endpoint?.let { "${state.protocol.displayName} · ${it.socket}" } ?: state.protocol.displayName
+        is ConnectionState.Connected -> {
+            val carrier = if (state.viaAuto) context.getString(R.string.auto_via, state.protocol.displayName) else state.protocol.displayName
+            state.endpoint?.let { "$carrier · ${it.socket}" } ?: carrier
+        }
         is ConnectionState.Reconnecting -> "${state.protocol.displayName} · ${state.reason}"
         is ConnectionState.Failed -> state.message
     }

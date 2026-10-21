@@ -23,8 +23,8 @@ android {
         applicationId = "io.github.mhammaddawudi.freeport"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
     }
 
     // One apk per phone architecture plus a universal one. The per-ABI apks
@@ -128,5 +128,10 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
 
+    // QR codes for the iPhone export. Encoder only, no camera code.
+    implementation(libs.zxing.core)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    testImplementation(libs.junit)
 }

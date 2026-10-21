@@ -56,6 +56,7 @@ class MockAetherCore(
 
         val (total, stepMs) = when (settings.scanMode) {
             ScanMode.Turbo -> 24 to 35L
+            ScanMode.Swift -> 40 to 28L
             ScanMode.Balanced -> 64 to 30L
             ScanMode.Thorough -> 180 to 18L
             ScanMode.Stealth -> 40 to 110L

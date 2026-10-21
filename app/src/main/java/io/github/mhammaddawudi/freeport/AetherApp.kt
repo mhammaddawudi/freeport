@@ -4,6 +4,10 @@ import android.app.Application
 import io.github.mhammaddawudi.freeport.core.AetherEngine
 import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.core.CoreProvider
+import io.github.mhammaddawudi.freeport.core.IphoneExporter
+import io.github.mhammaddawudi.freeport.core.NoEndpointCache
+import io.github.mhammaddawudi.freeport.core.PrefsEndpointCache
+import io.github.mhammaddawudi.freeport.core.PsiphonRelay
 import io.github.mhammaddawudi.freeport.core.SimulatedTrafficMeter
 import io.github.mhammaddawudi.freeport.core.TrafficMeter
 import io.github.mhammaddawudi.freeport.core.UidTrafficMeter
@@ -34,6 +38,11 @@ class AetherApp : Application() {
     lateinit var trafficMeter: TrafficMeter
         private set
 
+    /** Makes WireGuard configs for iPhones, each on a device of its own. */
+    val iphoneExporter: IphoneExporter by lazy {
+        IphoneExporter(java.io.File(filesDir, "identity"), CoreProvider.core)
+    }
+
     /**
      * Falls back to [ProxyOnlyBridge] when the tun2socks library is not in
      * the apk, so the app still runs — it just cannot capture the device.
@@ -50,7 +59,9 @@ class AetherApp : Application() {
     override fun onCreate() {
         super.onCreate()
         settings = SettingsRepository(this)
-        engine = AetherEngine(this, settings, CoreProvider.core)
+        val cache = if (CoreProvider.isNative) PrefsEndpointCache(this) else NoEndpointCache
+        val relay = if (CoreProvider.isNative) PsiphonRelay(this) else null
+        engine = AetherEngine(this, settings, CoreProvider.core, cache, relay)
         trafficMeter = if (CoreProvider.isNative) UidTrafficMeter() else SimulatedTrafficMeter()
         VpnNotifications.ensureChannel(this)
         registerActivityLifecycleCallbacks(

@@ -110,7 +110,7 @@
     <string name="scan_turbo">Fast</string>
     <string name="scan_turbo_desc">Stops at the first route that answers.</string>
     <string name="scan_balanced">Balanced</string>
-    <string name="scan_balanced_desc">The default. Good on most networks.</string>
+    <string name="scan_balanced_desc">Waits for several routes before choosing. Slower to connect.</string>
     <string name="scan_thorough">Thorough</string>
     <string name="scan_thorough_desc">Sweeps whole ranges when everything looks blocked.</string>
     <string name="scan_stealth">Quiet</string>
@@ -136,4 +136,65 @@
     <string name="ip_dual">Both</string>
     <string name="protocol_auto">Automatic</string>
     <string name="protocol_auto_desc">Pings every protocol and connects with the fastest</string>
+
+    <!-- iPhone export -->
+    <string name="section_share">Share</string>
+    <string name="iphone_row">Export for iPhone</string>
+    <string name="iphone_row_value">WireGuard</string>
+    <string name="iphone_title">Export for iPhone</string>
+    <string name="iphone_subtitle">Makes a WireGuard setup that an iPhone can import into the free WireGuard app from the App Store. It gets its own new account, so your own connection is never shared.</string>
+    <string name="iphone_same_provider">It works best on the same internet provider it was made on. If the iPhone uses a different provider or mobile network, make the config on a phone that uses that one.</string>
+    <string name="iphone_make">Make config</string>
+    <string name="iphone_make_another">Make another one</string>
+    <string name="iphone_registering">Creating a new account…</string>
+    <string name="iphone_scanning">Finding a server that works on this network…</string>
+    <string name="iphone_failed">Could not make the config: %1$s</string>
+    <string name="iphone_retry">Try again</string>
+    <string name="iphone_qr_description">QR code of the WireGuard config</string>
+    <string name="iphone_endpoint">Server %1$s · %2$d ms</string>
+    <string name="iphone_copy">Copy</string>
+    <string name="iphone_share">Share .conf file</string>
+    <string name="iphone_how_to">On the iPhone: install WireGuard from the App Store, tap +, then choose \"Create from QR code\" and scan this code, or \"Create from file or archive\" for the shared .conf file.</string>
+
+    <!-- Home: protocols and speed -->
+    <string name="scan_swift">Swift</string>
+    <string name="scan_swift_desc">The default. Takes the fastest of the first routes that answer.</string>
+    <string name="section_protocol">Protocol</string>
+    <string name="section_speed">Speed</string>
+    <string name="protocol_trait_masque">HTTP/3 · fastest</string>
+    <string name="protocol_trait_masque_h2">TCP · hardest to block</string>
+    <string name="protocol_trait_wireguard">UDP · lowest latency</string>
+    <string name="protocol_trait_gool">Two hops · most private</string>
+    <string name="protocol_best_for">Best for %1$s</string>
+    <string name="protocol_now_using">Now on %1$s</string>
+    <string name="protocol_live">Live</string>
+    <string name="protocol_trying">Trying %1$s</string>
+    <string name="auto_via">Automatic chose %1$s</string>
+    <string name="speed_ping">Ping</string>
+    <string name="speed_download">Download</string>
+    <string name="speed_upload">Upload</string>
+    <string name="speed_jitter">± %1$d ms</string>
+    <string name="speed_run">Run test</string>
+    <string name="speed_again">Test again</string>
+    <string name="speed_stop">Stop</string>
+    <string name="speed_via_tunnel">Measured through the tunnel</string>
+    <string name="speed_via_line">Measured on your line, without the tunnel</string>
+    <string name="speed_failed">The test did not finish: %1$s</string>
+    <string name="speed_hint">Tap Run test to measure ping, download and upload</string>
+    <string name="traffic_down">Down</string>
+    <string name="traffic_up">Up</string>
+    <string name="traffic_session">This session %1$s</string>
+    <string name="app_games">Games</string>
+
+    <!-- Region unlock -->
+    <string name="region_title">Exit location</string>
+    <string name="region_unlock">Region unlock</string>
+    <string name="region_unlock_desc">For ChatGPT, Clash of Clans and Instagram music. Leaves from abroad through Psiphon; connecting takes longer.</string>
+    <string name="region_any">Fastest</string>
+    <string name="region_checking">Checking…</string>
+    <string name="region_not_connected">Shown once connected</string>
+    <string name="region_warning">Sites see Iran, so ChatGPT, games like Clash of Clans and some Instagram music will refuse. Turn on region unlock.</string>
+    <string name="region_warning_unlock_failed">Region unlock could not find a server this time, so sites still see Iran. It keeps trying on the next reconnect.</string>
+    <string name="region_ok">Sites see this country. Region-locked apps should work.</string>
+    <string name="state_relaying">Moving the exit abroad</string>
 </resources>
