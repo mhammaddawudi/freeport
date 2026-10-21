@@ -8,7 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class SpeedAndExitTest {
+class ExitAndCacheTest {
 
     @Test
     fun `the exit country is read from the trace`() {
@@ -42,12 +42,6 @@ class SpeedAndExitTest {
         assertEquals("swift", CorePayloads.scanWire(swift.copy(protocol = Protocol.MasqueH2)))
         assertEquals("swift", CorePayloads.scanWire(swift.copy(protocol = Protocol.WireGuard)))
         assertEquals("thorough", CorePayloads.scanWire(AetherSettings(protocol = Protocol.Gool, scanMode = ScanMode.Thorough)))
-    }
-
-    @Test
-    fun `megabits per second from bytes and milliseconds`() {
-        assertEquals(8.0, SpeedTester.mbps(1_000_000, 1_000), 0.0001)
-        assertEquals(0.0, SpeedTester.mbps(1_000, 0), 0.0)
     }
 
     @Test

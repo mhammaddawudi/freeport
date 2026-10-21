@@ -56,11 +56,12 @@ import io.github.mhammaddawudi.freeport.ui.components.Formats
 import io.github.mhammaddawudi.freeport.ui.components.Glyph
 import io.github.mhammaddawudi.freeport.ui.components.GlyphKind
 import io.github.mhammaddawudi.freeport.ui.components.ProtocolActivity
-import io.github.mhammaddawudi.freeport.ui.components.ProtocolGrid
+import io.github.mhammaddawudi.freeport.ui.components.ProtocolPicker
 import io.github.mhammaddawudi.freeport.ui.components.RegionCard
-import io.github.mhammaddawudi.freeport.ui.components.SectionLabel
-import io.github.mhammaddawudi.freeport.ui.components.SpeedPanel
-import io.github.mhammaddawudi.freeport.ui.SpeedTestUi
+import io.github.mhammaddawudi.freeport.ui.components.TrafficPanel
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import io.github.mhammaddawudi.freeport.ui.TrafficUi
 import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
 import io.github.mhammaddawudi.freeport.ui.theme.NumericStyle
@@ -82,11 +83,9 @@ fun HomeScreen(
     settings: AetherSettings,
     isNativeCore: Boolean,
     traffic: TrafficUi,
-    speedTest: SpeedTestUi,
+    pingMs: Long?,
     onToggle: () -> Unit,
     onSelectProtocol: (Protocol) -> Unit,
-    onRunSpeedTest: () -> Unit,
-    onStopSpeedTest: () -> Unit,
     onRegionUnlock: (Boolean) -> Unit,
     onSelectExitCountry: (String) -> Unit,
     contentPadding: PaddingValues,
@@ -117,17 +116,16 @@ fun HomeScreen(
             onToggle = onRegionUnlock,
             onSelectCountry = onSelectExitCountry,
         )
-        Spacer(Modifier.height(12.dp))
-        SpeedPanel(
-            speed = speedTest,
-            traffic = traffic,
-            connected = state is ConnectionState.Connected,
-            onRun = onRunSpeedTest,
-            onStop = onStopSpeedTest,
-        )
+        AnimatedVisibility(
+            visible = state is ConnectionState.Connected,
+            enter = fadeIn(tween(260)) + expandVertically(tween(260)),
+            exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
+        ) {
+            TrafficPanel(traffic, pingMs, Modifier.padding(top = 12.dp))
+        }
 
-        SectionLabel(stringResource(R.string.section_protocol), Modifier.fillMaxWidth())
-        ProtocolGrid(
+        Spacer(Modifier.height(12.dp))
+        ProtocolPicker(
             selected = settings.protocol,
             activity = activityOf(state),
             onSelect = onSelectProtocol,
@@ -216,23 +214,15 @@ private fun StatusBlock(state: ConnectionState) {
         },
     )
     // One short line, and only when it says something the headline does not.
-    val carrier = when (state) {
-        is ConnectionState.Connected ->
-            if (state.viaAuto) stringResource(R.string.auto_via, state.protocol.displayName) else state.protocol.displayName
-        is ConnectionState.Connecting ->
-            if (state.viaAuto) stringResource(R.string.auto_via, state.protocol.displayName) else state.protocol.displayName
-        else -> null
-    }
     val detail = when (state) {
         is ConnectionState.Connected -> buildString {
-            append(carrier.orEmpty())
-            state.endpoint?.let { append(" · ").append(it.socket) }
+            append(state.protocol.displayName)
             if (state.mode == TunMode.ProxyOnly) {
                 if (isNotEmpty()) append(" · ")
                 append("proxy")
             }
         }
-        is ConnectionState.Connecting -> listOfNotNull(carrier, state.endpoint?.socket).joinToString(" · ")
+        is ConnectionState.Connecting -> state.protocol.displayName
         is ConnectionState.Failed -> state.message
         is ConnectionState.Reconnecting -> state.reason
         else -> ""

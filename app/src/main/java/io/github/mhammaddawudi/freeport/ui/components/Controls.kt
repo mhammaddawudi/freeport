@@ -1,5 +1,6 @@
 package io.github.mhammaddawudi.freeport.ui.components
 
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -488,5 +489,30 @@ object Formats {
     fun duration(millis: Long): String {
         val seconds = (millis / 1000).coerceAtLeast(0)
         return String.format(Locale.US, "%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+    }
+}
+
+/** A compact rounded action, filled when it starts something. */
+@Composable
+fun PillButton(
+    text: String,
+    emphasised: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(50)
+    val fill = if (emphasised) AetherColors.Control else Color.Transparent
+    val ink = if (emphasised) AetherColors.Void else AetherColors.Ink
+    Box(
+        modifier
+            .heightIn(min = 40.dp)
+            .clip(shape)
+            .background(fill)
+            .border(1.dp, if (emphasised) fill else AetherColors.HairlineStrong, shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge, color = ink, maxLines = 1)
     }
 }

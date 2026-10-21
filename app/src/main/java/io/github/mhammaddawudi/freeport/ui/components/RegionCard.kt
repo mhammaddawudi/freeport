@@ -44,9 +44,6 @@ import io.github.mhammaddawudi.freeport.data.ExitCountries
 import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
 import java.util.Locale
 
-/** The country a session leaves from — which is what decides region errors. */
-private const val HOME_COUNTRY = "IR"
-
 /**
  * Where the session comes out, and the switch that moves it abroad.
  *
@@ -66,74 +63,38 @@ fun RegionCard(
 ) {
     val connected = state as? ConnectionState.Connected
     val exit = connected?.exitCountry
-    val locked = exit == HOME_COUNTRY
     val relaying = (state as? ConnectionState.Connecting)?.relaying == true
 
     GlassCard(
         modifier = modifier.fillMaxWidth(),
-        accent = when {
-            locked -> AetherColors.Rose
-            connected?.relayed == true && exit != null -> AetherColors.Mint
-            else -> null
-        },
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
+        accent = if (connected?.relayed == true && exit != null) AetherColors.Mint else null,
+        contentPadding = PaddingValues(start = 14.dp, end = 18.dp, top = 6.dp, bottom = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .size(42.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(AetherColors.Ink.copy(alpha = 0.06f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(exit?.let(ExitCountries::flag) ?: ExitCountries.flag(""), fontSize = 22.sp)
+                if (relaying) {
+                    StatusDot(AetherColors.Amber, pulsing = true)
+                } else {
+                    Text(ExitCountries.flag(exit.orEmpty()), fontSize = 19.sp)
+                }
             }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.region_title).uppercase(Locale.getDefault()),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = AetherColors.InkFaint,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    when {
-                        relaying -> stringResource(R.string.state_relaying)
-                        exit != null -> countryName(exit)
-                        connected != null -> stringResource(R.string.region_checking)
-                        else -> stringResource(R.string.region_not_connected)
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (locked) AetherColors.Rose else AetherColors.Ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        val note = when {
-            locked && !regionUnlock -> stringResource(R.string.region_warning)
-            locked -> stringResource(R.string.region_warning_unlock_failed)
-            connected?.relayed == true && exit != null -> stringResource(R.string.region_ok)
-            else -> null
-        }
-        if (note != null) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                note,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (locked) AetherColors.Rose else AetherColors.Mint,
+            Spacer(Modifier.width(12.dp))
+            // The flag says where the session leaves from; the switch moves it.
+            SwitchRow(
+                title = stringResource(R.string.region_unlock),
+                subtitle = exit?.let { countryName(it) },
+                checked = regionUnlock,
+                onCheckedChange = onToggle,
+                accent = AetherColors.Mint,
+                modifier = Modifier.weight(1f),
             )
         }
-
-        Spacer(Modifier.height(4.dp))
-        SwitchRow(
-            title = stringResource(R.string.region_unlock),
-            subtitle = stringResource(R.string.region_unlock_desc),
-            checked = regionUnlock,
-            onCheckedChange = onToggle,
-            accent = AetherColors.Mint,
-        )
 
         AnimatedVisibility(
             visible = regionUnlock,
@@ -144,7 +105,7 @@ fun RegionCard(
                 Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(top = 4.dp, bottom = 4.dp),
+                    .padding(top = 2.dp, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ExitCountries.offered.forEach { code ->

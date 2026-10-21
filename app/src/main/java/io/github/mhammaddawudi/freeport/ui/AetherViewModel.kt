@@ -25,8 +25,7 @@ import io.github.mhammaddawudi.freeport.core.CoreResult
 import io.github.mhammaddawudi.freeport.core.Identity
 import io.github.mhammaddawudi.freeport.core.IphoneConfig
 import io.github.mhammaddawudi.freeport.core.IphoneExporter
-import io.github.mhammaddawudi.freeport.core.SpeedReport
-import io.github.mhammaddawudi.freeport.core.SpeedTester
+import io.github.mhammaddawudi.freeport.core.LatencyProbe
 import io.github.mhammaddawudi.freeport.core.AppUpdate
 import io.github.mhammaddawudi.freeport.core.UpdateChecker
 import android.content.Intent
@@ -59,28 +58,13 @@ sealed interface UpdateUi {
     data class Failed(val update: AppUpdate, val message: String) : UpdateUi
 }
 
-/** Where the speed test is, and what it last measured. */
-sealed interface SpeedTestUi {
-    data object Idle : SpeedTestUi
-    data class Running(val report: SpeedReport) : SpeedTestUi
-    data class Done(val report: SpeedReport) : SpeedTestUi
-    data class Failed(val message: String, val last: SpeedReport?) : SpeedTestUi
-}
-
 /** Per-second throughput and session totals. */
 data class TrafficUi(
     val downRate: Long = 0,
     val upRate: Long = 0,
     val downTotal: Long = 0,
     val upTotal: Long = 0,
-    /** The last [HISTORY] seconds of rates, oldest first, for the sparkline. */
-    val downHistory: List<Long> = emptyList(),
-    val upHistory: List<Long> = emptyList(),
-) {
-    companion object {
-        const val HISTORY = 40
-    }
-}
+)
 
 class AetherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -112,10 +96,9 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
     val iphoneExport: StateFlow<IphoneExportUi> = _iphoneExport.asStateFlow()
     private var exportJob: Job? = null
 
-    private val _speedTest = MutableStateFlow<SpeedTestUi>(SpeedTestUi.Idle)
-    val speedTest: StateFlow<SpeedTestUi> = _speedTest.asStateFlow()
-    private var speedJob: Job? = null
-    private val speedTester = SpeedTester()
+    /** The tunnel's round trip in ms, refreshed while connected; null otherwise. */
+    private val _pingMs = MutableStateFlow<Long?>(null)
+    val pingMs: StateFlow<Long?> = _pingMs.asStateFlow()
 
     private val updates = UpdateChecker(application)
     private val updatePrefs = application.getSharedPreferences("aether.updates", android.content.Context.MODE_PRIVATE)
@@ -129,7 +112,7 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
     init {
         viewModelScope.launch { _coreVersion.value = CoreProvider.core.version() }
         viewModelScope.launch { meterTraffic() }
-        viewModelScope.launch { pingOnConnect() }
+        viewModelScope.launch { measurePing() }
         viewModelScope.launch { watchForUpdates() }
     }
 
@@ -245,44 +228,7 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /**
-     * Ping, download and upload. Through the tunnel when a session is up,
-     * otherwise over the bare line — useful for telling a slow tunnel from a
-     * slow network.
-     */
-    fun runSpeedTest() {
-        if (speedJob?.isActive == true) return
-        speedJob = viewModelScope.launch {
-            var last: SpeedReport? = null
-            val result = runCatching {
-                speedTester.run(tunnelProxyPort()) { report ->
-                    last = report
-                    _speedTest.value = SpeedTestUi.Running(report)
-                }
-            }
-            ensureActive()
-            _speedTest.value = result.fold(
-                onSuccess = { SpeedTestUi.Done(it) },
-                onFailure = { failure ->
-                    CoreLog.warn("[-] speed test: ${failure.message}")
-                    SpeedTestUi.Failed(failure.message ?: failure.javaClass.simpleName, last)
-                },
-            )
-        }
-    }
-
-    fun cancelSpeedTest() {
-        speedJob?.cancel()
-        speedJob = null
-        val running = _speedTest.value
-        _speedTest.value = if (running is SpeedTestUi.Running) {
-            SpeedTestUi.Done(running.report.copy(phase = SpeedReport.Phase.Done))
-        } else {
-            running
-        }
-    }
-
-    /** The live session's proxy, or null to test the bare line. */
+    /** The live session's proxy, or null for the bare line. */
     private fun tunnelProxyPort(): Int? {
         val current = state.value as? ConnectionState.Connected ?: return null
         if (!isNativeCore) return null
@@ -290,23 +236,21 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Earlier results describe a path that no longer exists once the session
-     * changes, so they are cleared; a fresh connection gets a ping straight
-     * away so the number is there before anyone asks for it.
+     * Pings through the tunnel shortly after it comes up and then every
+     * [PING_EVERY_MS] while it stays up, so the number is always current
+     * without anyone having to ask for it.
      */
-    private suspend fun pingOnConnect() {
+    private suspend fun measurePing() {
         state.map { (it as? ConnectionState.Connected)?.sinceMillis }
             .distinctUntilChanged()
             .collectLatest { since ->
-                speedJob?.cancel()
-                _speedTest.value = SpeedTestUi.Idle
+                _pingMs.value = null
                 if (since == null) return@collectLatest
                 delay(PING_SETTLE_MS)
-                if (speedJob?.isActive == true) return@collectLatest
-                runCatching { speedTester.ping(tunnelProxyPort()) }
-                    .onSuccess { report ->
-                        if (_speedTest.value is SpeedTestUi.Idle) _speedTest.value = SpeedTestUi.Done(report)
-                    }
+                while (true) {
+                    LatencyProbe.ping(tunnelProxyPort())?.let { _pingMs.value = it }
+                    delay(PING_EVERY_MS)
+                }
             }
     }
 
@@ -401,6 +345,7 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
     private companion object {
         /** Lets tun2socks finish coming up before the first ping goes through it. */
         const val PING_SETTLE_MS = 1_200L
+        const val PING_EVERY_MS = 15_000L
         const val UPDATE_FIRST_CHECK_MS = 3_000L
         const val SNOOZE_MS = 24 * 60 * 60 * 1000L
         const val KEY_SNOOZED_VERSION = "snoozed_version"
@@ -422,14 +367,11 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
                     val current = meter.totals() ?: continue
                     val down = (current.rxBytes - previous.rxBytes).coerceAtLeast(0)
                     val up = (current.txBytes - previous.txBytes).coerceAtLeast(0)
-                    val last = _traffic.value
                     _traffic.value = TrafficUi(
                         downRate = down,
                         upRate = up,
                         downTotal = (current.rxBytes - base.rxBytes).coerceAtLeast(0),
                         upTotal = (current.txBytes - base.txBytes).coerceAtLeast(0),
-                        downHistory = (last.downHistory + down).takeLast(TrafficUi.HISTORY),
-                        upHistory = (last.upHistory + up).takeLast(TrafficUi.HISTORY),
                     )
                     previous = current
                 }

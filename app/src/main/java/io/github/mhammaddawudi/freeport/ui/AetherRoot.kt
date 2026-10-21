@@ -63,7 +63,7 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
     val coreVersion by viewModel.coreVersion.collectAsStateWithLifecycle()
     val iphoneExport by viewModel.iphoneExport.collectAsStateWithLifecycle()
     val traffic by viewModel.traffic.collectAsStateWithLifecycle()
-    val speedTest by viewModel.speedTest.collectAsStateWithLifecycle()
+    val pingMs by viewModel.pingMs.collectAsStateWithLifecycle()
     val update by viewModel.update.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -137,11 +137,9 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
                     settings = settings,
                     isNativeCore = viewModel.isNativeCore,
                     traffic = traffic,
-                    speedTest = speedTest,
+                    pingMs = pingMs,
                     onToggle = onToggle,
                     onSelectProtocol = viewModel::selectProtocol,
-                    onRunSpeedTest = viewModel::runSpeedTest,
-                    onStopSpeedTest = viewModel::cancelSpeedTest,
                     onRegionUnlock = viewModel::setRegionUnlock,
                     onSelectExitCountry = viewModel::selectExitCountry,
                     contentPadding = contentPadding,

@@ -137,7 +137,6 @@
     <string name="sheet_ip_title">جۆری ئایپی</string>
     <string name="sheet_ip_subtitle">کام ناونیشان تاقی بکرێتەوە</string>
     <string name="protocol_auto">ئۆتۆماتیک</string>
-    <string name="protocol_auto_desc">هەموو پرۆتۆکۆڵەکان پینگ دەکات و بە خێراترینیان دەبەسترێتەوە</string>
 
     <!-- iPhone export -->
     <string name="section_share">هاوبەشکردن</string>
@@ -161,43 +160,18 @@
     <!-- Home: protocols and speed -->
     <string name="scan_swift">چالاک</string>
     <string name="scan_swift_desc">بنەڕەتی. خێراترینی یەکەم ڕێگا وەڵامدەرەکان هەڵدەبژێرێت.</string>
-    <string name="section_protocol">پرۆتۆکۆڵ</string>
-    <string name="section_speed">خێرایی</string>
     <string name="protocol_trait_masque">HTTP/3 · خێراترین</string>
     <string name="protocol_trait_masque_h2">TCP · قورسترین بۆ بلۆککردن</string>
     <string name="protocol_trait_wireguard">UDP · کەمترین دواکەوتن</string>
     <string name="protocol_trait_gool">دوو چین · زۆرترین تایبەتمەندی</string>
     <string name="protocol_best_for">گونجاو بۆ %1$s</string>
-    <string name="protocol_now_using">ئێستا لەسەر %1$s</string>
     <string name="protocol_live">چالاک</string>
-    <string name="protocol_trying">تاقیکردنەوەی %1$s</string>
     <string name="auto_via">ئۆتۆماتیک %1$s ی هەڵبژارد</string>
-    <string name="speed_ping">پینگ</string>
-    <string name="speed_download">داگرتن</string>
-    <string name="speed_upload">بارکردن</string>
-    <string name="speed_jitter">± %1$d ms</string>
-    <string name="speed_run">تاقیکردنەوە</string>
-    <string name="speed_again">دووبارە تاقی بکەرەوە</string>
-    <string name="speed_stop">ڕاگرتن</string>
-    <string name="speed_via_tunnel">لەناو تونێلەوە پێوانە کرا</string>
-    <string name="speed_via_line">لەسەر هێڵی ئینتەرنێتەکەت، بەبێ تونێل</string>
-    <string name="speed_failed">تاقیکردنەوە تەواو نەبوو: %1$s</string>
-    <string name="speed_hint">بۆ پێوانی پینگ، داگرتن و بارکردن «تاقیکردنەوە» دابگرە</string>
-    <string name="traffic_down">داگرتن</string>
-    <string name="traffic_up">ناردن</string>
-    <string name="traffic_session">ئەم دانیشتنە %1$s</string>
     <string name="app_games">یارییەکان</string>
 
     <!-- Region unlock -->
-    <string name="region_title">شوێنی دەرچوون</string>
     <string name="region_unlock">لابردنی سنووری ناوچە</string>
-    <string name="region_unlock_desc">بۆ چات جی پی تی، کلاش ئۆف کلانز و میوزیکی ئینستاگرام. لە ڕێگەی سایفۆنەوە لە دەرەوە دەردەچێت؛ پەیوەستبوون زیاتر دەخایەنێت.</string>
     <string name="region_any">خێراترین</string>
-    <string name="region_checking">پشکنین…</string>
-    <string name="region_not_connected">دوای پەیوەستبوون پیشان دەدرێت</string>
-    <string name="region_warning">ماڵپەڕەکان ئێران دەبینن، بۆیە چات جی پی تی، یارییەکانی وەک کلاش ئۆف کلانز و هەندێک میوزیکی ئینستاگرام ڕەت دەکەنەوە. «لابردنی سنووری ناوچە» داگیرسێنە.</string>
-    <string name="region_warning_unlock_failed">لابردنی سنووری ناوچە ئەمجارە ڕاژەکارێکی نەدۆزییەوە، بۆیە ماڵپەڕەکان هێشتا ئێران دەبینن. لە پەیوەستبوونی داهاتوودا هەوڵ دەداتەوە.</string>
-    <string name="region_ok">ماڵپەڕەکان ئەم وڵاتە دەبینن. ئەپە سنووردارەکان دەبێت کار بکەن.</string>
     <string name="state_relaying">گواستنەوەی دەرچوون بۆ دەرەوە</string>
 
     <!-- In-app update -->

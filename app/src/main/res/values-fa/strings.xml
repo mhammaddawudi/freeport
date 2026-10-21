@@ -135,7 +135,6 @@
     <string name="ip_v6">IPv6</string>
     <string name="ip_dual">هر دو</string>
     <string name="protocol_auto">اتوماتیک</string>
-    <string name="protocol_auto_desc">همهٔ پروتکل‌ها را پینگ می‌کند و به سریع‌ترین وصل می‌شود</string>
 
     <!-- iPhone export -->
     <string name="section_share">اشتراک‌گذاری</string>
@@ -159,43 +158,18 @@
     <!-- Home: protocols and speed -->
     <string name="scan_swift">چابک</string>
     <string name="scan_swift_desc">پیش‌فرض. سریع‌ترینِ اولین مسیرهایی که جواب می‌دهند را برمی‌دارد.</string>
-    <string name="section_protocol">پروتکل</string>
-    <string name="section_speed">سرعت</string>
     <string name="protocol_trait_masque">HTTP/3 · سریع‌ترین</string>
     <string name="protocol_trait_masque_h2">TCP · سخت‌ترین برای مسدود شدن</string>
     <string name="protocol_trait_wireguard">UDP · کمترین تأخیر</string>
     <string name="protocol_trait_gool">دو لایه · بیشترین حریم خصوصی</string>
     <string name="protocol_best_for">مناسب برای %1$s</string>
-    <string name="protocol_now_using">الان روی %1$s</string>
     <string name="protocol_live">فعال</string>
-    <string name="protocol_trying">در حال امتحان %1$s</string>
     <string name="auto_via">اتوماتیک %1$s را انتخاب کرد</string>
-    <string name="speed_ping">پینگ</string>
-    <string name="speed_download">دانلود</string>
-    <string name="speed_upload">آپلود</string>
-    <string name="speed_jitter">± %1$d ms</string>
-    <string name="speed_run">تست سرعت</string>
-    <string name="speed_again">تست دوباره</string>
-    <string name="speed_stop">توقف</string>
-    <string name="speed_via_tunnel">از داخل تونل اندازه‌گیری شد</string>
-    <string name="speed_via_line">روی خط اینترنت شما، بدون تونل</string>
-    <string name="speed_failed">تست کامل نشد: %1$s</string>
-    <string name="speed_hint">برای اندازه‌گیری پینگ، دانلود و آپلود «تست سرعت» را بزنید</string>
-    <string name="traffic_down">دریافت</string>
-    <string name="traffic_up">ارسال</string>
-    <string name="traffic_session">این جلسه %1$s</string>
     <string name="app_games">بازی‌ها</string>
 
     <!-- Region unlock -->
-    <string name="region_title">لوکیشن خروجی</string>
     <string name="region_unlock">رفع محدودیت منطقه</string>
-    <string name="region_unlock_desc">برای چت‌جی‌پی‌تی، کلش آف کلنز و موزیک اینستاگرام. از طریق سایفون از خارج خارج می‌شود؛ اتصال بیشتر طول می‌کشد.</string>
     <string name="region_any">سریع‌ترین</string>
-    <string name="region_checking">در حال بررسی…</string>
-    <string name="region_not_connected">بعد از اتصال نمایش داده می‌شود</string>
-    <string name="region_warning">سایت‌ها شما را در ایران می‌بینند، برای همین چت‌جی‌پی‌تی، بازی‌هایی مثل کلش آف کلنز و بعضی موزیک‌های اینستاگرام کار نمی‌کنند. «رفع محدودیت منطقه» را روشن کنید.</string>
-    <string name="region_warning_unlock_failed">رفع محدودیت منطقه این بار سروری پیدا نکرد و سایت‌ها هنوز ایران را می‌بینند. در اتصال بعدی دوباره تلاش می‌کند.</string>
-    <string name="region_ok">سایت‌ها این کشور را می‌بینند. برنامه‌های دارای محدودیت منطقه باید کار کنند.</string>
     <string name="state_relaying">در حال انتقال خروجی به خارج</string>
 
     <!-- In-app update -->

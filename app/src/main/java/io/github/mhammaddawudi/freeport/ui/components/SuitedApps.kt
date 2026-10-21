@@ -7,7 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -97,15 +97,10 @@ fun SuitedApp.label(): String = nameRes?.let { stringResource(it) } ?: name
 /** Overlapping round badges, the way chat apps stack avatars. */
 @Composable
 fun AppBadgeRow(apps: List<SuitedApp>, modifier: Modifier = Modifier, size: Dp = 24.dp) {
-    val overlap = size * 0.28f
-    Row(modifier) {
-        apps.forEachIndexed { index, app ->
-            AppBadge(
-                app = app,
-                size = size,
-                modifier = Modifier.offset(x = -overlap * index),
-            )
-        }
+    // Negative spacing rather than an offset: the row then measures only
+    // what it draws, so the badges line up with whatever follows them.
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(-size * 0.28f)) {
+        apps.forEach { app -> AppBadge(app = app, size = size) }
     }
 }
 
