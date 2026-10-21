@@ -260,34 +260,44 @@ class AetherEngine(
     }
 
     /**
-     * Pings MASQUE, MASQUE H2 and WireGuard at the same time with a fast scan
-     * each and connects with the one whose edge answered quickest.
+     * Prefers MASQUE H2, and falls back to the fastest of the others only
+     * when H2 does not get through.
      *
-     * The two MASQUE carriers cannot scan side by side: the core reads
-     * HTTP/2 or HTTP/3 from one process-wide variable. So they share a lane,
-     * H2 first (TCP is the one most often left open) with a time limit of its
-     * own, while WireGuard, which never reads that variable, runs beside them.
-     * Once the first edge answers, the others get a short grace period to
-     * beat it, so a fast network is not held up by a blocked transport.
+     * H2 carries traffic better than the rest on the networks this app is
+     * used on, so it is not made to race: if its edge answers at all within
+     * [AUTO_LANE_MS], it is the one. WireGuard is pinged beside it the whole
+     * time, so that a blocked H2 costs no extra wait. MASQUE over QUIC only
+     * gets its turn after H2 has failed — the two MASQUE carriers cannot scan
+     * side by side, as the core reads HTTP/2 or HTTP/3 from one process-wide
+     * variable.
      */
     private suspend fun attemptAuto(requested: AetherSettings, host: TunnelHost): Outcome {
         clearGatewayCache()
         val base = withFreePort(requested)
         _state.value = ConnectionState.Preparing(Protocol.Auto)
-        log.info("[*] automatic: pinging ${AUTO_CANDIDATES.joinToString { it.displayName }}")
+        log.info("[*] automatic: trying ${Protocol.MasqueH2.displayName} first, ${Protocol.WireGuard.displayName} beside it")
 
-        val candidates = AUTO_CANDIDATES.associateWith { base.copy(protocol = it, scanMode = ScanMode.Turbo) }
+        // H2 scans the way a manual H2 connection does (swift: the best of
+        // the first edges to answer); the fallbacks take the first that answers.
+        val candidates = AUTO_CANDIDATES.associateWith { protocol ->
+            base.copy(protocol = protocol, scanMode = if (protocol == Protocol.MasqueH2) base.scanMode else ScanMode.Turbo)
+        }
 
-        // Whatever automatic picked last time gets the first go, on the same
-        // edge: no race at all when the network has not changed.
+        // The last good H2 edge gets the first go: no scan at all when the
+        // network has not changed.
         if (base.pinnedPeer.isBlank()) {
-            cache.recallAuto()?.let { (protocol, remembered) ->
-                val settings = candidates[protocol] ?: return@let
-                val identity = identityFor(settings).valueOrNull() ?: return@let
-                core.applyEnvironment(settings)
-                val outcome = tryRemembered(identity, remembered, settings.copy(scanMode = base.scanMode), host, viaAuto = true)
-                if (outcome.connected) return outcome
-                cache.forgetAuto()
+            val h2Key = PrefsEndpointCache.keyOf(Protocol.MasqueH2, base.ipVersion.wire)
+            val remembered = cache.recall(h2Key)
+                ?: cache.recallAuto()?.takeIf { it.first == Protocol.MasqueH2 }?.second
+            if (remembered != null) {
+                val settings = candidates.getValue(Protocol.MasqueH2)
+                identityFor(settings).valueOrNull()?.let { identity ->
+                    core.applyEnvironment(settings)
+                    val outcome = tryRemembered(identity, remembered, settings, host, viaAuto = true)
+                    if (outcome.connected) return outcome
+                    cache.forget(h2Key)
+                    cache.forgetAuto()
+                }
             }
         }
 
@@ -319,25 +329,37 @@ class AetherEngine(
         }
 
         coroutineScope {
+            val h2 = launch { withTimeoutOrNull(AUTO_LANE_MS) { ping(Protocol.MasqueH2) } }
             val lanes = listOf(
+                h2,
                 launch {
-                    withTimeoutOrNull(AUTO_LANE_MS) { ping(Protocol.MasqueH2) }
-                    ping(Protocol.MasqueH3)
+                    h2.join()
+                    if (!found.containsKey(Protocol.MasqueH2)) ping(Protocol.MasqueH3)
                 },
                 launch { ping(Protocol.WireGuard) },
             )
             val all = launch { lanes.joinAll() }
             withTimeoutOrNull(AUTO_PING_MS) {
-                while (found.isEmpty() && all.isActive) delay(100)
-                if (found.isNotEmpty()) withTimeoutOrNull(AUTO_GRACE_MS) { all.join() }
+                while (all.isActive) {
+                    // H2 answered: nothing else is worth waiting for.
+                    if (found.containsKey(Protocol.MasqueH2)) break
+                    // H2 has had its chance; give the others a moment to beat
+                    // the first of them that answered.
+                    if (!h2.isActive && found.isNotEmpty()) {
+                        withTimeoutOrNull(AUTO_GRACE_MS) { all.join() }
+                        break
+                    }
+                    delay(100)
+                }
             }
             all.cancel()
             lanes.forEach { it.cancel() }
         }
 
-        val best = AUTO_CANDIDATES
-            .mapNotNull { protocol -> found[protocol]?.let { protocol to it } }
-            .minByOrNull { (_, endpoint) -> endpoint.rttMs }
+        val best = found[Protocol.MasqueH2]?.let { Protocol.MasqueH2 to it }
+            ?: AUTO_CANDIDATES
+                .mapNotNull { protocol -> found[protocol]?.let { protocol to it } }
+                .minByOrNull { (_, endpoint) -> endpoint.rttMs }
         if (best == null) {
             log.warn("[-] automatic: nothing answered, handing over to ${Protocol.Gool.displayName}")
             val gool = base.copy(protocol = Protocol.Gool)
@@ -347,7 +369,13 @@ class AetherEngine(
 
         val (protocol, endpoint) = best
         val chosen = base.copy(protocol = protocol)
-        log.good("[+] automatic: ${protocol.displayName} is the fastest (${endpoint.rttMs}ms)")
+        log.good(
+            if (protocol == Protocol.MasqueH2) {
+                "[+] automatic: ${protocol.displayName} got through (${endpoint.rttMs}ms)"
+            } else {
+                "[+] automatic: ${Protocol.MasqueH2.displayName} is blocked, ${protocol.displayName} is the fastest (${endpoint.rttMs}ms)"
+            },
+        )
         core.applyEnvironment(chosen)
         return runTunnel(identities.getValue(protocol), endpoint, chosen, host, viaAuto = true)
     }
@@ -628,14 +656,14 @@ class AetherEngine(
          */
         const val PORT_RELEASE_MS = 1_500L
 
-        /** What automatic pings, and in what order a tie is settled. */
-        val AUTO_CANDIDATES = listOf(Protocol.MasqueH3, Protocol.MasqueH2, Protocol.WireGuard)
+        /** What automatic tries; MASQUE H2 is preferred whenever it answers. */
+        val AUTO_CANDIDATES = listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
 
         /** The whole automatic ping round. */
-        const val AUTO_PING_MS = 15_000L
+        const val AUTO_PING_MS = 20_000L
 
-        /** How long MASQUE H2 may hold the shared lane before H3 gets it. */
-        const val AUTO_LANE_MS = 7_000L
+        /** How long MASQUE H2 gets before automatic settles for something else. */
+        const val AUTO_LANE_MS = 10_000L
 
         /** How long the others may still beat the first edge that answered. */
         const val AUTO_GRACE_MS = 2_500L
