@@ -199,4 +199,17 @@
     <string name="region_warning_unlock_failed">لابردنی سنووری ناوچە ئەمجارە ڕاژەکارێکی نەدۆزییەوە، بۆیە ماڵپەڕەکان هێشتا ئێران دەبینن. لە پەیوەستبوونی داهاتوودا هەوڵ دەداتەوە.</string>
     <string name="region_ok">ماڵپەڕەکان ئەم وڵاتە دەبینن. ئەپە سنووردارەکان دەبێت کار بکەن.</string>
     <string name="state_relaying">گواستنەوەی دەرچوون بۆ دەرەوە</string>
+
+    <!-- In-app update -->
+    <string name="update_title">فریپۆرت %1$s هات</string>
+    <string name="update_subtitle">ئامادەی دامەزراندن · %1$s</string>
+    <string name="update_install">نوێکردنەوە</string>
+    <string name="update_later">دواتر</string>
+    <string name="update_downloading">داگرتن… %1$d%%</string>
+    <string name="update_ready">دامەزراندن</string>
+    <string name="update_ready_subtitle">داگیرا. بۆ تەواوکردن «دامەزراندن» دابگرە</string>
+    <string name="update_failed">داگرتن وەستا: %1$s</string>
+    <string name="update_retry">دووبارە</string>
+    <string name="update_notes">چی نوێیە</string>
+    <string name="update_allow_installs">ڕێگە بە فریپۆرت بدە نوێکردنەوە دابمەزرێنێت، پاشان دووبارە «دامەزراندن» دابگرە</string>
 </resources>

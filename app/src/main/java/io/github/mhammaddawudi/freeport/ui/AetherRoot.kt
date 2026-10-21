@@ -45,6 +45,7 @@ import io.github.mhammaddawudi.freeport.core.isEngaged
 import io.github.mhammaddawudi.freeport.ui.components.AetherTab
 import io.github.mhammaddawudi.freeport.ui.components.AuroraBackground
 import io.github.mhammaddawudi.freeport.ui.components.FloatingTabBar
+import io.github.mhammaddawudi.freeport.ui.components.UpdateBanner
 import io.github.mhammaddawudi.freeport.data.AppLanguage
 import io.github.mhammaddawudi.freeport.ui.screens.AppPickerScreen
 import io.github.mhammaddawudi.freeport.ui.screens.HomeScreen
@@ -63,6 +64,7 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
     val iphoneExport by viewModel.iphoneExport.collectAsStateWithLifecycle()
     val traffic by viewModel.traffic.collectAsStateWithLifecycle()
     val speedTest by viewModel.speedTest.collectAsStateWithLifecycle()
+    val update by viewModel.update.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var tab by rememberSaveable { mutableStateOf(AetherTab.Home) }
@@ -108,10 +110,19 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
 
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val contentPadding = PaddingValues(top = top + 8.dp, bottom = bottom + 104.dp)
+    // Room for the update card too while it floats over the content.
+    val floating = if (update is UpdateUi.Hidden) 104.dp else 184.dp
+    val contentPadding = PaddingValues(top = top + 8.dp, bottom = bottom + floating)
 
     Box(Modifier.fillMaxSize()) {
-        AuroraBackground()
+        AuroraBackground(
+            glow = when (state) {
+                is ConnectionState.Connected -> AetherColors.Mint
+                is ConnectionState.Failed -> AetherColors.Rose
+                ConnectionState.Idle, ConnectionState.Disconnecting -> AetherColors.Ink
+                else -> AetherColors.Amber
+            },
+        )
 
         AnimatedContent(
             targetState = tab,
@@ -169,7 +180,7 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(start = 16.dp, end = 16.dp, bottom = 92.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = if (update is UpdateUi.Hidden) 92.dp else 176.dp),
         ) { data ->
             Snackbar(
                 snackbarData = data,
@@ -191,6 +202,15 @@ fun AetherRoot(viewModel: AetherViewModel = viewModel()) {
         }
 
         if (!appPickerOpen) {
+            UpdateBanner(
+                update = update,
+                onInstall = viewModel::installUpdate,
+                onLater = viewModel::postponeUpdate,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(start = 14.dp, end = 14.dp, bottom = 92.dp),
+            )
             FloatingTabBar(
                 selected = tab,
                 onSelect = { tab = it },

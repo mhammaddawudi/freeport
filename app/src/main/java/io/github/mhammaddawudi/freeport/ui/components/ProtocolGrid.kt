@@ -80,6 +80,15 @@ private val Protocol.traitRes: Int?
         Protocol.Gool -> R.string.protocol_trait_gool
     }
 
+private val Protocol.glyph: GlyphKind
+    get() = when (this) {
+        Protocol.Auto -> GlyphKind.Radar
+        Protocol.MasqueH3 -> GlyphKind.Bolt
+        Protocol.MasqueH2 -> GlyphKind.Stack
+        Protocol.WireGuard -> GlyphKind.Wave
+        Protocol.Gool -> GlyphKind.Nested
+    }
+
 /** The display order: the two MASQUE carriers first, warp in warp last. */
 private val GRID_ORDER = listOf(Protocol.MasqueH3, Protocol.MasqueH2, Protocol.WireGuard, Protocol.Gool)
 
@@ -103,21 +112,16 @@ fun ProtocolGrid(
             activity = activity?.takeIf { selected == Protocol.Auto },
             onClick = { choose(Protocol.Auto) },
         )
-        GRID_ORDER.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                row.forEach { protocol ->
-                    ProtocolCard(
-                        protocol = protocol,
-                        selected = protocol == selected,
-                        activity = activity?.takeIf { it.protocol == protocol },
-                        onClick = { choose(protocol) },
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                }
-            }
+        // One full-width row each: names like "Warp in Warp" and the apps
+        // each protocol suits need the width a two-column grid cannot give.
+        GRID_ORDER.forEach { protocol ->
+            ProtocolCard(
+                protocol = protocol,
+                selected = protocol == selected,
+                activity = activity?.takeIf { it.protocol == protocol },
+                onClick = { choose(protocol) },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -221,39 +225,54 @@ private fun ProtocolCard(
         modifier = modifier.semantics { contentDescription = "${protocol.displayName}. $trait. $bestFor" },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                protocol.displayName,
-                style = MaterialTheme.typography.titleMedium,
-                color = lerp(AetherColors.Ink, accent, lit),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            if (activity != null) {
-                StatusDot(if (activity.live) AetherColors.Mint else AetherColors.Amber, pulsing = activity.live)
-            } else {
-                SelectionMark(lit, accent)
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(lerp(AetherColors.Ink.copy(alpha = 0.06f), accent.copy(alpha = 0.16f), lit)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Glyph(protocol.glyph, lerp(AetherColors.InkMuted, accent, lit), Modifier.size(20.dp), strokeWidth = 2.dp)
             }
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            trait,
-            style = MaterialTheme.typography.bodySmall,
-            color = AetherColors.InkMuted,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.weight(1f).heightIn(min = 14.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AppBadgeRow(apps, size = 24.dp)
-            Spacer(Modifier.width(4.dp))
-            Text(
-                names,
-                style = MaterialTheme.typography.labelMedium,
-                color = AetherColors.InkMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        protocol.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = lerp(AetherColors.Ink, accent, lit),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (activity != null) {
+                        Spacer(Modifier.width(6.dp))
+                        StatusDot(if (activity.live) AetherColors.Mint else AetherColors.Amber, pulsing = activity.live)
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    trait,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AetherColors.InkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AppBadgeRow(apps, size = 22.dp)
+                    Spacer(Modifier.width(2.dp))
+                    Text(
+                        names,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AetherColors.InkFaint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            SelectionMark(lit, accent)
         }
     }
 }

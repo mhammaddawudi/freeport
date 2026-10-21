@@ -197,4 +197,17 @@
     <string name="region_warning_unlock_failed">Region unlock could not find a server this time, so sites still see Iran. It keeps trying on the next reconnect.</string>
     <string name="region_ok">Sites see this country. Region-locked apps should work.</string>
     <string name="state_relaying">Moving the exit abroad</string>
+
+    <!-- In-app update -->
+    <string name="update_title">Freeport %1$s is here</string>
+    <string name="update_subtitle">Ready to install · %1$s</string>
+    <string name="update_install">Update</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloading… %1$d%%</string>
+    <string name="update_ready">Install</string>
+    <string name="update_ready_subtitle">Downloaded. Tap Install to finish</string>
+    <string name="update_failed">The download stopped: %1$s</string>
+    <string name="update_retry">Try again</string>
+    <string name="update_notes">What\'s new</string>
+    <string name="update_allow_installs">Allow Freeport to install updates, then tap Install again</string>
 </resources>

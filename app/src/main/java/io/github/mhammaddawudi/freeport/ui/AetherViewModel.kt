@@ -27,6 +27,14 @@ import io.github.mhammaddawudi.freeport.core.IphoneConfig
 import io.github.mhammaddawudi.freeport.core.IphoneExporter
 import io.github.mhammaddawudi.freeport.core.SpeedReport
 import io.github.mhammaddawudi.freeport.core.SpeedTester
+import io.github.mhammaddawudi.freeport.core.AppUpdate
+import io.github.mhammaddawudi.freeport.core.UpdateChecker
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.core.content.FileProvider
+import java.io.File
 import io.github.mhammaddawudi.freeport.core.isEngaged
 import io.github.mhammaddawudi.freeport.data.AetherSettings
 import io.github.mhammaddawudi.freeport.data.AppLanguage
@@ -40,6 +48,15 @@ sealed interface IphoneExportUi {
     data class Working(val phase: IphoneExporter.Phase) : IphoneExportUi
     data class Ready(val config: IphoneConfig) : IphoneExportUi
     data class Failed(val message: String) : IphoneExportUi
+}
+
+/** The floating update card. */
+sealed interface UpdateUi {
+    data object Hidden : UpdateUi
+    data class Available(val update: AppUpdate) : UpdateUi
+    data class Downloading(val update: AppUpdate, val progress: Float) : UpdateUi
+    data class Ready(val update: AppUpdate, val apk: File) : UpdateUi
+    data class Failed(val update: AppUpdate, val message: String) : UpdateUi
 }
 
 /** Where the speed test is, and what it last measured. */
@@ -56,7 +73,14 @@ data class TrafficUi(
     val upRate: Long = 0,
     val downTotal: Long = 0,
     val upTotal: Long = 0,
-)
+    /** The last [HISTORY] seconds of rates, oldest first, for the sparkline. */
+    val downHistory: List<Long> = emptyList(),
+    val upHistory: List<Long> = emptyList(),
+) {
+    companion object {
+        const val HISTORY = 40
+    }
+}
 
 class AetherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -93,6 +117,12 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
     private var speedJob: Job? = null
     private val speedTester = SpeedTester()
 
+    private val updates = UpdateChecker(application)
+    private val updatePrefs = application.getSharedPreferences("aether.updates", android.content.Context.MODE_PRIVATE)
+    private val _update = MutableStateFlow<UpdateUi>(UpdateUi.Hidden)
+    val update: StateFlow<UpdateUi> = _update.asStateFlow()
+    private var updateJob: Job? = null
+
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val messages: SharedFlow<String> = _messages.asSharedFlow()
 
@@ -100,6 +130,119 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { _coreVersion.value = CoreProvider.core.version() }
         viewModelScope.launch { meterTraffic() }
         viewModelScope.launch { pingOnConnect() }
+        viewModelScope.launch { watchForUpdates() }
+    }
+
+    /**
+     * Checks GitHub shortly after launch and again whenever a session comes
+     * up — on a blocked line the first check often only gets through once
+     * the tunnel is there to carry it.
+     */
+    private suspend fun watchForUpdates() {
+        delay(UPDATE_FIRST_CHECK_MS)
+        checkForUpdate()
+        state.map { it is ConnectionState.Connected }
+            .distinctUntilChanged()
+            .collect { connected -> if (connected) checkForUpdate() }
+    }
+
+    private suspend fun checkForUpdate() {
+        if (_update.value !is UpdateUi.Hidden) return
+        val found = runCatching { updates.check(tunnelProxyPort()) }
+            .onFailure { CoreLog.info("[*] update check did not answer: ${it.message}") }
+            .getOrNull() ?: return
+        val snoozedVersion = updatePrefs.getString(KEY_SNOOZED_VERSION, null)
+        val snoozedUntil = updatePrefs.getLong(KEY_SNOOZED_UNTIL, 0)
+        if (snoozedVersion == found.version && System.currentTimeMillis() < snoozedUntil) return
+        CoreLog.info("[*] version ${found.version} is available")
+        _update.value = UpdateUi.Available(found)
+    }
+
+    /** Downloads the update, or installs it once downloaded. */
+    fun installUpdate() {
+        when (val current = _update.value) {
+            is UpdateUi.Ready -> launchInstaller(current.apk)
+            is UpdateUi.Available -> downloadUpdate(current.update)
+            is UpdateUi.Failed -> downloadUpdate(current.update)
+            else -> Unit
+        }
+    }
+
+    /** Hides the card for a day; a newer version than this one shows at once. */
+    fun postponeUpdate() {
+        val update = when (val current = _update.value) {
+            is UpdateUi.Available -> current.update
+            is UpdateUi.Downloading -> current.update
+            is UpdateUi.Ready -> current.update
+            is UpdateUi.Failed -> current.update
+            UpdateUi.Hidden -> return
+        }
+        updateJob?.cancel()
+        updatePrefs.edit()
+            .putString(KEY_SNOOZED_VERSION, update.version)
+            .putLong(KEY_SNOOZED_UNTIL, System.currentTimeMillis() + SNOOZE_MS)
+            .apply()
+        _update.value = UpdateUi.Hidden
+    }
+
+    private fun downloadUpdate(update: AppUpdate) {
+        if (updateJob?.isActive == true) return
+        updateJob = viewModelScope.launch {
+            _update.value = UpdateUi.Downloading(update, 0f)
+            val result = runCatching {
+                updates.download(update, tunnelProxyPort()) { progress ->
+                    _update.value = UpdateUi.Downloading(update, progress)
+                }
+            }
+            ensureActive()
+            result.fold(
+                onSuccess = { apk ->
+                    _update.value = UpdateUi.Ready(update, apk)
+                    launchInstaller(apk)
+                },
+                onFailure = { failure ->
+                    CoreLog.warn("[-] update download: ${failure.message}")
+                    _update.value = UpdateUi.Failed(update, failure.message ?: "download failed")
+                },
+            )
+        }
+    }
+
+    /**
+     * Hands the apk to Android's installer. The first time, Android needs
+     * this app allowed to install updates; that screen opens instead, and the
+     * card stays on "Install" for when the person comes back.
+     */
+    private fun launchInstaller(apk: File) {
+        val app = getApplication<Application>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !app.packageManager.canRequestPackageInstalls()) {
+            runCatching {
+                app.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+            _messages.tryEmit(app.getString(R.string.update_allow_installs))
+            return
+        }
+        val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", apk)
+        runCatching {
+            app.startActivity(
+                Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.onFailure { _messages.tryEmit(it.message ?: "installer unavailable") }
+    }
+
+    /** The release page, for the full notes. */
+    fun openUpdatePage() {
+        val page = (_update.value as? UpdateUi.Available)?.update?.pageUrl ?: return
+        runCatching {
+            getApplication<Application>().startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(page)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     /**
@@ -258,6 +401,10 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
     private companion object {
         /** Lets tun2socks finish coming up before the first ping goes through it. */
         const val PING_SETTLE_MS = 1_200L
+        const val UPDATE_FIRST_CHECK_MS = 3_000L
+        const val SNOOZE_MS = 24 * 60 * 60 * 1000L
+        const val KEY_SNOOZED_VERSION = "snoozed_version"
+        const val KEY_SNOOZED_UNTIL = "snoozed_until"
     }
 
     private suspend fun meterTraffic() {
@@ -273,11 +420,16 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
                 while (true) {
                     delay(1_000)
                     val current = meter.totals() ?: continue
+                    val down = (current.rxBytes - previous.rxBytes).coerceAtLeast(0)
+                    val up = (current.txBytes - previous.txBytes).coerceAtLeast(0)
+                    val last = _traffic.value
                     _traffic.value = TrafficUi(
-                        downRate = (current.rxBytes - previous.rxBytes).coerceAtLeast(0),
-                        upRate = (current.txBytes - previous.txBytes).coerceAtLeast(0),
+                        downRate = down,
+                        upRate = up,
                         downTotal = (current.rxBytes - base.rxBytes).coerceAtLeast(0),
                         upTotal = (current.txBytes - base.txBytes).coerceAtLeast(0),
+                        downHistory = (last.downHistory + down).takeLast(TrafficUi.HISTORY),
+                        upHistory = (last.upHistory + up).takeLast(TrafficUi.HISTORY),
                     )
                     previous = current
                 }

@@ -7,6 +7,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -112,7 +118,7 @@ fun SpeedPanel(
                 glyph = GlyphKind.Pulse,
                 value = report?.pingMs?.toString(),
                 unit = "ms",
-                footnote = report?.jitterMs?.let { stringResource(R.string.speed_jitter, it.toInt()) },
+                footnote = report?.jitterMs?.let { "\u2066" + stringResource(R.string.speed_jitter, it.toInt()) + "\u2069" },
                 tint = pingTint(report?.pingMs),
                 progress = if (phase == SpeedReport.Phase.Ping) report?.progress else null,
                 modifier = Modifier.weight(1f),
@@ -160,6 +166,19 @@ fun SpeedPanel(
                 RowDivider()
                 Spacer(Modifier.height(14.dp))
                 LiveTraffic(traffic)
+                Spacer(Modifier.height(10.dp))
+                Sparkline(
+                    down = traffic.downHistory,
+                    up = traffic.upHistory,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.traffic_session, Formats.bytes(traffic.downTotal + traffic.upTotal)),
+                    style = MaterialTheme.typography.labelMedium.merge(NumericStyle),
+                    color = AetherColors.InkFaint,
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -171,13 +190,6 @@ private fun LiveTraffic(traffic: TrafficUi) {
         RateLabel(GlyphKind.Down, stringResource(R.string.traffic_down), traffic.downRate, AetherColors.Mint)
         Spacer(Modifier.width(18.dp))
         RateLabel(GlyphKind.Up, stringResource(R.string.traffic_up), traffic.upRate, AetherColors.Selected)
-        Spacer(Modifier.weight(1f))
-        Text(
-            stringResource(R.string.traffic_session, Formats.bytes(traffic.downTotal + traffic.upTotal)),
-            style = MaterialTheme.typography.labelMedium.merge(NumericStyle),
-            color = AetherColors.InkFaint,
-            maxLines = 1,
-        )
     }
 }
 
@@ -323,3 +335,59 @@ private fun pingTint(ping: Long?): Color = when {
 
 private fun formatMbps(value: Double): String =
     if (value < 10) String.format(Locale.US, "%.1f", value) else String.format(Locale.US, "%.0f", value)
+
+/**
+ * The last forty seconds of traffic: download as a filled curve, upload as
+ * a line over it. Scaled to the busiest second, so a quiet link still shows
+ * its shape rather than lying flat along the floor.
+ */
+@Composable
+private fun Sparkline(down: List<Long>, up: List<Long>, modifier: Modifier = Modifier) {
+    val downColour = AetherColors.Mint
+    val upColour = AetherColors.Selected
+    val grid = AetherColors.Ink.copy(alpha = 0.05f)
+    Canvas(modifier) {
+        val slots = TrafficUi.HISTORY - 1
+        val peak = (down + up).maxOrNull()?.coerceAtLeast(1) ?: 1
+        val stepX = size.width / slots
+        for (row in 1..2) {
+            val y = size.height * row / 3f
+            drawLine(grid, Offset(0f, y), Offset(size.width, y), 1f)
+        }
+        fun pathOf(values: List<Long>, closed: Boolean): Path {
+            val path = Path()
+            val start = slots - (values.size - 1)
+            values.forEachIndexed { i, v ->
+                val x = (start + i) * stepX
+                val y = size.height - (v.toFloat() / peak) * size.height * 0.92f
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            if (closed && values.isNotEmpty()) {
+                path.lineTo(size.width, size.height)
+                path.lineTo(start * stepX, size.height)
+                path.close()
+            }
+            return path
+        }
+        if (down.size >= 2) {
+            drawPath(
+                pathOf(down, closed = true),
+                Brush.verticalGradient(
+                    listOf(downColour.copy(alpha = 0.30f), downColour.copy(alpha = 0.0f)),
+                ),
+            )
+            drawPath(
+                pathOf(down, closed = false),
+                downColour,
+                style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round),
+            )
+        }
+        if (up.size >= 2) {
+            drawPath(
+                pathOf(up, closed = false),
+                upColour.copy(alpha = 0.85f),
+                style = Stroke(1.4.dp.toPx(), cap = StrokeCap.Round),
+            )
+        }
+    }
+}

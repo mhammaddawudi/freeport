@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -50,6 +51,7 @@ fun FloatingTabBar(
     val shape = RoundedCornerShape(28.dp)
     Row(
         modifier = modifier
+            .shadow(24.dp, shape, spotColor = Color.Black)
             .clip(shape)
             .background(
                 Brush.verticalGradient(

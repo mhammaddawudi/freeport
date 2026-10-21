@@ -12,6 +12,8 @@
     <!-- Needed to list installed apps for per-app routing; Play allows this
          for VPN clients that offer it. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Hands a downloaded update to the system installer, which still asks. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".AetherApp"

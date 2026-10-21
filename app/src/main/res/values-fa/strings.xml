@@ -197,4 +197,17 @@
     <string name="region_warning_unlock_failed">رفع محدودیت منطقه این بار سروری پیدا نکرد و سایت‌ها هنوز ایران را می‌بینند. در اتصال بعدی دوباره تلاش می‌کند.</string>
     <string name="region_ok">سایت‌ها این کشور را می‌بینند. برنامه‌های دارای محدودیت منطقه باید کار کنند.</string>
     <string name="state_relaying">در حال انتقال خروجی به خارج</string>
+
+    <!-- In-app update -->
+    <string name="update_title">فری‌پورت %1$s آمد</string>
+    <string name="update_subtitle">آمادهٔ نصب · %1$s</string>
+    <string name="update_install">به‌روزرسانی</string>
+    <string name="update_later">بعداً</string>
+    <string name="update_downloading">در حال دانلود… %1$d%%</string>
+    <string name="update_ready">نصب</string>
+    <string name="update_ready_subtitle">دانلود شد. برای پایان «نصب» را بزنید</string>
+    <string name="update_failed">دانلود متوقف شد: %1$s</string>
+    <string name="update_retry">دوباره</string>
+    <string name="update_notes">چه چیزی جدید است</string>
+    <string name="update_allow_installs">اجازهٔ نصب به‌روزرسانی را به فری‌پورت بدهید و دوباره «نصب» را بزنید</string>
 </resources>

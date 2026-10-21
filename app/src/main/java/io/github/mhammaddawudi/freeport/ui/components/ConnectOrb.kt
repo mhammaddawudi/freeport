@@ -143,6 +143,10 @@ fun ConnectOrb(
         else -> stringResource(R.string.action_connect)
     }
 
+    val discTop = AetherColors.SurfaceRaised
+    val discBottom = AetherColors.Void
+    val dialIdle = AetherColors.Ink
+
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
@@ -241,6 +245,58 @@ fun ConnectOrb(
                         center = centre,
                     )
                 }
+
+                // The dial: ticks round the ring that light up as the session
+                // comes up — the same progress the arc shows, made legible at
+                // a glance like an instrument rather than a spinner.
+                val ticks = 60
+                val lit = when {
+                    connected -> 1f
+                    busy -> progress
+                    else -> 0f
+                }
+                for (i in 0 until ticks) {
+                    val fraction = i / ticks.toFloat()
+                    val angle = ((-90f + 360f * fraction) * (PI / 180f)).toFloat()
+                    val major = i % 5 == 0
+                    val inner = radius * (if (major) 0.80f else 0.82f) * grow * press
+                    val outer = radius * 0.86f * grow * press
+                    val on = fraction < lit
+                    val colour = if (on) {
+                        core.copy(alpha = 0.55f + 0.45f * glow)
+                    } else {
+                        dialIdle.copy(alpha = if (major) 0.16f else 0.07f)
+                    }
+                    drawLine(
+                        color = colour,
+                        start = Offset(centre.x + inner * cos(angle), centre.y + inner * sin(angle)),
+                        end = Offset(centre.x + outer * cos(angle), centre.y + outer * sin(angle)),
+                        strokeWidth = if (major) 2.dp.toPx() else 1.4.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+
+                // A glass disc inside the ring, lit from the top left, so the
+                // button reads as something you can press.
+                val discRadius = ringRadius - stroke * 1.4f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(discTop, discBottom),
+                        Offset(centre.x - discRadius * 0.35f, centre.y - discRadius * 0.45f),
+                        discRadius * 1.5f,
+                    ),
+                    radius = discRadius,
+                    center = centre,
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(tone.primary.copy(alpha = 0.16f * glow + 0.06f * busyGlow), Color.Transparent),
+                        centre,
+                        discRadius,
+                    ),
+                    radius = discRadius,
+                    center = centre,
+                )
 
                 // The ring. Idle it is a faint outline; connected it closes
                 // into a full bright circle; connecting, an arc runs round it.

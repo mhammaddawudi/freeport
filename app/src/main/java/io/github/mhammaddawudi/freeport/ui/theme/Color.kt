@@ -48,34 +48,36 @@ data class AetherPalette(
  * warnings rather than as decoration.
  */
 val DarkPalette = AetherPalette(
-    void = Color(0xFF0E0E12),
-    abyss = Color(0xFF131318),
-    surface = Color(0xFF16161C),
-    surfaceRaised = Color(0xFF1E1E25),
-    hairline = Color(0x26FFFFFF),
-    hairlineStrong = Color(0x52FFFFFF),
-    ink = Color(0xFFF4F4F6),
-    inkMuted = Color(0xFF9B9BA6),
-    inkFaint = Color(0xFF5E5E6B),
+    // A cool near-black rather than neutral grey: it reads as depth, and
+    // the white mark and the green "connected" both sit brighter on it.
+    void = Color(0xFF08080C),
+    abyss = Color(0xFF0D0D12),
+    surface = Color(0xFF121218),
+    surfaceRaised = Color(0xFF1A1A22),
+    hairline = Color(0x1FFFFFFF),
+    hairlineStrong = Color(0x47FFFFFF),
+    ink = Color(0xFFF5F5F8),
+    inkMuted = Color(0xFFA0A0AD),
+    inkFaint = Color(0xFF62626F),
 
     // connected: green, the one thing that has to be readable at a glance
-    mint = Color(0xFF42D98A),
+    mint = Color(0xFF3EE08F),
     cyan = Color(0xFFE6E7EC),
     // and the colour that marks a chosen protocol
-    selected = Color(0xFFC08BFF),
+    selected = Color(0xFFB98CFF),
     // what a chosen tab or switch is tinted with: the logo's white, softened
     // so a filled pill does not glare on a near-black ground
-    control = Color(0xFFCFCFD8),
-    aqua = Color(0xFF7BE8B4),
+    control = Color(0xFFE9E9F0),
+    aqua = Color(0xFF7CEBC0),
 
     // at rest
     violet = Color(0xFF8C8C99),
     indigo = Color(0xFF6E6E7B),
 
     // working, and gone wrong
-    amber = Color(0xFFCBB68C),
-    coral = Color(0xFFC79A86),
-    rose = Color(0xFFE0616B),
+    amber = Color(0xFFF2C46B),
+    coral = Color(0xFFE39A7A),
+    rose = Color(0xFFFF5F6D),
 )
 
 val LocalAetherPalette = staticCompositionLocalOf { DarkPalette }

@@ -197,4 +197,17 @@
     <string name="region_warning_unlock_failed">Rakirina sînorê herêmê vê carê server nedît, loma malper hîn Îranê dibînin. Di girêdana din de dîsa diceribîne.</string>
     <string name="region_ok">Malper vî welatî dibînin. Sepanên bi sînorê herêmê divê bixebitin.</string>
     <string name="state_relaying">Derketin diçe derve</string>
+
+    <!-- In-app update -->
+    <string name="update_title">Freeport %1$s hat</string>
+    <string name="update_subtitle">Amade ye · %1$s</string>
+    <string name="update_install">Nûve bike</string>
+    <string name="update_later">Paşê</string>
+    <string name="update_downloading">Tê daxistin… %1$d%%</string>
+    <string name="update_ready">Saz bike</string>
+    <string name="update_ready_subtitle">Hate daxistin. Ji bo qedandinê Saz bike bitikîne</string>
+    <string name="update_failed">Daxistin rawestiya: %1$s</string>
+    <string name="update_retry">Dîsa</string>
+    <string name="update_notes">Çi nû ye</string>
+    <string name="update_allow_installs">Destûrê bide Freeport ku nûvekirinan saz bike, paşê dîsa Saz bike bitikîne</string>
 </resources>
