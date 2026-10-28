@@ -14,6 +14,10 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
+    // Unit tests run on the JVM, where android.util.Log only exists as a stub;
+    // the engine logs through it, so it answers with defaults there.
+    testOptions { unitTests.isReturnDefaultValues = true }
+
     namespace = "io.github.mhammaddawudi.freeport"
     compileSdk = 34
     // The SDK on this machine has platform 34; 35 is not needed by anything here.
@@ -23,8 +27,8 @@ android {
         applicationId = "io.github.mhammaddawudi.freeport"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "2.0"
+        versionCode = 8
+        versionName = "2.1"
     }
 
     // One apk per phone architecture plus a universal one. The per-ABI apks
@@ -98,6 +102,8 @@ android {
 
     buildFeatures {
         compose = true
+        // The home screen shows versionName, so people can tell which build they run.
+        buildConfig = true
     }
 
     packaging {

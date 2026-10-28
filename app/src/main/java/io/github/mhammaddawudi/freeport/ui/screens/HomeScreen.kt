@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import io.github.mhammaddawudi.freeport.BuildConfig
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.TunMode
@@ -150,13 +151,20 @@ private fun BrandBar(state: ConnectionState) {
             Image(painterResource(R.mipmap.ic_launcher_foreground), contentDescription = null, Modifier.size(52.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Text(
-            text = stringResource(R.string.app_name),
-            style = MaterialTheme.typography.titleLarge,
-            color = AetherColors.Ink,
-            maxLines = 1,
-            modifier = Modifier.weight(1f),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.titleLarge,
+                color = AetherColors.Ink,
+                maxLines = 1,
+            )
+            Text(
+                text = "v${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.labelSmall,
+                color = AetherColors.InkFaint,
+                maxLines = 1,
+            )
+        }
         val (label, tint) = when (state) {
             is ConnectionState.Connected -> R.string.state_connected to AetherColors.Mint
             is ConnectionState.Failed -> R.string.state_failed to AetherColors.Rose

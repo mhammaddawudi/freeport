@@ -72,9 +72,10 @@ interface AetherCore {
     suspend fun startManaged(settings: AetherSettings, configDir: String): CoreResult<JobHandle>
 
     /**
-     * Waits until a session is carrying traffic, which is the moment its
-     * local SOCKS5 listener starts accepting. Returns null once ready, or the
-     * reason it never got there.
+     * Waits until a session is carrying traffic: its local SOCKS5 proxy
+     * grants a CONNECT through the tunnel. The core holds the listener from
+     * the start, so accepting alone does not count. Returns null once ready,
+     * or the reason it never got there.
      *
      * Every path needs this, not just the managed one: starting tun2socks
      * against a proxy that is not listening yet produces a tunnel that says
@@ -90,6 +91,13 @@ interface AetherCore {
      * really the previous one. Returns false if the port never freed up.
      */
     suspend fun awaitProxyClosed(settings: AetherSettings, timeoutMs: Long): Boolean
+
+    /**
+     * Whether the SOCKS5 proxy on [port] can open a connection right now —
+     * the tunnel's own, or Psiphon's behind it. A running process proves
+     * nothing: either can stay alive while carrying nothing.
+     */
+    suspend fun carries(port: Int): Boolean
 
     /** Cancels a running job. Corresponds to `aether_job_cancel`. */
     suspend fun stopTunnel(job: JobHandle)

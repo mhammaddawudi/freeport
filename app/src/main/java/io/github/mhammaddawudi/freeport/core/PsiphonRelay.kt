@@ -24,17 +24,39 @@ import java.util.concurrent.TimeUnit
  * `libpsiphon.so` so Android extracts it executable into the library folder.
  * It runs as a child process; its notices arrive as JSON lines on stderr.
  */
-class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) {
+class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : UnlockRelay {
 
     private val binary = File(context.applicationInfo.nativeLibraryDir, "libpsiphon.so")
     private val dataDir = File(context.filesDir, "psiphon")
 
     @Volatile private var process: Process? = null
+    @Volatile private var tunnel: Tunnel = Tunnel.Waiting
+    @Volatile private var starting = false
+
+    /** The country the running client was asked for; empty for its own pick. */
+    @Volatile override var country: String = ""
+        private set
 
     val isAvailable: Boolean get() = binary.isFile
 
     /** True while the client process is running. */
     val isAlive: Boolean get() = process?.isAlive == true
+
+    /** True while [start] runs, so a health check does not start a second client over it. */
+    override val isStarting: Boolean get() = starting
+
+    /** What the running client says about its tunnel. */
+    override val health: Health
+        get() = when {
+            !isAlive -> Health.Stopped
+            tunnel == Tunnel.Up -> Health.Up
+            else -> Health.Searching
+        }
+
+    enum class Health { Up, Searching, Stopped }
+
+    /** The client's own view of its tunnel, from its `Tunnels` notices. */
+    internal enum class Tunnel { Waiting, Up, Lost }
 
     /**
      * Starts the client, dialling out through [upstreamSocksPort] and serving
@@ -46,10 +68,20 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) {
         country: String,
         timeoutMs: Long,
     ): String? = withContext(Dispatchers.IO) {
+        starting = true
+        try {
+            launch(upstreamSocksPort, localPort, country, timeoutMs)
+        } finally {
+            starting = false
+        }
+    }
+
+    private suspend fun launch(upstreamSocksPort: Int, localPort: Int, country: String, timeoutMs: Long): String? {
         stop()
-        if (!isAvailable) return@withContext "the psiphon client is not in this build"
+        if (!isAvailable) return "the psiphon client is not in this build"
         dataDir.mkdirs()
         val configFile = File(dataDir, "config.json")
+        reapStale(configFile)
         configFile.writeText(config(upstreamSocksPort, localPort, country).toString())
 
         val ready = CompletableDeferred<String?>()
@@ -58,8 +90,11 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) {
                 .directory(dataDir)
                 .redirectErrorStream(true)
                 .start()
-        }.getOrElse { return@withContext "psiphon did not start: ${it.message}" }
+        }.getOrElse { return "psiphon did not start: ${it.message}" }
         process = started
+        tunnel = Tunnel.Waiting
+        this.country = country
+        pidOf(started)?.let { pid -> runCatching { File(dataDir, PID_FILE).writeText(pid.toString()) } }
         log.info("[*] region unlock: starting psiphon${if (country.isEmpty()) "" else " towards $country"}")
 
         // Drained on its own thread for the life of the process: a full pipe
@@ -69,7 +104,7 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) {
         val outcome = withTimeoutOrNull(timeoutMs) { ready.await() }
             ?: "psiphon found no server within ${timeoutMs / 1000}s"
         if (outcome.isNotEmpty()) stop()
-        outcome.takeIf { it.isNotEmpty() }
+        return outcome.takeIf { it.isNotEmpty() }
     }
 
     fun stop() {
@@ -79,6 +114,41 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) {
         if (!runCatching { running.waitFor(1, TimeUnit.SECONDS) }.getOrDefault(false)) {
             running.destroyForcibly()
         }
+        File(dataDir, PID_FILE).delete()
+    }
+
+    /**
+     * Stops a client an earlier run of the app left behind (the app process
+     * was killed before it could stop it). One holding the data folder makes
+     * every new one exit at once. The pid is only signalled while it is still
+     * a psiphon with this config, never a process that has since reused it.
+     */
+    private fun reapStale(configFile: File) {
+        val pidFile = File(dataDir, PID_FILE)
+        val pid = runCatching { pidFile.readText().trim().toInt() }.getOrNull() ?: return
+        pidFile.delete()
+        if (!isOurClient(pid, configFile)) return
+        log.info("[*] stopping a psiphon left over from an earlier run (pid $pid)")
+        android.os.Process.killProcess(pid)
+        repeat(20) {
+            if (!isOurClient(pid, configFile)) return
+            Thread.sleep(100)
+        }
+        android.os.Process.sendSignal(pid, SIGKILL)
+    }
+
+    /**
+     * The SDK offers no `Process.pid()`; Android's process class keeps the
+     * pid in a private field of that name. Null if that ever changes, which
+     * only loses the clean-up of a client left behind.
+     */
+    private fun pidOf(running: Process): Int? = runCatching {
+        running.javaClass.getDeclaredField("pid").apply { isAccessible = true }.getInt(running)
+    }.getOrNull()
+
+    private fun isOurClient(pid: Int, configFile: File): Boolean {
+        val command = runCatching { File("/proc/$pid/cmdline").readText().replace('\u0000', ' ') }.getOrNull() ?: return false
+        return command.contains("libpsiphon.so") && command.contains(configFile.absolutePath)
     }
 
     private fun readNotices(running: Process, ready: CompletableDeferred<String?>) {
@@ -88,11 +158,15 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) {
                 val data = notice.optJSONObject("data") ?: JSONObject()
                 when (notice.optString("noticeType")) {
                     "Tunnels" -> {
-                        val count = data.optInt("count")
-                        if (count > 0) {
-                            if (ready.complete("")) log.good("[+] region unlock: psiphon tunnel is up")
-                        } else if (ready.isCompleted) {
-                            log.warn("[-] region unlock: psiphon lost its tunnel, it is looking for another")
+                        val was = tunnel
+                        tunnel = nextTunnel(was, data.optInt("count"))
+                        when {
+                            was == Tunnel.Waiting && tunnel == Tunnel.Up ->
+                                if (ready.complete("")) log.good("[+] region unlock: psiphon tunnel is up")
+                            was == Tunnel.Lost && tunnel == Tunnel.Up ->
+                                log.good("[+] region unlock: psiphon found another tunnel")
+                            was == Tunnel.Up && tunnel == Tunnel.Lost ->
+                                log.warn("[-] region unlock: psiphon lost its tunnel, it is looking for another")
                         }
                     }
                     "ActiveTunnel" -> log.info(
@@ -123,7 +197,17 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) {
         .put("EmitBytesTransferred", false)
         .apply { if (country.isNotEmpty()) put("EgressRegion", country) }
 
-    private companion object {
+    internal companion object {
+        const val PID_FILE = "psiphon.pid"
+        const val SIGKILL = 9
+
+        /** The tunnel state after a `Tunnels` notice with [count] tunnels. */
+        fun nextTunnel(current: Tunnel, count: Int): Tunnel = when {
+            count > 0 -> Tunnel.Up
+            current == Tunnel.Waiting -> Tunnel.Waiting
+            else -> Tunnel.Lost
+        }
+
         /** base64 of Psiphon's public remote server list address. */
         const val SERVER_LIST_URL_B64 =
             "aHR0cHM6Ly9zMy5hbWF6b25hd3MuY29tLy9wc2lwaG9uL3dlYi9tanI0LXAyM3ItcHV3bC9zZXJ2ZXJfbGlzdF9jb21wcmVzc2Vk"

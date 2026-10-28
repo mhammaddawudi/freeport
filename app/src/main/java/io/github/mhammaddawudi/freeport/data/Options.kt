@@ -19,7 +19,7 @@ import io.github.mhammaddawudi.freeport.R
  * The core's own [`Transport`] enum has only two members — masque and
  * wireguard. The two extra rows here are the transport plus a switch the core
  * reads elsewhere: h2 flips `AETHER_MASQUE_HTTP2`, and gool is the nested
- * wireguard mode the CLI drives with `--gool`. [Auto] is resolved by the
+ * wireguard mode the CLI drives with `--gool-classic`. [Auto] is resolved by the
  * engine into one of the others before anything reaches the core.
  */
 enum class Protocol(
@@ -52,7 +52,7 @@ enum class Protocol(
         id = "gool",
         displayName = "Warp in Warp",
         transport = "wg",
-        coreArguments = listOf("--gool"),
+        coreArguments = listOf("--gool-classic"),
         defaultPort = 2408,
         defaultNoize = "balanced",
     ),

@@ -113,15 +113,17 @@ class NativeAetherCore : AetherCore {
             if (state is JobState.Done) {
                 return@io state.detail.ifEmpty { "the core exited before the tunnel came up" }
             }
-            val listening = runCatching {
-                Socket().use { it.connect(InetSocketAddress("127.0.0.1", settings.socksPort), 250) }
-            }.isSuccess
-            if (listening) return@io null
+            // A granted CONNECT, not a listener: the core holds its port from
+            // the start, and tun2socks pointed at a proxy that cannot reach
+            // anything yet gives a tunnel that reports success and carries
+            // nothing.
+            val remaining = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1).toInt()
+            if (SocksProbe.carries(settings.socksPort, timeoutMs = minOf(SocksProbe.TIMEOUT_MS, remaining))) return@io null
             // Short: every poll here is time the person spends watching the
             // button, and a refused loopback connect costs next to nothing.
-            delay(150)
+            delay(250)
         }
-        "the core did not open its proxy within ${timeoutMs / 1000}s"
+        "the tunnel did not carry a connection within ${timeoutMs / 1000}s"
     }
 
     override suspend fun awaitProxyClosed(settings: AetherSettings, timeoutMs: Long): Boolean = io {
@@ -135,6 +137,8 @@ class NativeAetherCore : AetherCore {
         }
         false
     }
+
+    override suspend fun carries(port: Int): Boolean = io { SocksProbe.carries(port) }
 
     override suspend fun stopTunnel(job: JobHandle) {
         io {

@@ -470,7 +470,14 @@ class AetherEngine(
         host: TunnelHost,
         viaAuto: Boolean = false,
     ): Outcome = coroutineScope {
-        val relayPort = startRelay(settings, endpoint, viaAuto)
+        // The tunnel carried a test connection, so the edge is worth coming
+        // back to even if Psiphon does not come up behind it.
+        if (endpoint != null) remember(settings, endpoint, viaAuto)
+        val relayPort = when (val relay = startRelay(settings, endpoint, viaAuto)) {
+            is RelayStart.Off -> null
+            is RelayStart.Up -> relay.port
+            is RelayStart.Failed -> return@coroutineScope Outcome(relay.reason, connected = true)
+        }
         try {
             val carried = if (relayPort != null) settings.copy(socksPort = relayPort) else settings
             val mode = host.onTunnelUp(carried, mappedDns = relayPort != null)
@@ -479,7 +486,6 @@ class AetherEngine(
                 settings.protocol, endpoint, since, mode, viaAuto, carried.socksPort, relayed = relayPort != null,
             )
             _state.value = connected
-            if (endpoint != null) remember(settings, endpoint, viaAuto)
             launch { reportExit(connected) }
 
             log.good("[+] connected${endpoint?.let { " via ${it.socket}" } ?: ""}")
@@ -489,15 +495,34 @@ class AetherEngine(
                 log.warn("[-] no tun bridge packaged: device traffic is not captured, point apps at the proxy")
             }
 
+            val health = SessionHealth(
+                tunnelPort = settings.socksPort,
+                relayPort = relayPort,
+                relay = relay,
+                restartRelay = { country ->
+                    relay?.start(settings.socksPort, relayPort ?: 0, country, RELAY_STARTUP_MS)
+                        ?: "this build has no psiphon client"
+                },
+                carries = core::carries,
+                onUnlockDown = {
+                    _state.value = ConnectionState.Connecting(settings.protocol, endpoint, viaAuto, relaying = true)
+                },
+                onUnlockBack = {
+                    // The same session as before, uptime and all; the exit may have moved.
+                    _state.value = connected
+                    launch { reportExit(connected) }
+                },
+                log = log,
+            )
             while (true) {
                 delay(POLL_MS)
                 val polled = core.pollJob(job)
-                val relayDied = relayPort != null && relay?.isAlive != true
-                if (polled is JobState.Done || relayDied) {
+                val unhealthy = if (polled is JobState.Done) null else health.check()
+                if (polled is JobState.Done || unhealthy != null) {
                     val reason = when {
                         polled is JobState.Done ->
                             polled.detail.takeIf { it.isNotEmpty() && it != "closed" } ?: "the core closed the tunnel"
-                        else -> "the region-unlock exit stopped"
+                        else -> unhealthy ?: "the session stopped"
                     }
                     val heldMs = System.currentTimeMillis() - since
                     // An edge that drops a session within seconds is not one to
@@ -514,26 +539,28 @@ class AetherEngine(
         }
     }
 
+    private sealed interface RelayStart {
+        data object Off : RelayStart
+        data class Up(val port: Int) : RelayStart
+        data class Failed(val reason: String) : RelayStart
+    }
+
     /**
-     * Starts Psiphon behind the tunnel when region unlock is on. Returns the
-     * port it serves on, or null to carry traffic on Cloudflare's own exit —
-     * a session with the wrong exit country is still better than none.
+     * Starts Psiphon behind the tunnel when region unlock is on. Fails
+     * closed: with region unlock on, a Psiphon that does not come up ends the
+     * attempt rather than letting traffic leave from Cloudflare's exit, which
+     * sites see as Iran.
      */
-    private suspend fun startRelay(settings: AetherSettings, endpoint: Endpoint?, viaAuto: Boolean): Int? {
-        val relay = relay ?: return null
-        if (!settings.regionUnlock) return null
-        if (!relay.isAvailable) {
-            log.warn("[-] region unlock is on, but this build has no psiphon client")
-            return null
-        }
+    private suspend fun startRelay(settings: AetherSettings, endpoint: Endpoint?, viaAuto: Boolean): RelayStart {
+        if (!settings.regionUnlock) return RelayStart.Off
+        val relay = relay ?: return RelayStart.Failed("region unlock is on, but this build has no psiphon client")
+        if (!relay.isAvailable) return RelayStart.Failed("region unlock is on, but this build has no psiphon client")
         _state.value = ConnectionState.Connecting(settings.protocol, endpoint, viaAuto, relaying = true)
         val port = freePortFrom(settings.socksPort + RELAY_PORT_OFFSET)
         val failure = relay.start(settings.socksPort, port, settings.exitCountry, RELAY_STARTUP_MS)
-        if (failure != null) {
-            log.warn("[-] region unlock did not come up ($failure); staying on the plain tunnel")
-            return null
-        }
-        return port
+            ?: return RelayStart.Up(port)
+        relay.stop()
+        return RelayStart.Failed("region unlock did not come up: $failure")
     }
 
     /** Looks up the exit country and adds it to the state, if the session is still the same one. */

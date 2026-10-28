@@ -119,6 +119,9 @@ class MockAetherCore(
 
     override suspend fun awaitProxyClosed(settings: AetherSettings, timeoutMs: Long): Boolean = true
 
+    /** The mock carries whenever one of its tunnels is up. */
+    override suspend fun carries(port: Int): Boolean = tunnels.values.any { it }
+
     override suspend fun stopTunnel(job: JobHandle) {
         delay(120)
         tunnels.remove(job.id)

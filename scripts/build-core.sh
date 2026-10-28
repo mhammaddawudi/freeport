@@ -89,8 +89,15 @@ install_std () {
 }
 
 (cd "$AETHER_SRC/aether" && cargo fetch --quiet)
-BSSL_SRC="$(ls -d "$HOME"/.cargo/registry/src/*/boring-sys-*/deps/boringssl 2>/dev/null | head -1)"
-[ -n "$BSSL_SRC" ] || { echo "could not find the vendored boringssl source" >&2; exit 1; }
+# The boring-sys the core's lockfile names, not whichever one the registry
+# happens to list first: an older one's headers do not match the boring crate.
+BSSL_VERSION="$(awk '/^name = "boring-sys"/{getline; gsub(/"/, "", $3); print $3; exit}' "$AETHER_SRC/aether/Cargo.lock")"
+BSSL_SRC="$(ls -d "$HOME"/.cargo/registry/src/*/boring-sys-"$BSSL_VERSION"/deps/boringssl 2>/dev/null | head -1)"
+[ -n "$BSSL_SRC" ] || { echo "could not find the boringssl source of boring-sys $BSSL_VERSION" >&2; exit 1; }
+
+# Build folders and the cargo registry would otherwise be written into the
+# libraries as /Users/<name>/..., which names the person who built them.
+REMAP="-ffile-prefix-map=$HOME=/build -fdebug-prefix-map=$HOME=/build -fmacro-prefix-map=$HOME=/build"
 
 for abi in $ABIS; do
   triple="$(triple_of "$abi")"
@@ -98,15 +105,16 @@ for abi in $ABIS; do
   echo "==> $abi ($triple)"
   install_std "$triple"
 
-  if [ ! -f "$WORK/bssl-$abi/libcrypto.a" ]; then
-    cmake -S "$BSSL_SRC" -B "$WORK/bssl-$abi/build" \
+  BSSL_OUT="$WORK/bssl-$BSSL_VERSION-$abi"
+  if [ ! -f "$BSSL_OUT/libcrypto.a" ]; then
+    cmake -S "$BSSL_SRC" -B "$BSSL_OUT/build" \
       -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
       -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$API" -DANDROID_STL=c++_static \
       -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-      -DCMAKE_AR="$TOOLCHAIN/bin/llvm-ar" -DCMAKE_RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
-    cmake --build "$WORK/bssl-$abi/build" --target crypto ssl -j "$(getconf _NPROCESSORS_ONLN)"
-    mkdir -p "$WORK/bssl-$abi"
-    find "$WORK/bssl-$abi/build" -name 'libcrypto.a' -o -name 'libssl.a' | xargs -I{} cp {} "$WORK/bssl-$abi/"
+      -DCMAKE_AR="$TOOLCHAIN/bin/llvm-ar" -DCMAKE_RANLIB="$TOOLCHAIN/bin/llvm-ranlib" \
+      -DCMAKE_C_FLAGS="$REMAP" -DCMAKE_CXX_FLAGS="$REMAP" -DCMAKE_ASM_FLAGS="$REMAP"
+    cmake --build "$BSSL_OUT/build" --target crypto ssl -j "$(getconf _NPROCESSORS_ONLN)"
+    find "$BSSL_OUT/build" -name 'libcrypto.a' -o -name 'libssl.a' | xargs -I{} cp {} "$BSSL_OUT/"
   fi
 
   underscored="$(echo "$triple" | tr '-' '_')"
@@ -116,21 +124,29 @@ for abi in $ABIS; do
   export AR_${underscored}="$TOOLCHAIN/bin/llvm-ar"
   export RANLIB_${underscored}="$TOOLCHAIN/bin/llvm-ranlib"
   export CARGO_TARGET_${upper}_LINKER="$TOOLCHAIN/bin/$cc-clang"
-  export CFLAGS_${underscored}="--target=$cc"
-  export CXXFLAGS_${underscored}="--target=$cc"
-  export BORING_BSSL_PATH="$WORK/bssl-$abi"
+  export CFLAGS_${underscored}="--target=$cc $REMAP"
+  export CXXFLAGS_${underscored}="--target=$cc $REMAP"
+  export BORING_BSSL_PATH="$BSSL_OUT"
   export BORING_BSSL_INCLUDE_PATH="$BSSL_SRC/src/include"
   [ -d "$BORING_BSSL_INCLUDE_PATH" ] || export BORING_BSSL_INCLUDE_PATH="$BSSL_SRC/include"
   export BORING_BSSL_ASSUME_PATCHED=1
+  # boring-sys 5 links the shared libc++ on Android unless told otherwise,
+  # and the apk does not ship libc++_shared.so: the core would fail to load.
+  export BORING_BSSL_RUST_CPPLIB_${underscored}="static:-bundle=c++"
   # 16 KB pages: newer devices refuse a library laid out for 4 KB ones.
   # --no-undefined: fail the link rather than ship a .so whose symbols only
   # turn out to be missing when the phone tries to load it.
-  export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,--no-undefined"
+  export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,--no-undefined --remap-path-prefix=$HOME=/build"
 
   (cd "$AETHER_SRC/aether" && cargo build --release --target "$triple" --lib)
+  needed="$("$TOOLCHAIN/bin/llvm-readelf" -d "$AETHER_SRC/aether/target/$triple/release/libaether.so" | awk '/NEEDED/{print $NF}')"
+  if grep -q 'libc++_shared' <<<"$needed"; then
+    echo "libaether.so for $abi still needs libc++_shared.so; the static libc++ link failed" >&2
+    exit 1
+  fi
   mkdir -p "$JNILIBS/$abi"
   cp "$AETHER_SRC/aether/target/$triple/release/libaether.so" "$JNILIBS/$abi/"
-  "$TOOLCHAIN/bin/$cc-clang" -shared -fPIC -O2 \
+  "$TOOLCHAIN/bin/$cc-clang" -shared -fPIC -O2 $REMAP \
     -Wl,-z,max-page-size=16384 -Wl,--no-undefined \
     -o "$JNILIBS/$abi/libaether_jni.so" "$ROOT/app/src/main/cpp/aether_jni.c" \
     -L"$JNILIBS/$abi" -laether -llog
@@ -139,10 +155,15 @@ done
 echo "==> tun2socks"
 (cd "$HEV_SRC" && "$ANDROID_NDK_HOME/ndk-build" NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk \
   APP_ABI="arm64-v8a armeabi-v7a x86_64" APP_PLATFORM="android-$API" \
-  APP_LDFLAGS="-Wl,-z,max-page-size=16384" NDK_LIBS_OUT=./libs NDK_OUT=./obj >/dev/null)
+  APP_CFLAGS="$REMAP" APP_LDFLAGS="-Wl,-z,max-page-size=16384" NDK_LIBS_OUT=./libs NDK_OUT=./obj >/dev/null)
 for abi in arm64-v8a armeabi-v7a x86_64; do
   mkdir -p "$JNILIBS/$abi"
   cp "$HEV_SRC/libs/$abi/libhev-socks5-tunnel.so" "$JNILIBS/$abi/"
+done
+
+echo "==> local paths left in the libraries (should all be 0)"
+for lib in "$JNILIBS"/*/libaether.so "$JNILIBS"/*/libaether_jni.so "$JNILIBS"/*/libhev-socks5-tunnel.so; do
+  printf '%6s  %s\n' "$(strings "$lib" | grep -c "$HOME" || true)" "${lib#$ROOT/}"
 done
 
 echo "==> done"
