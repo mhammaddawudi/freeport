@@ -21,7 +21,6 @@ import java.net.URL
 object ThroughputProbe {
 
     private const val BYTES = 4_000_000
-    private const val URL_DOWN = "https://speed.cloudflare.com/__down?bytes=$BYTES"
     private const val CONNECT_TIMEOUT_MS = 6_000
     private const val WINDOW_MS = 4_000L
 
@@ -29,16 +28,17 @@ object ThroughputProbe {
     private const val WARMUP_BYTES = 64 * 1024
 
     /** Kilobytes per second, or null when nothing came through. */
-    suspend fun measure(socksPort: Int): Long? = withContext(Dispatchers.IO) {
-        runCatching { download(socksPort) }.getOrNull()
-    }
+    suspend fun measure(socksPort: Int, bytes: Int = BYTES, windowMs: Long = WINDOW_MS): Long? =
+        withContext(Dispatchers.IO) {
+            runCatching { download(socksPort, bytes, windowMs) }.getOrNull()
+        }
 
-    private fun download(socksPort: Int): Long? {
+    private fun download(socksPort: Int, bytes: Int, windowMs: Long): Long? {
         val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
-        val connection = URL(URL_DOWN).openConnection(proxy) as HttpURLConnection
+        val connection = URL("https://speed.cloudflare.com/__down?bytes=$bytes").openConnection(proxy) as HttpURLConnection
         try {
             connection.connectTimeout = CONNECT_TIMEOUT_MS
-            connection.readTimeout = WINDOW_MS.toInt()
+            connection.readTimeout = windowMs.toInt()
             connection.useCaches = false
             if (connection.responseCode !in 200..299) throw IOException("answered ${connection.responseCode}")
             return connection.inputStream.use { input ->
@@ -46,7 +46,7 @@ object ThroughputProbe {
                 var total = 0L
                 var warmAt = -1L
                 var warmBytes = 0L
-                val deadline = SystemClock.elapsedRealtime() + WINDOW_MS
+                val deadline = SystemClock.elapsedRealtime() + windowMs
                 while (SystemClock.elapsedRealtime() < deadline) {
                     val read = input.read(buffer)
                     if (read < 0) break

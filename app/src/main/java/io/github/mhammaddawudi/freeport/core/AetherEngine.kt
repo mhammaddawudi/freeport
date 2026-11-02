@@ -96,6 +96,7 @@ class AetherEngine(
     private val relay: PsiphonRelay? = null,
     private val board: EdgeBoard = NoEdgeBoard,
     private val networkOf: () -> String = { NetworkKey.UNKNOWN },
+    private val scout: BackgroundScout? = null,
     private val log: CoreLog = CoreLog,
 ) {
 
@@ -135,6 +136,7 @@ class AetherEngine(
 
     /** How many times this session has dropped a slow edge for another. */
     @Volatile private var rotations = 0
+
 
     fun connect(host: TunnelHost) {
         scope.launch {
@@ -547,6 +549,18 @@ class AetherEngine(
             launch { reportExit(connected) }
             val slow = AtomicReference<String?>(null)
             if (endpoint != null) launch { slow.set(judge(settings, endpoint, viaAuto)) }
+            if (endpoint != null && settings.pinnedPeer.isBlank() && scout != null) {
+                launch {
+                    scout.watch(
+                        settings, endpoint, network,
+                        avoid = { slowEdges.toSet() },
+                        onGood = { tested, good, kbps ->
+                            log.good("[+] scout: ${tested.protocol.displayName} ${good.socket} added to the pool ($kbps KB/s)")
+                            cache.remember(cacheKey(tested), good)
+                        },
+                    )
+                }
+            }
 
             log.good("[+] connected${endpoint?.let { " via ${it.socket}" } ?: ""}")
             log.info("[*] SOCKS5 listening on 127.0.0.1:${carried.socksPort}")

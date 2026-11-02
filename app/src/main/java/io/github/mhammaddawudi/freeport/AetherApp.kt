@@ -5,6 +5,7 @@ import io.github.mhammaddawudi.freeport.core.AetherEngine
 import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.core.CoreProvider
 import io.github.mhammaddawudi.freeport.core.IphoneExporter
+import io.github.mhammaddawudi.freeport.core.BackgroundScout
 import io.github.mhammaddawudi.freeport.core.HttpEdgeBoard
 import io.github.mhammaddawudi.freeport.core.NetworkKey
 import io.github.mhammaddawudi.freeport.core.NoEdgeBoard
@@ -72,6 +73,11 @@ class AetherApp : Application() {
         engine = AetherEngine(
             this, settings, CoreProvider.core, cache, relay, board,
             networkOf = { NetworkKey.current(this) },
+            scout = if (CoreProvider.isNative) {
+                BackgroundScout(this, CoreProvider.core, board, UidTrafficMeter(), java.io.File(filesDir, "identity/probe"))
+            } else {
+                null
+            },
         )
         trafficMeter = if (CoreProvider.isNative) UidTrafficMeter() else SimulatedTrafficMeter()
         VpnNotifications.ensureChannel(this)
