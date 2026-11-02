@@ -142,13 +142,26 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Downloads the update, or installs it once downloaded. */
+    /**
+     * Opens the apk in the browser, which downloads it and hands it to
+     * Android's installer. The app does not download or install anything
+     * itself: an app that fetches apks and asks to install them is what Play
+     * Protect flags as harmful. Android still refuses an apk not signed with
+     * this app's key.
+     */
     fun installUpdate() {
-        when (val current = _update.value) {
-            is UpdateUi.Ready -> launchInstaller(current.apk)
-            is UpdateUi.Available -> downloadUpdate(current.update)
-            is UpdateUi.Failed -> downloadUpdate(current.update)
-            else -> Unit
+        val update = when (val current = _update.value) {
+            is UpdateUi.Available -> current.update
+            is UpdateUi.Downloading -> current.update
+            is UpdateUi.Ready -> current.update
+            is UpdateUi.Failed -> current.update
+            UpdateUi.Hidden -> return
         }
+        runCatching {
+            getApplication<Application>().startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(update.apkUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.onFailure { _messages.tryEmit(it.message ?: "no browser to open the update") }
     }
 
     /** Hides the card for a day; a newer version than this one shows at once. */
@@ -166,56 +179,6 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
             .putLong(KEY_SNOOZED_UNTIL, System.currentTimeMillis() + SNOOZE_MS)
             .apply()
         _update.value = UpdateUi.Hidden
-    }
-
-    private fun downloadUpdate(update: AppUpdate) {
-        if (updateJob?.isActive == true) return
-        updateJob = viewModelScope.launch {
-            _update.value = UpdateUi.Downloading(update, 0f)
-            val result = runCatching {
-                updates.download(update, tunnelProxyPort()) { progress ->
-                    _update.value = UpdateUi.Downloading(update, progress)
-                }
-            }
-            ensureActive()
-            result.fold(
-                onSuccess = { apk ->
-                    _update.value = UpdateUi.Ready(update, apk)
-                    launchInstaller(apk)
-                },
-                onFailure = { failure ->
-                    CoreLog.warn("[-] update download: ${failure.message}")
-                    _update.value = UpdateUi.Failed(update, failure.message ?: "download failed")
-                },
-            )
-        }
-    }
-
-    /**
-     * Hands the apk to Android's installer. The first time, Android needs
-     * this app allowed to install updates; that screen opens instead, and the
-     * card stays on "Install" for when the person comes back.
-     */
-    private fun launchInstaller(apk: File) {
-        val app = getApplication<Application>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !app.packageManager.canRequestPackageInstalls()) {
-            runCatching {
-                app.startActivity(
-                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }
-            _messages.tryEmit(app.getString(R.string.update_allow_installs))
-            return
-        }
-        val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", apk)
-        runCatching {
-            app.startActivity(
-                Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, "application/vnd.android.package-archive")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }.onFailure { _messages.tryEmit(it.message ?: "installer unavailable") }
     }
 
     /** The release page, for the full notes. */

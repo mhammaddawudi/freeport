@@ -27,16 +27,10 @@ data class AppUpdate(
 )
 
 /**
- * Looks for a newer release on GitHub and fetches its apk.
+ * Looks for a newer release on GitHub; the browser fetches the apk.
  *
- * The app is outside its own VPN, so when a session is up both the check
- * and the download go through the tunnel's proxy — GitHub's file host is not
- * always reachable from the bare line — and fall back to the line otherwise.
- *
- * Nothing is installed here: the apk is handed to Android's own installer,
- * which asks the person and refuses anything not signed with this app's key.
- * The signature is also compared before that, so a tampered download never
- * even reaches the prompt.
+ * The app is outside its own VPN, so when a session is up the check goes
+ * through the tunnel's proxy, and falls back to the bare line otherwise.
  */
 class UpdateChecker(
     private val context: Context,
@@ -55,64 +49,6 @@ class UpdateChecker(
             connection.inputStream.bufferedReader().use { it.readText() }
         }
         parse(body, installedVersion, Build.SUPPORTED_ABIS.toList())
-    }
-
-    /**
-     * Downloads the apk into the shared cache, reporting 0..1 as it goes, and
-     * returns it once its signature matches this app's.
-     */
-    suspend fun download(update: AppUpdate, proxyPort: Int?, onProgress: (Float) -> Unit): File =
-        withContext(Dispatchers.IO) {
-            val dir = File(context.cacheDir, "shared/updates").apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
-            val target = File(dir, update.apkName)
-            open(URL(update.apkUrl), proxyPort).use { connection ->
-                if (connection.responseCode != 200) throw IOException("download answered ${connection.responseCode}")
-                val total = connection.contentLengthLong.takeIf { it > 0 } ?: update.apkBytes
-                var done = 0L
-                connection.inputStream.use { input ->
-                    target.outputStream().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            output.write(buffer, 0, read)
-                            done += read
-                            if (total > 0) onProgress((done.toFloat() / total).coerceIn(0f, 1f))
-                        }
-                    }
-                }
-            }
-            if (!signedLikeThisApp(target)) {
-                target.delete()
-                throw IOException("the downloaded apk is not signed with this app's key")
-            }
-            target
-        }
-
-    private fun signedLikeThisApp(apk: File): Boolean {
-        val pm = context.packageManager
-        val archive = signatures(pm.getPackageArchiveInfo(apk.path, signingFlag())) ?: return false
-        val installed = signatures(pm.getPackageInfo(context.packageName, signingFlag())) ?: return false
-        return archive.isNotEmpty() && archive == installed
-    }
-
-    @Suppress("DEPRECATION")
-    private fun signingFlag(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES
-        else PackageManager.GET_SIGNATURES
-
-    @Suppress("DEPRECATION")
-    private fun signatures(info: android.content.pm.PackageInfo?): Set<String>? {
-        info ?: return null
-        val raw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            info.signingInfo?.apkContentsSigners
-        } else {
-            info.signatures
-        } ?: return null
-        val sha = MessageDigest.getInstance("SHA-256")
-        return raw.map { signature -> sha.digest(signature.toByteArray()).joinToString("") { "%02x".format(it) } }.toSet()
     }
 
     private fun open(url: URL, proxyPort: Int?): HttpURLConnection {
