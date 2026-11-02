@@ -1,0 +1,8 @@
+name = "freeport-edge-board"
+main = "src/index.js"
+compatibility_date = "2025-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "freeport-edges"
+database_id = "e90111be-5294-466b-97a2-eeee5385a42c"

@@ -33,9 +33,10 @@ enum class Protocol(
     val defaultNoize: String,
 ) {
     /**
-     * Not a transport of its own: the engine pings MASQUE, MASQUE H2 and
-     * WireGuard side by side and connects with whichever answers fastest,
-     * falling back to warp in warp when none of them does. The default,
+     * Not a transport of its own: the engine first tries the edges measured
+     * fastest on this operator, on any protocol, then scans MASQUE, MASQUE H2
+     * and WireGuard on equal terms, falling back to warp in warp when none of
+     * them answers. The default,
      * because which one gets through differs from one network to the next.
      */
     Auto(

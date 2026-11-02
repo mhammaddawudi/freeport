@@ -4,7 +4,9 @@ import android.content.Context
 import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
@@ -28,6 +30,7 @@ import java.io.File
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 /** Whether device traffic is captured, or only the local proxy is up. */
 enum class TunMode { FullDevice, ProxyOnly }
@@ -91,6 +94,8 @@ class AetherEngine(
     private val core: AetherCore,
     private val cache: EndpointCache = NoEndpointCache,
     private val relay: PsiphonRelay? = null,
+    private val board: EdgeBoard = NoEdgeBoard,
+    private val networkOf: () -> String = { NetworkKey.UNKNOWN },
     private val log: CoreLog = CoreLog,
 ) {
 
@@ -121,6 +126,15 @@ class AetherEngine(
 
     private var session: Job? = null
     private var host: TunnelHost? = null
+
+    /** The operator this attempt runs on; edges are remembered and shared per operator. */
+    @Volatile private var network: String = NetworkKey.UNKNOWN
+
+    /** Edges this session found too slow; scans skip them. */
+    private val slowEdges = ConcurrentHashMap.newKeySet<String>()
+
+    /** How many times this session has dropped a slow edge for another. */
+    @Volatile private var rotations = 0
 
     fun connect(host: TunnelHost) {
         scope.launch {
@@ -167,8 +181,11 @@ class AetherEngine(
     private suspend fun runSession(host: TunnelHost) {
         var attempt = 0
         var fallback = 0
+        slowEdges.clear()
+        rotations = 0
         try {
             while (true) {
+                network = networkOf()
                 val chosen = settings.current()
                 // After a few failures in a row, try another transport. A
                 // network that blocks one of them usually still carries
@@ -179,6 +196,10 @@ class AetherEngine(
                 }
                 val outcome = attemptOnce(current, host)
                 host.onTunnelDown()
+                if (outcome.rotate) {
+                    log.warn("[-] ${outcome.reason}")
+                    continue
+                }
 
                 if (outcome.connectedForMs >= STABLE_MS) {
                     attempt = 0
@@ -208,6 +229,8 @@ class AetherEngine(
         val reason: String,
         val connectedForMs: Long = 0,
         val connected: Boolean = false,
+        /** The edge worked but was too slow; move to another at once, no backoff. */
+        val rotate: Boolean = false,
     )
 
     private suspend fun attemptOnce(requested: AetherSettings, host: TunnelHost): Outcome {
@@ -230,24 +253,20 @@ class AetherEngine(
 
         if (protocol == Protocol.Gool) return runManaged(settings, host)
 
+        val shared = sharedEdgesAsync(settings)
         val identity = when (val opened = identityFor(settings)) {
             is CoreResult.Ok -> opened.value
             is CoreResult.Err -> return Outcome("identity: ${opened.message}")
         }
 
-        val cacheKey = PrefsEndpointCache.keyOf(protocol, settings.ipVersion.wire)
         if (settings.pinnedPeer.isBlank()) {
-            cache.recall(cacheKey)?.let { remembered ->
-                val outcome = tryRemembered(identity, remembered, settings, host, viaAuto = false)
-                if (outcome.connected) return outcome
-                cache.forget(cacheKey)
-            }
+            tryKnown(identity, settings, shared.await(), host, viaAuto = false)?.let { return it }
         }
 
         _state.value = ConnectionState.Scanning(protocol, ScanProgress(ScanProgress.Phase.Provisioning))
         log.info("[*] scanning for a reachable edge")
         val endpoint = when (
-            val scanned = core.scan(identity, settings) { progress ->
+            val scanned = core.scan(identity, settings, slowEdges.toSet()) { progress ->
                 _state.value = ConnectionState.Scanning(protocol, progress)
             }
         ) {
@@ -260,46 +279,22 @@ class AetherEngine(
     }
 
     /**
-     * Prefers MASQUE H2, and falls back to the fastest of the others only
-     * when H2 does not get through.
+     * Picks whatever carries the most, whichever protocol that is.
      *
-     * H2 carries traffic better than the rest on the networks this app is
-     * used on, so it is not made to race: if its edge answers at all within
-     * [AUTO_LANE_MS], it is the one. WireGuard is pinged beside it the whole
-     * time, so that a blocked H2 costs no extra wait. MASQUE over QUIC only
-     * gets its turn after H2 has failed — the two MASQUE carriers cannot scan
-     * side by side, as the core reads HTTP/2 or HTTP/3 from one process-wide
-     * variable.
+     * First the edges measured fastest on this operator — by this phone or by
+     * others — across every protocol, best download first. Only when none of
+     * them comes up does it scan, and then all protocols get the same chance:
+     * the edge that answers quickest wins, and its real speed is checked once
+     * connected ([judge]) like any other.
      */
     private suspend fun attemptAuto(requested: AetherSettings, host: TunnelHost): Outcome {
         clearGatewayCache()
         val base = withFreePort(requested)
         _state.value = ConnectionState.Preparing(Protocol.Auto)
-        log.info("[*] automatic: trying ${Protocol.MasqueH2.displayName} first, ${Protocol.WireGuard.displayName} beside it")
-
-        // H2 scans the way a manual H2 connection does (swift: the best of
-        // the first edges to answer); the fallbacks take the first that answers.
         val candidates = AUTO_CANDIDATES.associateWith { protocol ->
-            base.copy(protocol = protocol, scanMode = if (protocol == Protocol.MasqueH2) base.scanMode else ScanMode.Turbo)
+            base.copy(protocol = protocol, scanMode = if (protocol == Protocol.WireGuard) ScanMode.Turbo else base.scanMode)
         }
-
-        // The last good H2 edge gets the first go: no scan at all when the
-        // network has not changed.
-        if (base.pinnedPeer.isBlank()) {
-            val h2Key = PrefsEndpointCache.keyOf(Protocol.MasqueH2, base.ipVersion.wire)
-            val remembered = cache.recall(h2Key)
-                ?: cache.recallAuto()?.takeIf { it.first == Protocol.MasqueH2 }?.second
-            if (remembered != null) {
-                val settings = candidates.getValue(Protocol.MasqueH2)
-                identityFor(settings).valueOrNull()?.let { identity ->
-                    core.applyEnvironment(settings)
-                    val outcome = tryRemembered(identity, remembered, settings, host, viaAuto = true)
-                    if (outcome.connected) return outcome
-                    cache.forget(h2Key)
-                    cache.forgetAuto()
-                }
-            }
-        }
+        val shared = candidates.mapValues { (_, settings) -> sharedEdgesAsync(settings) }
 
         // Identities are opened one at a time: MASQUE and WireGuard keep
         // theirs in sibling files the core writes on first use.
@@ -312,6 +307,20 @@ class AetherEngine(
             }
         }
 
+        if (base.pinnedPeer.isBlank()) {
+            val known = fastestKnown(candidates, shared.mapValues { it.value.await() })
+                .filter { (protocol, _) -> protocol in identities }
+            if (known.isNotEmpty()) log.info("[*] automatic: ${known.size} edge(s) known to be fast here, fastest first")
+            for ((protocol, edge) in known.take(MAX_KNOWN_TRIES)) {
+                val settings = candidates.getValue(protocol)
+                core.applyEnvironment(settings)
+                val outcome = tryRemembered(identities.getValue(protocol), edge.endpoint, settings, host, viaAuto = true)
+                if (outcome.connected) return outcome
+            }
+            cache.forgetAuto()
+        }
+
+        log.info("[*] automatic: scanning every protocol")
         val found = ConcurrentHashMap<Protocol, Endpoint>()
         _state.value = ConnectionState.Scanning(Protocol.Auto, ScanProgress(ScanProgress.Phase.Probing))
 
@@ -319,7 +328,7 @@ class AetherEngine(
             val identity = identities[protocol] ?: return
             val settings = candidates.getValue(protocol)
             if (protocol.transport == "masque") core.applyEnvironment(settings)
-            when (val scanned = core.scan(identity, settings) {}) {
+            when (val scanned = core.scan(identity, settings, slowEdges.toSet()) {}) {
                 is CoreResult.Ok -> {
                     found[protocol] = scanned.value
                     log.info("[+] ${protocol.displayName} answered in ${scanned.value.rttMs}ms")
@@ -329,23 +338,21 @@ class AetherEngine(
         }
 
         coroutineScope {
-            val h2 = launch { withTimeoutOrNull(AUTO_LANE_MS) { ping(Protocol.MasqueH2) } }
+            // The two MASQUE carriers cannot scan side by side — the core reads
+            // HTTP/2 or HTTP/3 from one process-wide variable — so they take
+            // turns, each with a bounded slot, while WireGuard runs beside them.
             val lanes = listOf(
-                h2,
                 launch {
-                    h2.join()
-                    if (!found.containsKey(Protocol.MasqueH2)) ping(Protocol.MasqueH3)
+                    withTimeoutOrNull(AUTO_LANE_MS) { ping(Protocol.MasqueH2) }
+                    withTimeoutOrNull(AUTO_LANE_MS) { ping(Protocol.MasqueH3) }
                 },
                 launch { ping(Protocol.WireGuard) },
             )
             val all = launch { lanes.joinAll() }
             withTimeoutOrNull(AUTO_PING_MS) {
                 while (all.isActive) {
-                    // H2 answered: nothing else is worth waiting for.
-                    if (found.containsKey(Protocol.MasqueH2)) break
-                    // H2 has had its chance; give the others a moment to beat
-                    // the first of them that answered.
-                    if (!h2.isActive && found.isNotEmpty()) {
+                    // Something answered: give the rest a moment to beat it.
+                    if (found.isNotEmpty()) {
                         withTimeoutOrNull(AUTO_GRACE_MS) { all.join() }
                         break
                     }
@@ -356,10 +363,7 @@ class AetherEngine(
             lanes.forEach { it.cancel() }
         }
 
-        val best = found[Protocol.MasqueH2]?.let { Protocol.MasqueH2 to it }
-            ?: AUTO_CANDIDATES
-                .mapNotNull { protocol -> found[protocol]?.let { protocol to it } }
-                .minByOrNull { (_, endpoint) -> endpoint.rttMs }
+        val best = found.entries.minByOrNull { it.value.rttMs }?.let { it.key to it.value }
         if (best == null) {
             log.warn("[-] automatic: nothing answered, handing over to ${Protocol.Gool.displayName}")
             val gool = base.copy(protocol = Protocol.Gool)
@@ -368,16 +372,70 @@ class AetherEngine(
         }
 
         val (protocol, endpoint) = best
-        val chosen = base.copy(protocol = protocol)
-        log.good(
-            if (protocol == Protocol.MasqueH2) {
-                "[+] automatic: ${protocol.displayName} got through (${endpoint.rttMs}ms)"
-            } else {
-                "[+] automatic: ${Protocol.MasqueH2.displayName} is blocked, ${protocol.displayName} is the fastest (${endpoint.rttMs}ms)"
-            },
-        )
+        val chosen = candidates.getValue(protocol)
+        log.good("[+] automatic: ${protocol.displayName} answered first (${endpoint.rttMs}ms)")
         core.applyEnvironment(chosen)
         return runTunnel(identities.getValue(protocol), endpoint, chosen, host, viaAuto = true)
+    }
+
+    /**
+     * Known edges across protocols, by measured download, fastest first.
+     * This phone's own last good edge per protocol counts too, after the
+     * measured ones; TCP edges that do not even accept a connection are dropped.
+     */
+    private suspend fun fastestKnown(
+        candidates: Map<Protocol, AetherSettings>,
+        shared: Map<Protocol, List<SharedEdge>>,
+    ): List<Pair<Protocol, SharedEdge>> {
+        val measured = shared.flatMap { (protocol, edges) -> edges.map { protocol to it } }
+            .filter { (_, edge) -> edge.kbps >= SLOW_KBPS }
+            .sortedByDescending { (_, edge) -> edge.kbps }
+        val remembered = candidates.mapNotNull { (protocol, settings) ->
+            cache.recall(cacheKey(settings))?.let { protocol to SharedEdge(it, 0) }
+        }
+        val known = (measured + remembered)
+            .distinctBy { (protocol, edge) -> "${protocol.id}/${edge.endpoint.socket}" }
+            .filter { (_, edge) -> edge.endpoint.socket !in slowEdges }
+        val open = EdgeReach.reachable(known.filter { (protocol, _) -> protocol.isTcp }.map { it.second.endpoint })
+            .map { it.socket }
+            .toSet()
+        return known.filter { (protocol, edge) -> !protocol.isTcp || edge.endpoint.socket in open }
+    }
+
+    /** Starts fetching the shared edges at once; the identity opens meanwhile. */
+    private fun sharedEdgesAsync(settings: AetherSettings): Deferred<List<SharedEdge>> = scope.async {
+        withTimeoutOrNull(SHARED_FETCH_MS) {
+            board.fetch(settings.protocol, settings.ipVersion.wire, network)
+        }.orEmpty()
+    }
+
+    /**
+     * Tries the edges known to carry traffic well on this operator before
+     * any scan: this phone's last good one, then the fastest others shared.
+     * TCP edges are knocked on together first, so dead ones cost nothing.
+     * Returns null when none of them came up.
+     */
+    private suspend fun tryKnown(
+        identity: Identity,
+        settings: AetherSettings,
+        shared: List<SharedEdge>,
+        host: TunnelHost,
+        viaAuto: Boolean,
+    ): Outcome? {
+        val key = cacheKey(settings)
+        val known = (shared.filter { it.kbps >= SLOW_KBPS }.sortedByDescending { it.kbps }.map { it.endpoint } +
+            listOfNotNull(cache.recall(key)))
+            .distinctBy { it.socket }
+            .filter { it.socket !in slowEdges }
+        if (known.isEmpty()) return null
+        if (shared.isNotEmpty()) log.info("[*] ${shared.size} edge(s) shared by others on this network")
+        val reachable = if (settings.protocol.isTcp) EdgeReach.reachable(known) else known
+        for (edge in reachable.take(MAX_KNOWN_TRIES)) {
+            val outcome = tryRemembered(identity, edge, settings, host, viaAuto)
+            if (outcome.connected) return outcome
+        }
+        cache.forget(key)
+        return null
     }
 
     /**
@@ -487,6 +545,8 @@ class AetherEngine(
             )
             _state.value = connected
             launch { reportExit(connected) }
+            val slow = AtomicReference<String?>(null)
+            if (endpoint != null) launch { slow.set(judge(settings, endpoint, viaAuto)) }
 
             log.good("[+] connected${endpoint?.let { " via ${it.socket}" } ?: ""}")
             log.info("[*] SOCKS5 listening on 127.0.0.1:${carried.socksPort}")
@@ -516,6 +576,10 @@ class AetherEngine(
             )
             while (true) {
                 delay(POLL_MS)
+                slow.get()?.let { reason ->
+                    coroutineContext.cancelChildren()
+                    return@coroutineScope Outcome(reason, System.currentTimeMillis() - since, connected = true, rotate = true)
+                }
                 val polled = core.pollJob(job)
                 val unhealthy = if (polled is JobState.Done) null else health.check()
                 if (polled is JobState.Done || unhealthy != null) {
@@ -538,6 +602,30 @@ class AetherEngine(
             if (relayPort != null) withContext(NonCancellable) { relay?.stop() }
         }
     }
+
+    /**
+     * Measures what the edge really delivers, shares it, and asks for another
+     * edge when it is too slow for video. Returns the reason to move on, or
+     * null to stay. Only [MAX_ROTATIONS] moves per session, so a network that
+     * is slow everywhere still ends up connected.
+     */
+    private suspend fun judge(settings: AetherSettings, endpoint: Endpoint, viaAuto: Boolean): String? {
+        delay(MEASURE_AFTER_MS)
+        val kbps = ThroughputProbe.measure(settings.socksPort) ?: return null
+        log.info("[*] ${endpoint.socket} delivers $kbps KB/s")
+        // Through the tunnel: the board is usually blocked on the open network.
+        // Fetching here also keeps this operator's list on the phone for next time.
+        board.report(settings.protocol, settings.ipVersion.wire, network, SharedEdge(endpoint, kbps), settings.socksPort)
+        board.fetch(settings.protocol, settings.ipVersion.wire, network, settings.socksPort)
+        if (kbps >= SLOW_KBPS || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
+        rotations++
+        slowEdges += endpoint.socket
+        forget(settings, viaAuto)
+        return "${endpoint.socket} carries only $kbps KB/s, moving to a faster edge"
+    }
+
+    private fun cacheKey(settings: AetherSettings): String =
+        "$network.${PrefsEndpointCache.keyOf(settings.protocol, settings.ipVersion.wire)}"
 
     private sealed interface RelayStart {
         data object Off : RelayStart
@@ -582,12 +670,12 @@ class AetherEngine(
 
     private fun remember(settings: AetherSettings, endpoint: Endpoint, viaAuto: Boolean) {
         if (settings.pinnedPeer.isNotBlank() || settings.protocol == Protocol.Gool) return
-        cache.remember(PrefsEndpointCache.keyOf(settings.protocol, settings.ipVersion.wire), endpoint)
+        cache.remember(cacheKey(settings), endpoint)
         if (viaAuto) cache.rememberAuto(settings.protocol, endpoint)
     }
 
     private fun forget(settings: AetherSettings, viaAuto: Boolean) {
-        cache.forget(PrefsEndpointCache.keyOf(settings.protocol, settings.ipVersion.wire))
+        cache.forget(cacheKey(settings))
         if (viaAuto) cache.forgetAuto()
     }
 
@@ -672,7 +760,26 @@ class AetherEngine(
         const val RELAY_STARTUP_MS = 75_000L
 
         /** How long a remembered edge gets before the engine scans instead. */
-        const val REMEMBERED_STARTUP_MS = 9_000L
+        const val REMEMBERED_STARTUP_MS = 7_000L
+
+        /** Known edges tried before scanning; each costs up to [REMEMBERED_STARTUP_MS]. */
+        const val MAX_KNOWN_TRIES = 3
+
+        /**
+         * The shared list is a head start, never worth waiting long for. Above
+         * the board's own direct timeouts, so a blocked board still falls back
+         * to the list kept from the last connection.
+         */
+        const val SHARED_FETCH_MS = 4_000L
+
+        /** Lets the tunnel settle before its speed is taken. */
+        const val MEASURE_AFTER_MS = 1_500L
+
+        /** Below this (about 2.4 Mbit/s) Instagram video stalls; such an edge is swapped. */
+        const val SLOW_KBPS = 300L
+
+        /** Slow edges dropped per session before the engine settles for what it has. */
+        const val MAX_ROTATIONS = 2
         const val POLL_MS = 1_000L
         const val STABLE_MS = 30_000L
         const val MANAGED_STARTUP_MS = 90_000L
@@ -683,13 +790,13 @@ class AetherEngine(
          */
         const val PORT_RELEASE_MS = 1_500L
 
-        /** What automatic tries; MASQUE H2 is preferred whenever it answers. */
+        /** What automatic tries; none is preferred, speed decides. */
         val AUTO_CANDIDATES = listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
 
         /** The whole automatic ping round. */
         const val AUTO_PING_MS = 20_000L
 
-        /** How long MASQUE H2 gets before automatic settles for something else. */
+        /** Each MASQUE carrier's scan slot; they cannot scan at the same time. */
         const val AUTO_LANE_MS = 10_000L
 
         /** How long the others may still beat the first edge that answered. */

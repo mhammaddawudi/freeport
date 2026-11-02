@@ -43,10 +43,13 @@ interface AetherCore {
      * [onProgress] is driven by the implementation, not the core: the C API
      * has no progress channel, so the native implementation reports the
      * elapsed phases it can infer and the mock reports simulated ones.
+     * [excluded] lists `ip:port` edges the scan must not return — ones that
+     * answered but turned out too slow to keep.
      */
     suspend fun scan(
         identity: Identity,
         settings: AetherSettings,
+        excluded: Set<String> = emptySet(),
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint>
 

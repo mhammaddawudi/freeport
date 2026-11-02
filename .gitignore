@@ -22,3 +22,4 @@ keystore.properties
 
 # Renamed release apks
 dist/
+node_modules/

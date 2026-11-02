@@ -19,7 +19,7 @@ object CoreLog {
     data class Line(val id: Long, val timeMillis: Long, val level: Level, val text: String)
 
     private const val CAPACITY = 500
-    private const val TAG = "Aether"
+    private const val TAG = "Freeport"
 
     private var nextId = 0L
     private val _lines = MutableStateFlow<List<Line>>(emptyList())
@@ -31,7 +31,7 @@ object CoreLog {
      */
     @JvmStatic
     fun fromCore(line: String) {
-        val text = line.substringAfter("aether: ").trim()
+        val text = unbranded(line.substringAfter("aether: ").trim())
         if (text.isEmpty()) return
         append(
             when {
@@ -43,6 +43,14 @@ object CoreLog {
             text,
         )
     }
+
+    /** The core names itself in some lines; the log shows the app's name only. */
+    internal fun unbranded(text: String): String = text
+        .replace(AETHERNOIZE, "noize")
+        .replace(AETHER, "freeport")
+
+    private val AETHERNOIZE = Regex("aethernoize", RegexOption.IGNORE_CASE)
+    private val AETHER = Regex("aether", RegexOption.IGNORE_CASE)
 
     fun info(text: String) = append(Level.Info, text)
     fun good(text: String) = append(Level.Good, text)

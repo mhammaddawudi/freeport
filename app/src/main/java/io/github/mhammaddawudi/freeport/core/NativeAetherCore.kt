@@ -49,6 +49,7 @@ class NativeAetherCore : AetherCore {
     override suspend fun scan(
         identity: Identity,
         settings: AetherSettings,
+        excluded: Set<String>,
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint> {
         // A pinned peer skips the scan entirely, the same way `--peer` does.
@@ -59,7 +60,7 @@ class NativeAetherCore : AetherCore {
 
         onProgress(ScanProgress(ScanProgress.Phase.Probing))
         val result = runJob(
-            nativeScanStart(identity.handle, CorePayloads.scan(settings)),
+            nativeScanStart(identity.handle, CorePayloads.scan(settings, excluded)),
         ) { reply ->
             val endpoint = reply.getJSONObject("endpoint")
             Endpoint(

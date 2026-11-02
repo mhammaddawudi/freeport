@@ -25,7 +25,7 @@ internal object CorePayloads {
         .put("transport", transport)
         .toString()
 
-    fun scan(settings: AetherSettings): String {
+    fun scan(settings: AetherSettings, excluded: Set<String> = emptySet()): String {
         val payload = JSONObject()
             .put("transport", settings.protocol.transport)
             .put("mode", scanWire(settings))
@@ -39,6 +39,7 @@ internal object CorePayloads {
         if (pinned != null) {
             payload.put("ports", JSONArray().put(pinned.second))
         }
+        if (excluded.isNotEmpty()) payload.put("excluded", JSONArray(excluded.toList()))
         return payload.toString()
     }
 

@@ -27,8 +27,13 @@ android {
         applicationId = "io.github.mhammaddawudi.freeport"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "2.1"
+        versionCode = 9
+        versionName = "2.2"
+        // Where edges measured by people on the same operator are shared
+        // (server/edge-board). Empty turns sharing off; each phone still
+        // learns its own fast edges per operator.
+        val edgeBoardUrl = (project.findProperty("edgeBoardUrl") as String?).orEmpty().trimEnd('/')
+        buildConfigField("String", "EDGE_BOARD_URL", "\"$edgeBoardUrl\"")
     }
 
     // One apk per phone architecture plus a universal one. The per-ABI apks

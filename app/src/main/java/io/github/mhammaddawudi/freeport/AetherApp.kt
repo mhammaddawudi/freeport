@@ -5,6 +5,9 @@ import io.github.mhammaddawudi.freeport.core.AetherEngine
 import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.core.CoreProvider
 import io.github.mhammaddawudi.freeport.core.IphoneExporter
+import io.github.mhammaddawudi.freeport.core.HttpEdgeBoard
+import io.github.mhammaddawudi.freeport.core.NetworkKey
+import io.github.mhammaddawudi.freeport.core.NoEdgeBoard
 import io.github.mhammaddawudi.freeport.core.NoEndpointCache
 import io.github.mhammaddawudi.freeport.core.PrefsEndpointCache
 import io.github.mhammaddawudi.freeport.core.PsiphonRelay
@@ -61,7 +64,15 @@ class AetherApp : Application() {
         settings = SettingsRepository(this)
         val cache = if (CoreProvider.isNative) PrefsEndpointCache(this) else NoEndpointCache
         val relay = if (CoreProvider.isNative) PsiphonRelay(this) else null
-        engine = AetherEngine(this, settings, CoreProvider.core, cache, relay)
+        val board = if (CoreProvider.isNative && BuildConfig.EDGE_BOARD_URL.isNotBlank()) {
+            HttpEdgeBoard(this, BuildConfig.EDGE_BOARD_URL)
+        } else {
+            NoEdgeBoard
+        }
+        engine = AetherEngine(
+            this, settings, CoreProvider.core, cache, relay, board,
+            networkOf = { NetworkKey.current(this) },
+        )
         trafficMeter = if (CoreProvider.isNative) UidTrafficMeter() else SimulatedTrafficMeter()
         VpnNotifications.ensureChannel(this)
         registerActivityLifecycleCallbacks(
@@ -84,6 +95,6 @@ class AetherApp : Application() {
                 override fun onActivityDestroyed(activity: android.app.Activity) = Unit
             },
         )
-        CoreLog.info("[*] Aether mobile · ${if (CoreProvider.isNative) "native core" else "mock core"}")
+        CoreLog.info("[*] Freeport ${BuildConfig.VERSION_NAME}${if (CoreProvider.isNative) "" else " · simulated core"}")
     }
 }

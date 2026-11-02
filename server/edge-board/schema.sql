@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS edges (
+  net     TEXT NOT NULL,
+  proto   TEXT NOT NULL,
+  fam     TEXT NOT NULL,
+  addr    TEXT NOT NULL,
+  port    INTEGER NOT NULL,
+  rtt     INTEGER NOT NULL,
+  kbps    INTEGER NOT NULL,
+  n       INTEGER NOT NULL DEFAULT 1,
+  updated INTEGER NOT NULL,
+  PRIMARY KEY (net, proto, fam, addr, port)
+);
+CREATE INDEX IF NOT EXISTS edges_rank ON edges (net, proto, fam, kbps DESC);

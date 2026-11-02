@@ -47,6 +47,7 @@ class MockAetherCore(
     override suspend fun scan(
         identity: Identity,
         settings: AetherSettings,
+        excluded: Set<String>,
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint> {
         CorePayloads.parsePeer(settings.pinnedPeer)?.let { (host, port) ->
