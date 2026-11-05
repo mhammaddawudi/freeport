@@ -1,7 +1,6 @@
 # Freeport
 
-An Android client for [Aether](https://github.com/CluvexStudio/Aether), the
-censorship-circumvention core by CluvexStudio. English, Persian, Kurdish (Sorani) and Kurdî (Kurmanji)
+An Android VPN for Cloudflare WARP, built for networks that block it. English, Persian, Kurdish (Sorani) and Kurdî (Kurmanji)
 interface, four transports, per-app routing.
 
 ## What it does
@@ -27,10 +26,10 @@ dropped, the next thing tried is WireGuard rather than the other MASQUE.
 | WireGuard | `wg` | `--wg` |
 
 MASQUE and WireGuard are driven step by step through the core's C API
-(`aether_identity_open` → `aether_scan_start` → `aether_tunnel_start`), which
+(`warp_identity_open` → `warp_scan_start` → `warp_tunnel_start`), which
 is what lets the UI show real scan progress. Warp in Warp has no step-API
 equivalent — `Transport` in the core knows only masque and wireguard — so it
-is handed to `aether_core_start` with CLI arguments instead.
+is handed to `warp_core_start` with CLI arguments instead.
 
 Every connection scans afresh. The core's `*-lastconn.toml` is removed before
 each attempt and `--no-quick-reconnect` is passed: reusing the last gateway
@@ -39,7 +38,7 @@ answered first, which was regularly a slow one.
 
 ## How traffic actually moves
 
-Aether exposes a SOCKS5 proxy; it does not read IP packets. The app adds the
+Warp exposes a SOCKS5 proxy; it does not read IP packets. The app adds the
 missing half:
 
 1. `VpnService` raises a TUN interface and excludes the app's own uid, so the
@@ -68,7 +67,7 @@ This produces three apks in `app/build/outputs/apk/release/`: one for
 `armeabi-v7a` (older and budget 32-bit phones) and a universal one that
 carries every ABI. They share a version code, so any can replace any other.
 
-Without `libaether.so` the app runs on a simulated core: the interface works,
+Without `libwarp.so` the app runs on a simulated core: the interface works,
 nothing is tunnelled, and the connect screen says so.
 
 For the real thing:
@@ -101,7 +100,7 @@ keyPassword=…
 
 ```
 app/src/main/
-├── cpp/aether_jni.c          JNI shim over the core's C API, plus its log pipe
+├── cpp/warp_jni.c          JNI shim over the core's C API, plus its log pipe
 ├── jniLibs/                  the three native libraries (built, not in git)
 └── java/io/github/mhammaddawudi/freeport/
     ├── core/                 the seam to the core: job API as suspend calls,
@@ -114,6 +113,6 @@ app/src/main/
 
 ## Licence
 
-Aether is AGPL-3.0, and this app links it, so the combined work is AGPL-3.0
+The Warp core is AGPL-3.0, and this app links it, so the combined work is AGPL-3.0
 as well: anyone you give a build to is entitled to its source. See NOTICE.md
 for the other components.

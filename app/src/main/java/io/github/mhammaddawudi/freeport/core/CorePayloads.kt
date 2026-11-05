@@ -2,7 +2,7 @@ package io.github.mhammaddawudi.freeport.core
 
 import org.json.JSONArray
 import org.json.JSONObject
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.data.ScanMode
 
@@ -25,7 +25,7 @@ internal object CorePayloads {
         .put("transport", transport)
         .toString()
 
-    fun scan(settings: AetherSettings, excluded: Set<String> = emptySet()): String {
+    fun scan(settings: WarpSettings, excluded: Set<String> = emptySet()): String {
         val payload = JSONObject()
             .put("transport", settings.protocol.transport)
             .put("mode", scanWire(settings))
@@ -43,7 +43,7 @@ internal object CorePayloads {
         return payload.toString()
     }
 
-    fun tunnel(endpoint: Endpoint, settings: AetherSettings): String {
+    fun tunnel(endpoint: Endpoint, settings: WarpSettings): String {
         val payload = JSONObject()
             .put("peer", endpoint.socket)
             .put("transport", settings.protocol.transport)
@@ -61,48 +61,51 @@ internal object CorePayloads {
     /**
      * The environment the core reads for the switches that have no payload
      * field — the HTTP/2 transport, ClientHello fragmenting and quick
-     * reconnect all come from `AETHER_*` variables rather than from JSON.
+     * reconnect all come from `WARP_*` variables rather than from JSON.
      *
      * Android gives no supported way to set environment variables for the
-     * current process, so [NativeAetherCore] passes these through
-     * `aether_core_start` as CLI arguments instead. The map is kept here
+     * current process, so [NativeWarpCore] passes these through
+     * `warp_core_start` as CLI arguments instead. The map is kept here
      * because it documents the correspondence, and because the mock prints it
      * into the log the way the real core would.
      */
-    fun environment(settings: AetherSettings): Map<String, String> = buildMap {
-        put("AETHER_PROTOCOL", settings.protocol.transport)
-        put("AETHER_SOCKS", "127.0.0.1:${settings.socksPort}")
-        put("AETHER_SCAN", scanWire(settings))
-        put("AETHER_NOIZE", settings.effectiveNoize.wire)
-        put("AETHER_IP", settings.ipVersion.wire)
-        // Always rescan: see AetherEngine.clearGatewayCache.
-        put("AETHER_QUICK_RECONNECT", "0")
+    fun environment(settings: WarpSettings): Map<String, String> = buildMap {
+        put("WARP_PROTOCOL", settings.protocol.transport)
+        put("WARP_SOCKS", "127.0.0.1:${settings.socksPort}")
+        put("WARP_SCAN", scanWire(settings))
+        put("WARP_NOIZE", settings.effectiveNoize.wire)
+        put("WARP_IP", settings.ipVersion.wire)
+        // Always rescan: see WarpEngine.clearGatewayCache.
+        put("WARP_QUICK_RECONNECT", "0")
+        // QUIC stalls inside the tunnel and apps such as Instagram wait on it;
+        // dropped, they use TCP at once.
+        put("WARP_BLOCK_QUIC", "1")
 
         // Written both ways every time: a variable is only ever overwritten,
         // never removed, so an "on" left by an earlier MASQUE H2 session would
         // otherwise turn the next plain MASQUE one into H2 as well.
         val fragment = settings.protocol.isTcp && settings.fragmentEnabled
-        put("AETHER_MASQUE_HTTP2", if (settings.protocol.isTcp) "1" else "0")
-        put("AETHER_MASQUE_H2_FRAGMENT", if (fragment) "1" else "0")
+        put("WARP_MASQUE_HTTP2", if (settings.protocol.isTcp) "1" else "0")
+        put("WARP_MASQUE_H2_FRAGMENT", if (fragment) "1" else "0")
         if (fragment) {
-            put("AETHER_MASQUE_H2_FRAGMENT_SIZE", settings.fragmentSize.toString())
-            put("AETHER_MASQUE_H2_FRAGMENT_DELAY", settings.fragmentDelayMs.toString())
+            put("WARP_MASQUE_H2_FRAGMENT_SIZE", settings.fragmentSize.toString())
+            put("WARP_MASQUE_H2_FRAGMENT_DELAY", settings.fragmentDelayMs.toString())
         }
         if (!settings.protocol.isTcp) {
-            put("AETHER_WG_KEEPALIVE", settings.keepaliveSeconds.toString())
+            put("WARP_WG_KEEPALIVE", settings.keepaliveSeconds.toString())
         }
 
         if (settings.pinnedPeer.isNotBlank()) {
-            put("AETHER_PEER", settings.pinnedPeer.trim())
+            put("WARP_PEER", settings.pinnedPeer.trim())
         }
     }
 
     /**
-     * The full argument list for `aether_core_start`, for the path where the
+     * The full argument list for `warp_core_start`, for the path where the
      * app hands the whole connection to the core rather than driving scan and
      * tunnel itself. Order follows `cli.rs`.
      */
-    fun coreArguments(settings: AetherSettings, configDir: String): List<String> = buildList {
+    fun coreArguments(settings: WarpSettings, configDir: String): List<String> = buildList {
         addAll(settings.protocol.coreArguments)
         add("--scan"); add(scanWire(settings))
         add("--noize"); add(settings.effectiveNoize.wire)
@@ -117,7 +120,7 @@ internal object CorePayloads {
         if (!settings.protocol.transport.startsWith("masque")) {
             add("--keepalive"); add(settings.keepaliveSeconds.toString())
         }
-        add("--config"); add("$configDir/aether.toml")
+        add("--config"); add("$configDir/warp.toml")
 
         add("--no-quick-reconnect")
         if (settings.pinnedPeer.isNotBlank()) {
@@ -137,7 +140,7 @@ internal object CorePayloads {
      * are chosen by the core in one go, and picking the first hop on a two
      * second window gave it noticeably slower routes.
      */
-    fun scanWire(settings: AetherSettings): String =
+    fun scanWire(settings: WarpSettings): String =
         if (settings.protocol == Protocol.Gool && settings.scanMode == ScanMode.Swift) {
             ScanMode.Balanced.wire
         } else {

@@ -52,11 +52,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.data.Protocol
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 
 /** The colour that marks the chosen protocol. */
 val Protocol.accent: Color
-    @Composable get() = AetherColors.Selected
+    @Composable get() = WarpColors.Selected
 
 /** Which protocol is on the wire right now, and whether it is carrying traffic yet. */
 data class ProtocolActivity(
@@ -118,24 +118,24 @@ fun ProtocolPicker(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            GlyphTile(selected.glyph, AetherColors.Selected, lit = 1f)
+            GlyphTile(selected.glyph, WarpColors.Selected, lit = 1f)
             Spacer(Modifier.width(12.dp))
             Text(
                 selected.label(),
                 style = MaterialTheme.typography.titleMedium,
-                color = AetherColors.Ink,
+                color = WarpColors.Ink,
                 maxLines = 1,
             )
             // Under Automatic, the protocol it settled on, by name only.
             val picked = activity?.protocol?.takeIf { selected == Protocol.Auto && it != Protocol.Auto }
             if (picked != null) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", style = MaterialTheme.typography.titleMedium, color = AetherColors.InkFaint)
+                Text("·", style = MaterialTheme.typography.titleMedium, color = WarpColors.InkFaint)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     picked.displayName,
                     style = MaterialTheme.typography.titleSmall,
-                    color = AetherColors.InkMuted,
+                    color = WarpColors.InkMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -143,10 +143,10 @@ fun ProtocolPicker(
             }
             if (activity != null) {
                 Spacer(Modifier.width(6.dp))
-                StatusDot(if (activity.live) AetherColors.Mint else AetherColors.Amber, pulsing = activity.live)
+                StatusDot(if (activity.live) WarpColors.Mint else WarpColors.Amber, pulsing = activity.live)
             }
             Spacer(Modifier.weight(1f))
-            Glyph(GlyphKind.Chevron, AetherColors.InkMuted, Modifier.size(18.dp).rotate(90f + turn), strokeWidth = 2.dp)
+            Glyph(GlyphKind.Chevron, WarpColors.InkMuted, Modifier.size(18.dp).rotate(90f + turn), strokeWidth = 2.dp)
         }
 
         AnimatedVisibility(
@@ -208,14 +208,14 @@ private fun ProtocolRow(
             Text(
                 protocol.label(),
                 style = MaterialTheme.typography.titleSmall,
-                color = lerp(AetherColors.Ink, accent, lit),
+                color = lerp(WarpColors.Ink, accent, lit),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
             if (live != null) {
                 Spacer(Modifier.width(6.dp))
-                StatusDot(if (live.live) AetherColors.Mint else AetherColors.Amber, pulsing = live.live)
+                StatusDot(if (live.live) WarpColors.Mint else WarpColors.Amber, pulsing = live.live)
             }
         }
         if (apps.isNotEmpty()) {
@@ -232,10 +232,10 @@ private fun GlyphTile(glyph: GlyphKind, accent: Color, lit: Float) {
         Modifier
             .size(34.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(lerp(AetherColors.Ink.copy(alpha = 0.06f), accent.copy(alpha = 0.16f), lit)),
+            .background(lerp(WarpColors.Ink.copy(alpha = 0.06f), accent.copy(alpha = 0.16f), lit)),
         contentAlignment = Alignment.Center,
     ) {
-        Glyph(glyph, lerp(AetherColors.InkMuted, accent, lit), Modifier.size(17.dp), strokeWidth = 2.dp)
+        Glyph(glyph, lerp(WarpColors.InkMuted, accent, lit), Modifier.size(17.dp), strokeWidth = 2.dp)
     }
 }
 
@@ -246,7 +246,7 @@ private fun SelectionMark(lit: Float, accent: Color) {
         Modifier
             .size(20.dp)
             .clip(CircleShape)
-            .border(1.5.dp, lerp(AetherColors.Ink.copy(alpha = 0.22f), accent, lit), CircleShape),
+            .border(1.5.dp, lerp(WarpColors.Ink.copy(alpha = 0.22f), accent, lit), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Box(

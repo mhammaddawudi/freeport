@@ -3,7 +3,7 @@ package io.github.mhammaddawudi.freeport.vpn
 /**
  * Moves packets between the TUN interface and the core's SOCKS5 listener.
  *
- * Aether is a proxy, not a packet tunnel: it accepts SOCKS5 connections on
+ * Warp is a proxy, not a packet tunnel: it accepts SOCKS5 connections on
  * 127.0.0.1. To capture a whole device something has to read raw IP packets
  * from the TUN file descriptor, terminate TCP and UDP, and replay each flow
  * as a SOCKS5 connection. That is a tun2socks.

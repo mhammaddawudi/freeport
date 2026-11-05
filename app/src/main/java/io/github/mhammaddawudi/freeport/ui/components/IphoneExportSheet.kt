@@ -49,7 +49,7 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.IphoneExporter
 import io.github.mhammaddawudi.freeport.ui.IphoneExportUi
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import java.io.File
 
 /**
@@ -70,15 +70,15 @@ fun IphoneExportSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = AetherColors.Surface,
-        contentColor = AetherColors.Ink,
+        containerColor = WarpColors.Surface,
+        contentColor = WarpColors.Ink,
         dragHandle = {
             Box(
                 Modifier
                     .padding(top = 12.dp, bottom = 8.dp)
                     .size(width = 40.dp, height = 4.dp)
                     .clip(CircleShape)
-                    .background(AetherColors.HairlineStrong),
+                    .background(WarpColors.HairlineStrong),
             )
         },
     ) {
@@ -89,9 +89,9 @@ fun IphoneExportSheet(
                 .padding(bottom = 24.dp)
                 .navigationBarsPadding(),
         ) {
-            Text(stringResource(R.string.iphone_title), style = MaterialTheme.typography.headlineSmall, color = AetherColors.Ink)
+            Text(stringResource(R.string.iphone_title), style = MaterialTheme.typography.headlineSmall, color = WarpColors.Ink)
             Spacer(Modifier.height(6.dp))
-            Text(stringResource(R.string.iphone_subtitle), style = MaterialTheme.typography.bodyMedium, color = AetherColors.InkMuted)
+            Text(stringResource(R.string.iphone_subtitle), style = MaterialTheme.typography.bodyMedium, color = WarpColors.InkMuted)
             Spacer(Modifier.height(18.dp))
 
             when (state) {
@@ -105,7 +105,7 @@ fun IphoneExportSheet(
                     Modifier.fillMaxWidth().padding(vertical = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProgressIndicator(Modifier.size(22.dp), color = AetherColors.Control, strokeWidth = 2.5.dp)
+                    CircularProgressIndicator(Modifier.size(22.dp), color = WarpColors.Control, strokeWidth = 2.5.dp)
                     Spacer(Modifier.width(14.dp))
                     Text(
                         stringResource(
@@ -115,12 +115,12 @@ fun IphoneExportSheet(
                             },
                         ),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AetherColors.Ink,
+                        color = WarpColors.Ink,
                     )
                 }
 
                 is IphoneExportUi.Failed -> {
-                    Note(stringResource(R.string.iphone_failed, state.message), AetherColors.Rose)
+                    Note(stringResource(R.string.iphone_failed, state.message), WarpColors.Rose)
                     Spacer(Modifier.height(16.dp))
                     ActionPill(GlyphKind.Bolt, stringResource(R.string.iphone_retry), onStart, primary = true)
                 }
@@ -150,7 +150,7 @@ fun IphoneExportSheet(
                     Text(
                         stringResource(R.string.iphone_endpoint, state.config.endpoint.socket, state.config.endpoint.rttMs),
                         style = MaterialTheme.typography.bodySmall,
-                        color = AetherColors.InkMuted,
+                        color = WarpColors.InkMuted,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     )
                     Spacer(Modifier.height(16.dp))
@@ -181,7 +181,7 @@ fun IphoneExportSheet(
 }
 
 @Composable
-private fun Note(text: String, accent: Color = AetherColors.Control) {
+private fun Note(text: String, accent: Color = WarpColors.Control) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -189,7 +189,7 @@ private fun Note(text: String, accent: Color = AetherColors.Control) {
             .background(accent.copy(alpha = 0.08f))
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.bodySmall, color = AetherColors.Ink)
+        Text(text, style = MaterialTheme.typography.bodySmall, color = WarpColors.Ink)
     }
 }
 
@@ -202,12 +202,12 @@ private fun ActionPill(
     primary: Boolean = false,
 ) {
     val shape = RoundedCornerShape(50)
-    val tint = if (primary) AetherColors.Control else AetherColors.Ink
+    val tint = if (primary) WarpColors.Control else WarpColors.Ink
     Row(
         modifier = modifier
             .clip(shape)
-            .background(if (primary) AetherColors.Control.copy(alpha = 0.16f) else AetherColors.Ink.copy(alpha = 0.05f))
-            .border(1.dp, if (primary) AetherColors.Control.copy(alpha = 0.45f) else AetherColors.Hairline, shape)
+            .background(if (primary) WarpColors.Control.copy(alpha = 0.16f) else WarpColors.Ink.copy(alpha = 0.05f))
+            .border(1.dp, if (primary) WarpColors.Control.copy(alpha = 0.45f) else WarpColors.Hairline, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

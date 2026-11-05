@@ -1,6 +1,6 @@
 package io.github.mhammaddawudi.freeport.core
 
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.ExitCountries
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.data.ScanMode
@@ -37,11 +37,11 @@ class ExitAndCacheTest {
 
     @Test
     fun `warp in warp keeps its balanced scan while the others go swift`() {
-        val swift = AetherSettings(scanMode = ScanMode.Swift)
+        val swift = WarpSettings(scanMode = ScanMode.Swift)
         assertEquals("balanced", CorePayloads.scanWire(swift.copy(protocol = Protocol.Gool)))
         assertEquals("swift", CorePayloads.scanWire(swift.copy(protocol = Protocol.MasqueH2)))
         assertEquals("swift", CorePayloads.scanWire(swift.copy(protocol = Protocol.WireGuard)))
-        assertEquals("thorough", CorePayloads.scanWire(AetherSettings(protocol = Protocol.Gool, scanMode = ScanMode.Thorough)))
+        assertEquals("thorough", CorePayloads.scanWire(WarpSettings(protocol = Protocol.Gool, scanMode = ScanMode.Thorough)))
     }
 
     @Test

@@ -28,12 +28,14 @@ class SessionHealthTest {
         var restartFails: String? = null
         var downs = 0
         var backs = 0
+        var busy = false
         val health = SessionHealth(
             tunnelPort = TUNNEL,
             relayPort = if (relayed) RELAY else null,
             relay = if (relayed) relay else null,
             restartRelay = { country -> restarts += country; restartFails },
             carries = { port -> carrying.getValue(port) },
+            moving = { busy },
             onUnlockDown = { downs++ },
             onUnlockBack = { backs++ },
             now = { clock },
@@ -52,6 +54,18 @@ class SessionHealthTest {
         repeat(5) { assertNull(rig.probe()) }
         assertEquals(0, rig.downs)
         assertTrue(rig.restarts.isEmpty())
+    }
+
+    @Test
+    fun `a busy tunnel whose test connection times out is not torn down`() {
+        val rig = Rig(relayed = false)
+        rig.carrying[TUNNEL] = false
+        rig.busy = true
+        repeat(6) { assertNull(rig.probe()) }
+        rig.busy = false
+        assertNull(rig.probe())
+        assertNull(rig.probe())
+        assertEquals("the tunnel stopped carrying traffic", rig.probe())
     }
 
     @Test

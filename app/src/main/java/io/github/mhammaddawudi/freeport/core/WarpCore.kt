@@ -1,11 +1,11 @@
 package io.github.mhammaddawudi.freeport.core
 
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 
 /**
- * The seam between the app and Aether's Rust core.
+ * The seam between the app and Warp's Rust core.
  *
- * The core exposes a C ABI (`aether/src/ffi.rs`) where every call returns a
+ * The core exposes a C ABI (`warp/src/ffi.rs`) where every call returns a
  * JSON string and long-running work is a *job*: the start call returns a job
  * id immediately, and the caller polls [pollJob] until it reports `done`.
  * This interface is that shape, minus the polling — the implementations turn
@@ -13,32 +13,32 @@ import io.github.mhammaddawudi.freeport.data.AetherSettings
  *
  * Two implementations exist:
  *
- *  - [MockAetherCore] — plausible timings and endpoints, no native library.
+ *  - [MockWarpCore] — plausible timings and endpoints, no native library.
  *    This is what the app runs on until the Rust side is cross-compiled.
- *  - [NativeAetherCore] — the real thing, over JNI.
+ *  - [NativeWarpCore] — the real thing, over JNI.
  *
  * Swapping one for the other is a single line in [CoreProvider].
  */
-interface AetherCore {
+interface WarpCore {
 
     /**
-     * Pushes the `AETHER_*` switches into the process the core reads them
+     * Pushes the `WARP_*` switches into the process the core reads them
      * from. Some options — HTTP/2 for MASQUE, ClientHello fragmenting — have
      * no field in the job payloads and are only read from the environment.
      */
-    suspend fun applyEnvironment(settings: AetherSettings)
+    suspend fun applyEnvironment(settings: WarpSettings)
 
     /** The core's own version string, or null when the library is missing. */
     suspend fun version(): String?
 
     /**
      * Loads the device identity from [path], provisioning a new one if the
-     * file is not there yet. Corresponds to `aether_identity_open`.
+     * file is not there yet. Corresponds to `warp_identity_open`.
      */
     suspend fun openIdentity(path: String, transport: String): CoreResult<Identity>
 
     /**
-     * Looks for a reachable edge. Corresponds to `aether_scan_start`.
+     * Looks for a reachable edge. Corresponds to `warp_scan_start`.
      *
      * [onProgress] is driven by the implementation, not the core: the C API
      * has no progress channel, so the native implementation reports the
@@ -48,31 +48,31 @@ interface AetherCore {
      */
     suspend fun scan(
         identity: Identity,
-        settings: AetherSettings,
+        settings: WarpSettings,
         excluded: Set<String> = emptySet(),
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint>
 
     /**
      * Opens the tunnel and runs it until [stopTunnel] is called or it fails.
-     * Corresponds to `aether_tunnel_start`; the returned job id stays valid
+     * Corresponds to `warp_tunnel_start`; the returned job id stays valid
      * for the life of the tunnel.
      */
     suspend fun startTunnel(
         identity: Identity,
         endpoint: Endpoint,
-        settings: AetherSettings,
+        settings: WarpSettings,
     ): CoreResult<JobHandle>
 
     /**
      * Hands the whole connection to the core — identity, scan and tunnel —
-     * the way the CLI runs it. Corresponds to `aether_core_start`.
+     * the way the CLI runs it. Corresponds to `warp_core_start`.
      *
      * The step API above has no way to express gool: `Transport` in `api.rs`
      * knows only masque and wireguard, and the nested session is assembled
      * inside `run_with`. So gool always takes this path.
      */
-    suspend fun startManaged(settings: AetherSettings, configDir: String): CoreResult<JobHandle>
+    suspend fun startManaged(settings: WarpSettings, configDir: String): CoreResult<JobHandle>
 
     /**
      * Waits until a session is carrying traffic: its local SOCKS5 proxy
@@ -84,7 +84,7 @@ interface AetherCore {
      * against a proxy that is not listening yet produces a tunnel that says
      * it is up and carries nothing.
      */
-    suspend fun awaitProxyReady(job: JobHandle, settings: AetherSettings, timeoutMs: Long): String?
+    suspend fun awaitProxyReady(job: JobHandle, settings: WarpSettings, timeoutMs: Long): String?
 
     /**
      * Waits until nothing is listening on the local proxy port.
@@ -93,7 +93,7 @@ interface AetherCore {
      * next one look instantly ready, so the app reports a connection that is
      * really the previous one. Returns false if the port never freed up.
      */
-    suspend fun awaitProxyClosed(settings: AetherSettings, timeoutMs: Long): Boolean
+    suspend fun awaitProxyClosed(settings: WarpSettings, timeoutMs: Long): Boolean
 
     /**
      * Whether the SOCKS5 proxy on [port] can open a connection right now —
@@ -102,13 +102,13 @@ interface AetherCore {
      */
     suspend fun carries(port: Int): Boolean
 
-    /** Cancels a running job. Corresponds to `aether_job_cancel`. */
+    /** Cancels a running job. Corresponds to `warp_job_cancel`. */
     suspend fun stopTunnel(job: JobHandle)
 
     /** True once the tunnel job has finished, either cleanly or with an error. */
     suspend fun pollJob(job: JobHandle): JobState
 
-    /** Frees the identity slot the core holds. Corresponds to `aether_identity_free`. */
+    /** Frees the identity slot the core holds. Corresponds to `warp_identity_free`. */
     suspend fun closeIdentity(identity: Identity)
 }
 

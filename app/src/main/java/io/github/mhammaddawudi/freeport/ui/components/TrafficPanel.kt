@@ -19,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.github.mhammaddawudi.freeport.ui.TrafficUi
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import io.github.mhammaddawudi.freeport.ui.theme.NumericStyle
 
 /** Download, upload and ping on one line; the glyphs say which is which. */
@@ -33,9 +33,9 @@ fun TrafficPanel(traffic: TrafficUi, pingMs: Long?, modifier: Modifier = Modifie
         Row(verticalAlignment = Alignment.CenterVertically) {
             val (down, downUnit) = Formats.rate(traffic.downRate)
             val (up, upUnit) = Formats.rate(traffic.upRate)
-            Stat(GlyphKind.Down, down, downUnit, AetherColors.Ink, AetherColors.Mint, Modifier.weight(1f))
+            Stat(GlyphKind.Down, down, downUnit, WarpColors.Ink, WarpColors.Mint, Modifier.weight(1f))
             Separator()
-            Stat(GlyphKind.Up, up, upUnit, AetherColors.Ink, AetherColors.Selected, Modifier.weight(1f))
+            Stat(GlyphKind.Up, up, upUnit, WarpColors.Ink, WarpColors.Selected, Modifier.weight(1f))
             Separator()
             Stat(GlyphKind.Pulse, pingMs?.toString() ?: "—", "ms", pingTint(pingMs), pingTint(pingMs), Modifier.weight(1f))
         }
@@ -49,19 +49,19 @@ private fun Stat(glyph: GlyphKind, value: String, unit: String, tint: Color, gly
         Spacer(Modifier.width(5.dp))
         Text(value, style = MaterialTheme.typography.titleSmall.merge(NumericStyle), color = tint, maxLines = 1)
         Spacer(Modifier.width(3.dp))
-        Text(unit, style = MaterialTheme.typography.labelSmall, color = AetherColors.InkFaint, maxLines = 1)
+        Text(unit, style = MaterialTheme.typography.labelSmall, color = WarpColors.InkFaint, maxLines = 1)
     }
 }
 
 @Composable
 private fun Separator() {
-    Box(Modifier.width(1.dp).height(18.dp).background(AetherColors.Hairline))
+    Box(Modifier.width(1.dp).height(18.dp).background(WarpColors.Hairline))
 }
 
 @Composable
 private fun pingTint(ping: Long?): Color = when {
-    ping == null -> AetherColors.InkFaint
-    ping < 150 -> AetherColors.Mint
-    ping < 400 -> AetherColors.Amber
-    else -> AetherColors.Rose
+    ping == null -> WarpColors.InkFaint
+    ping < 150 -> WarpColors.Mint
+    ping < 400 -> WarpColors.Amber
+    else -> WarpColors.Rose
 }

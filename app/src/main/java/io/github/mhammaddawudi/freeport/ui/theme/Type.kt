@@ -27,7 +27,7 @@ val Vazirmatn = FontFamily(
  * measured width below what the glyphs actually paint, and the last letter of
  * a word gets cut off — which is exactly what happened to ڕێکخستن and تۆمار.
  */
-val AetherTypography = Typography(
+val WarpTypography = Typography(
     displayLarge = TextStyle(fontFamily = Vazirmatn, fontWeight = FontWeight.Light, fontSize = 44.sp, lineHeight = 50.sp, letterSpacing = 0.sp),
     displaySmall = TextStyle(fontFamily = Vazirmatn, fontWeight = FontWeight.Light, fontSize = 32.sp, lineHeight = 38.sp, letterSpacing = 0.sp),
     headlineMedium = TextStyle(fontFamily = Vazirmatn, fontWeight = FontWeight.SemiBold, fontSize = 26.sp, lineHeight = 32.sp, letterSpacing = 0.sp),

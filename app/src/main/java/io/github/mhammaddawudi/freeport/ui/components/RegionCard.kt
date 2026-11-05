@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.sp
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.data.ExitCountries
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import java.util.Locale
 
 /**
@@ -67,7 +67,7 @@ fun RegionCard(
 
     GlassCard(
         modifier = modifier.fillMaxWidth(),
-        accent = if (connected?.relayed == true && exit != null) AetherColors.Mint else null,
+        accent = if (connected?.relayed == true && exit != null) WarpColors.Mint else null,
         contentPadding = PaddingValues(start = 14.dp, end = 18.dp, top = 6.dp, bottom = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -75,11 +75,11 @@ fun RegionCard(
                 Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(AetherColors.Ink.copy(alpha = 0.06f)),
+                    .background(WarpColors.Ink.copy(alpha = 0.06f)),
                 contentAlignment = Alignment.Center,
             ) {
                 if (relaying) {
-                    StatusDot(AetherColors.Amber, pulsing = true)
+                    StatusDot(WarpColors.Amber, pulsing = true)
                 } else {
                     Text(ExitCountries.flag(exit.orEmpty()), fontSize = 19.sp)
                 }
@@ -91,7 +91,7 @@ fun RegionCard(
                 subtitle = exit?.let { countryName(it) },
                 checked = regionUnlock,
                 onCheckedChange = onToggle,
-                accent = AetherColors.Mint,
+                accent = WarpColors.Mint,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -124,13 +124,13 @@ fun RegionCard(
 @Composable
 private fun CountryChip(label: String, flag: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
-    val accent = AetherColors.Mint
+    val accent = WarpColors.Mint
     Row(
         Modifier
             .heightIn(min = 40.dp)
             .clip(shape)
             .background(if (selected) accent.copy(alpha = 0.14f) else Color.Transparent)
-            .border(1.dp, if (selected) accent else AetherColors.Hairline, shape)
+            .border(1.dp, if (selected) accent else WarpColors.Hairline, shape)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -140,7 +140,7 @@ private fun CountryChip(label: String, flag: String, selected: Boolean, onClick:
         Text(
             label,
             style = MaterialTheme.typography.labelLarge,
-            color = if (selected) AetherColors.Ink else AetherColors.InkMuted,
+            color = if (selected) WarpColors.Ink else WarpColors.InkMuted,
             maxLines = 1,
         )
     }

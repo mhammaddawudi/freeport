@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import io.github.mhammaddawudi.freeport.AetherApp
+import io.github.mhammaddawudi.freeport.WarpApp
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.CoreLog
@@ -35,11 +35,11 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import java.io.File
 import io.github.mhammaddawudi.freeport.core.isEngaged
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.AppLanguage
 import io.github.mhammaddawudi.freeport.data.NoizeProfile
 import io.github.mhammaddawudi.freeport.data.Protocol
-import io.github.mhammaddawudi.freeport.vpn.AetherVpnService
+import io.github.mhammaddawudi.freeport.vpn.WarpVpnService
 
 /** Where the iPhone export is. */
 sealed interface IphoneExportUi {
@@ -66,17 +66,17 @@ data class TrafficUi(
     val upTotal: Long = 0,
 )
 
-class AetherViewModel(application: Application) : AndroidViewModel(application) {
+class WarpViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val aether = application as AetherApp
+    private val warp = application as WarpApp
 
-    val state: StateFlow<ConnectionState> = aether.engine.state
-    val settings: StateFlow<AetherSettings> = aether.settings.settings
-    val identity: StateFlow<Identity?> = aether.engine.identity
+    val state: StateFlow<ConnectionState> = warp.engine.state
+    val settings: StateFlow<WarpSettings> = warp.settings.settings
+    val identity: StateFlow<Identity?> = warp.engine.identity
     val logs: StateFlow<List<CoreLog.Line>> = CoreLog.lines
 
     val isNativeCore: Boolean = CoreProvider.isNative
-    val bridgeName: String = aether.tunBridge.name
+    val bridgeName: String = warp.tunBridge.name
 
     /**
      * Consent is only worth asking for when the session will actually raise a
@@ -84,7 +84,7 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
      * core is the simulator produces the worst outcome — Android shows the
      * VPN key, and nothing is carried.
      */
-    val needsVpnPermission: Boolean = aether.tunBridge.isAvailable && CoreProvider.isNative
+    val needsVpnPermission: Boolean = warp.tunBridge.isAvailable && CoreProvider.isNative
 
     private val _coreVersion = MutableStateFlow<String?>(null)
     val coreVersion: StateFlow<String?> = _coreVersion.asStateFlow()
@@ -101,7 +101,7 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
     val pingMs: StateFlow<Long?> = _pingMs.asStateFlow()
 
     private val updates = UpdateChecker(application)
-    private val updatePrefs = application.getSharedPreferences("aether.updates", android.content.Context.MODE_PRIVATE)
+    private val updatePrefs = application.getSharedPreferences("warp.updates", android.content.Context.MODE_PRIVATE)
     private val _update = MutableStateFlow<UpdateUi>(UpdateUi.Hidden)
     val update: StateFlow<UpdateUi> = _update.asStateFlow()
     private var updateJob: Job? = null
@@ -161,7 +161,11 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
             getApplication<Application>().startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse(update.apkUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
-        }.onFailure { _messages.tryEmit(it.message ?: "no browser to open the update") }
+        }
+            // The browser has the download; the dialog comes back on the next
+            // check only if it is still not installed.
+            .onSuccess { _update.value = UpdateUi.Hidden }
+            .onFailure { _messages.tryEmit(it.message ?: "no browser to open the update") }
     }
 
     /** Hides the card for a day; a newer version than this one shows at once. */
@@ -217,51 +221,51 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
             }
     }
 
-    fun connect() = AetherVpnService.connect(getApplication<Application>())
+    fun connect() = WarpVpnService.connect(getApplication<Application>())
 
-    fun disconnect() = AetherVpnService.disconnect(getApplication<Application>())
+    fun disconnect() = WarpVpnService.disconnect(getApplication<Application>())
 
     fun selectProtocol(protocol: Protocol) {
         val before = settings.value
         if (before.protocol == protocol) return
-        aether.settings.update {
+        warp.settings.update {
             it.copy(
                 protocol = protocol,
                 noize = if (it.noize in protocol.noizeProfiles) it.noize else NoizeProfile.fromWire(protocol.defaultNoize),
             )
         }
         if (state.value.isEngaged && state.value !is ConnectionState.Disconnecting) {
-            aether.engine.reconnect()
+            warp.engine.reconnect()
         }
     }
 
-    fun updateSettings(transform: (AetherSettings) -> AetherSettings) = aether.settings.update(transform)
+    fun updateSettings(transform: (WarpSettings) -> WarpSettings) = warp.settings.update(transform)
 
     /** Turns the foreign exit on or off; a live session picks it up at once. */
     fun setRegionUnlock(enabled: Boolean) {
         if (settings.value.regionUnlock == enabled) return
-        aether.settings.update { it.copy(regionUnlock = enabled) }
+        warp.settings.update { it.copy(regionUnlock = enabled) }
         reconnectIfEngaged()
     }
 
     fun selectExitCountry(code: String) {
         if (settings.value.exitCountry == code) return
-        aether.settings.update { it.copy(exitCountry = code) }
+        warp.settings.update { it.copy(exitCountry = code) }
         if (settings.value.regionUnlock) reconnectIfEngaged()
     }
 
     private fun reconnectIfEngaged() {
-        if (state.value.isEngaged && state.value !is ConnectionState.Disconnecting) aether.engine.reconnect()
+        if (state.value.isEngaged && state.value !is ConnectionState.Disconnecting) warp.engine.reconnect()
     }
 
     /** Stores the language; the screen is rebuilt by the caller. */
     fun selectLanguage(language: AppLanguage) {
         if (settings.value.language == language) return
-        aether.settings.update { it.copy(language = language) }
+        warp.settings.update { it.copy(language = language) }
     }
 
     /** Adds or removes one package from the per-app tunnel list. */
-    fun toggleApp(packageName: String) = aether.settings.update {
+    fun toggleApp(packageName: String) = warp.settings.update {
         val next = if (packageName in it.tunneledApps) {
             it.tunneledApps - packageName
         } else {
@@ -270,13 +274,13 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
         it.copy(tunneledApps = next)
     }
 
-    fun reconnect() = aether.engine.reconnect()
+    fun reconnect() = warp.engine.reconnect()
 
     /** Registers a fresh device and finds an edge for it on this network. */
     fun startIphoneExport() {
         if (exportJob?.isActive == true) return
         exportJob = viewModelScope.launch {
-            val result = aether.iphoneExporter.export(settings.value) { phase ->
+            val result = warp.iphoneExporter.export(settings.value) { phase ->
                 _iphoneExport.value = IphoneExportUi.Working(phase)
             }
             // A reset while the core was finishing up must not be overwritten.
@@ -322,7 +326,7 @@ class AetherViewModel(application: Application) : AndroidViewModel(application) 
                 _traffic.value = TrafficUi()
                 if (!connected) return@collectLatest
 
-                val meter = aether.trafficMeter
+                val meter = warp.trafficMeter
                 val base = meter.totals() ?: return@collectLatest
                 var previous = base
                 while (true) {

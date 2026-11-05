@@ -41,7 +41,7 @@ import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.ui.components.GlassCard
 import io.github.mhammaddawudi.freeport.ui.components.Glyph
 import io.github.mhammaddawudi.freeport.ui.components.GlyphKind
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import io.github.mhammaddawudi.freeport.ui.theme.MonoStyle
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -92,11 +92,11 @@ fun LogsScreen(
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Glyph(GlyphKind.Terminal, AetherColors.InkFaint, Modifier.size(34.dp))
+                    Glyph(GlyphKind.Terminal, WarpColors.InkFaint, Modifier.size(34.dp))
                     Spacer(Modifier.height(12.dp))
-                    Text(stringResource(R.string.logs_empty), style = MaterialTheme.typography.titleSmall, color = AetherColors.InkMuted)
+                    Text(stringResource(R.string.logs_empty), style = MaterialTheme.typography.titleSmall, color = WarpColors.InkMuted)
                     Spacer(Modifier.height(4.dp))
-                    Text(stringResource(R.string.logs_empty_hint), style = MaterialTheme.typography.bodySmall, color = AetherColors.InkFaint)
+                    Text(stringResource(R.string.logs_empty_hint), style = MaterialTheme.typography.bodySmall, color = WarpColors.InkFaint)
                 }
             } else {
                 LazyColumn(
@@ -106,7 +106,7 @@ fun LogsScreen(
                 ) {
                     items(lines, key = { it.id }) { line ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp)) {
-                            Text(timeFormat.format(Date(line.timeMillis)), style = MonoStyle, color = AetherColors.InkFaint)
+                            Text(timeFormat.format(Date(line.timeMillis)), style = MonoStyle, color = WarpColors.InkFaint)
                             Spacer(Modifier.width(10.dp))
                             Text(line.text, style = MonoStyle, color = colorOf(line.level))
                         }
@@ -119,10 +119,10 @@ fun LogsScreen(
 
 @Composable
 private fun colorOf(level: CoreLog.Level): Color = when (level) {
-    CoreLog.Level.Info -> AetherColors.InkMuted
-    CoreLog.Level.Good -> AetherColors.Mint
-    CoreLog.Level.Warn -> AetherColors.Amber
-    CoreLog.Level.Error -> AetherColors.Rose
+    CoreLog.Level.Info -> WarpColors.InkMuted
+    CoreLog.Level.Good -> WarpColors.Mint
+    CoreLog.Level.Warn -> WarpColors.Amber
+    CoreLog.Level.Error -> WarpColors.Rose
 }
 
 @Composable
@@ -134,19 +134,19 @@ private fun ToolPill(
     enabled: Boolean = true,
 ) {
     val shape = RoundedCornerShape(50)
-    val tint = if (active) AetherColors.Control else AetherColors.InkMuted
+    val tint = if (active) WarpColors.Control else WarpColors.InkMuted
     Row(
         modifier = Modifier
             .alpha(if (enabled) 1f else 0.4f)
             .clip(shape)
-            .background(if (active) AetherColors.Control.copy(alpha = 0.14f) else AetherColors.Ink.copy(alpha = 0.05f))
-            .border(1.dp, if (active) AetherColors.Control.copy(alpha = 0.4f) else AetherColors.Hairline, shape)
+            .background(if (active) WarpColors.Control.copy(alpha = 0.14f) else WarpColors.Ink.copy(alpha = 0.05f))
+            .border(1.dp, if (active) WarpColors.Control.copy(alpha = 0.4f) else WarpColors.Hairline, shape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Glyph(glyph, tint, Modifier.size(15.dp))
         Spacer(Modifier.width(7.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, color = if (active) AetherColors.Control else AetherColors.Ink)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = if (active) WarpColors.Control else WarpColors.Ink)
     }
 }

@@ -1,10 +1,11 @@
 # Third-party components
 
-## Aether — AGPL-3.0
-https://github.com/CluvexStudio/Aether
+## Warp core — AGPL-3.0
+Based on Aether by CluvexStudio: https://github.com/CluvexStudio/Aether
 
-The circumvention core (`libaether.so`), built unmodified from upstream by
-`scripts/build-core.sh`. Because the app links it, the whole app is covered
+The circumvention core (`libwarp.so`), built from upstream by
+`scripts/build-core.sh`, which renames it (`scripts/rebrand-core.sh`) and
+applies Freeport's changes (`scripts/core-patches/`). Because the app links it, the whole app is covered
 by the AGPL-3.0: if you distribute a build, you have to offer its source to
 whoever receives it.
 

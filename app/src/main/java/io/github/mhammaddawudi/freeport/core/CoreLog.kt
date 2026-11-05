@@ -31,7 +31,7 @@ object CoreLog {
      */
     @JvmStatic
     fun fromCore(line: String) {
-        val text = unbranded(line.substringAfter("aether: ").trim())
+        val text = unbranded(line.substringAfter("warp: ").trim())
         if (text.isEmpty()) return
         append(
             when {
@@ -44,13 +44,10 @@ object CoreLog {
         )
     }
 
-    /** The core names itself in some lines; the log shows the app's name only. */
-    internal fun unbranded(text: String): String = text
-        .replace(AETHERNOIZE, "noize")
-        .replace(AETHER, "freeport")
+    /** The core calls its obfuscation profiles "warpnoize"; the app calls them noize. */
+    internal fun unbranded(text: String): String = text.replace(WARPNOIZE, "noize")
 
-    private val AETHERNOIZE = Regex("aethernoize", RegexOption.IGNORE_CASE)
-    private val AETHER = Regex("aether", RegexOption.IGNORE_CASE)
+    private val WARPNOIZE = Regex("warpnoize", RegexOption.IGNORE_CASE)
 
     fun info(text: String) = append(Level.Info, text)
     fun good(text: String) = append(Level.Good, text)

@@ -18,7 +18,7 @@ import io.github.mhammaddawudi.freeport.R
  *
  * The core's own [`Transport`] enum has only two members — masque and
  * wireguard. The two extra rows here are the transport plus a switch the core
- * reads elsewhere: h2 flips `AETHER_MASQUE_HTTP2`, and gool is the nested
+ * reads elsewhere: h2 flips `WARP_MASQUE_HTTP2`, and gool is the nested
  * wireguard mode the CLI drives with `--gool-classic`. [Auto] is resolved by the
  * engine into one of the others before anything reaches the core.
  */
@@ -27,7 +27,7 @@ enum class Protocol(
     val displayName: String,
     /** The `transport` field of a core payload. */
     val transport: String,
-    /** Extra CLI arguments when the core is driven through `aether_core_start`. */
+    /** Extra CLI arguments when the core is driven through `warp_core_start`. */
     val coreArguments: List<String>,
     val defaultPort: Int,
     val defaultNoize: String,
@@ -35,8 +35,7 @@ enum class Protocol(
     /**
      * Not a transport of its own: the engine first tries the edges measured
      * fastest on this operator, on any protocol, then scans MASQUE, MASQUE H2
-     * and WireGuard on equal terms, falling back to warp in warp when none of
-     * them answers. The default,
+     * and WireGuard on equal terms. Warp in warp is never chosen by it. The default,
      * because which one gets through differs from one network to the next.
      */
     Auto(
@@ -127,18 +126,19 @@ enum class ScanMode(
     Turbo("turbo", R.string.scan_turbo, R.string.scan_turbo_desc),
 
     /**
-     * The default: keeps the fastest edge of those that answer within two
-     * seconds of the first one. Close to [Turbo] in time, close to
-     * [Balanced] in what it picks.
+     * Keeps the fastest edge of those that answer within two seconds of the
+     * first one. Close to [Turbo] in time, close to [Balanced] in what it picks.
      */
     Swift("swift", R.string.scan_swift, R.string.scan_swift_desc),
+
+    /** The default: slower to finish than [Swift], steadier in what it picks. */
     Balanced("balanced", R.string.scan_balanced, R.string.scan_balanced_desc),
     Thorough("thorough", R.string.scan_thorough, R.string.scan_thorough_desc),
     Stealth("stealth", R.string.scan_stealth, R.string.scan_stealth_desc),
     Ironclad("ironclad", R.string.scan_ironclad, R.string.scan_ironclad_desc);
 
     companion object {
-        fun fromWire(wire: String?): ScanMode = entries.firstOrNull { it.wire == wire } ?: Swift
+        fun fromWire(wire: String?): ScanMode = entries.firstOrNull { it.wire == wire } ?: Balanced
     }
 }
 

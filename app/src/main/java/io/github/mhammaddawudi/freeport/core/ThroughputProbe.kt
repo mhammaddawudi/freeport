@@ -23,17 +23,72 @@ object ThroughputProbe {
     private const val BYTES = 4_000_000
     private const val CONNECT_TIMEOUT_MS = 6_000
     private const val WINDOW_MS = 4_000L
+    private const val URL_UP = "https://speed.cloudflare.com/__up"
 
     /** The first stretch includes TCP slow start; the rate is taken after it. */
     private const val WARMUP_BYTES = 64 * 1024
 
-    /** Kilobytes per second, or null when nothing came through. */
-    suspend fun measure(socksPort: Int, bytes: Int = BYTES, windowMs: Long = WINDOW_MS): Long? =
-        withContext(Dispatchers.IO) {
-            runCatching { download(socksPort, bytes, windowMs) }.getOrNull()
-        }
+    /**
+     * [kbps] is the download rate. [firstByteMs] is how long a brand-new
+     * connection took to deliver its first byte — tunnel handshake, TLS and
+     * request included — which is what each new reel or image waits for.
+     * [upKbps] is the upload rate, 0 when it was not measured.
+     */
+    data class Measurement(val kbps: Long, val firstByteMs: Long, val upKbps: Long = 0)
 
-    private fun download(socksPort: Int, bytes: Int, windowMs: Long): Long? {
+    /** Null when nothing came through. [upBytes] > 0 also measures the upload. */
+    suspend fun measure(
+        socksPort: Int,
+        bytes: Int = BYTES,
+        windowMs: Long = WINDOW_MS,
+        upBytes: Int = 0,
+    ): Measurement? = withContext(Dispatchers.IO) {
+        val down = runCatching { download(socksPort, bytes, windowMs) }.getOrNull() ?: return@withContext null
+        if (upBytes <= 0) return@withContext down
+        down.copy(upKbps = runCatching { upload(socksPort, upBytes, windowMs) }.getOrNull() ?: 0)
+    }
+
+    /**
+     * Uploads [bytes] and times it until the far end answers. Timing the
+     * writes alone would measure the tunnel's local buffers, which swallow
+     * half a megabyte at once.
+     */
+    suspend fun upload(socksPort: Int, bytes: Int, windowMs: Long = WINDOW_MS): Long? = withContext(Dispatchers.IO) {
+        runCatching { send(socksPort, bytes, windowMs) }.getOrNull()
+    }
+
+    private fun send(socksPort: Int, bytes: Int, windowMs: Long): Long? {
+        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
+        val connection = URL(URL_UP).openConnection(proxy) as HttpURLConnection
+        try {
+            connection.connectTimeout = CONNECT_TIMEOUT_MS
+            connection.readTimeout = windowMs.toInt()
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setFixedLengthStreamingMode(bytes)
+            val chunk = ByteArray(16 * 1024)
+            var started = 0L
+            connection.outputStream.use { output ->
+                // Opening the stream sets up TCP and TLS through the tunnel;
+                // the clock starts once the first chunk is on its way.
+                output.write(chunk, 0, minOf(chunk.size, bytes))
+                started = SystemClock.elapsedRealtime()
+                var sent = minOf(chunk.size, bytes)
+                while (sent < bytes) {
+                    val size = minOf(chunk.size, bytes - sent)
+                    output.write(chunk, 0, size)
+                    sent += size
+                }
+            }
+            if (connection.responseCode !in 200..299) return null
+            return rate((bytes - minOf(chunk.size, bytes)).toLong(), started)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun download(socksPort: Int, bytes: Int, windowMs: Long): Measurement? {
+        val opened = SystemClock.elapsedRealtime()
         val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
         val connection = URL("https://speed.cloudflare.com/__down?bytes=$bytes").openConnection(proxy) as HttpURLConnection
         try {
@@ -46,17 +101,21 @@ object ThroughputProbe {
                 var total = 0L
                 var warmAt = -1L
                 var warmBytes = 0L
+                var firstAt = -1L
                 val deadline = SystemClock.elapsedRealtime() + windowMs
                 while (SystemClock.elapsedRealtime() < deadline) {
                     val read = input.read(buffer)
                     if (read < 0) break
+                    if (firstAt < 0) firstAt = SystemClock.elapsedRealtime()
                     total += read
                     if (warmAt < 0 && total >= WARMUP_BYTES) {
                         warmAt = SystemClock.elapsedRealtime()
                         warmBytes = total
                     }
                 }
-                rate(total - warmBytes, warmAt)
+                if (firstAt < 0) return@use null
+                val kbps = rate(total - warmBytes, warmAt) ?: return@use null
+                Measurement(kbps, firstAt - opened)
             }
         } finally {
             connection.disconnect()

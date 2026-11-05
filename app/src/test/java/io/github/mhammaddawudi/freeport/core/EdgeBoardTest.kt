@@ -34,9 +34,31 @@ class EdgeBoardTest {
     @Test
     fun scanPayloadCarriesExcludedEdges() {
         val payload = CorePayloads.scan(
-            io.github.mhammaddawudi.freeport.data.AetherSettings(),
+            io.github.mhammaddawudi.freeport.data.WarpSettings(),
             setOf("162.159.198.2:443"),
         )
         assertTrue(payload.contains("\"excluded\":[\"162.159.198.2:443\"]"))
+    }
+
+    @Test
+    fun aQuickFirstByteBeatsRawSpeedForReels() {
+        val fastButFar = SharedEdge(Endpoint("162.159.192.1", 2408, 900), 3000)
+        val slowerButNear = SharedEdge(Endpoint("162.159.192.2", 2408, 300), 1200)
+        assertTrue(slowerButNear.reelMs < fastButFar.reelMs)
+        assertEquals(listOf(slowerButNear, fastButFar), listOf(fastButFar, slowerButNear).sortedBy { it.reelMs })
+    }
+
+    @Test
+    fun aSlowUploadCostsAnEdgeItsPlace() {
+        val choked = SharedEdge(Endpoint("162.159.192.1", 2408, 300), 2000, upKbps = 20)
+        val even = SharedEdge(Endpoint("162.159.192.2", 2408, 300), 1500, upKbps = 800)
+        val unknown = SharedEdge(Endpoint("162.159.192.3", 2408, 300), 1500)
+        assertEquals(listOf(even, unknown, choked), listOf(choked, unknown, even).sortedBy { it.reelMs })
+    }
+
+    @Test
+    fun parseReadsTheUploadRate() {
+        val edges = HttpEdgeBoard.parse("""{"edges":[{"addr":"162.159.198.2","port":443,"rtt":90,"kbps":1800,"up":420}]}""")
+        assertEquals(420L, edges.single().upKbps)
     }
 }

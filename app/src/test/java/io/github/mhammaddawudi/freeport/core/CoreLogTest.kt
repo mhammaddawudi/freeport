@@ -6,8 +6,8 @@ import org.junit.Test
 class CoreLogTest {
 
     @Test
-    fun coreLinesDoNotNameAether() {
-        assertEquals("[+] noize profile: firewall", CoreLog.unbranded("[+] aethernoize profile: firewall"))
-        assertEquals("freeport ends rather than connect", CoreLog.unbranded("Aether ends rather than connect"))
+    fun noizeProfilesKeepTheAppsName() {
+        assertEquals("[+] noize profile: firewall", CoreLog.unbranded("[+] warpnoize profile: firewall"))
+        assertEquals("Warp v2.4.0", CoreLog.unbranded("Warp v2.4.0"))
     }
 }

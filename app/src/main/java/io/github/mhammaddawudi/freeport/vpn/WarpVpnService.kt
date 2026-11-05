@@ -21,29 +21,29 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
-import io.github.mhammaddawudi.freeport.AetherApp
+import io.github.mhammaddawudi.freeport.WarpApp
 import io.github.mhammaddawudi.freeport.MainActivity
 import io.github.mhammaddawudi.freeport.R
-import io.github.mhammaddawudi.freeport.core.AetherEngine
+import io.github.mhammaddawudi.freeport.core.WarpEngine
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.core.CoreProvider
 import io.github.mhammaddawudi.freeport.core.TunMode
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.TunnelMode
 import java.net.InetAddress
 
 /**
  * Hosts a session: keeps the process in the foreground, owns the TUN
- * interface, and hands both to [AetherEngine].
+ * interface, and hands both to [WarpEngine].
  *
  * The app's own uid is excluded from the VPN. That is what lets the core's
  * sockets to the edge leave over the real network instead of looping back
  * into the tunnel, without the Rust side needing to call `protect()`.
  */
-class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
+class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
 
-    private val app: AetherApp get() = application as AetherApp
+    private val app: WarpApp get() = application as WarpApp
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var watcher: Job? = null
     private val tunLock = Any()
@@ -57,6 +57,21 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RESHOW) {
+            // Swiped away (Android 14+ allows it even for ongoing ones): put
+            // it straight back while the tunnel is still up.
+            val state = app.engine.state.value
+            if (watcher?.isActive != true) {
+                // No session in this service: it was only started to answer.
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
+            if (state !is ConnectionState.Idle && state !is ConnectionState.Failed) {
+                getSystemService(NotificationManager::class.java)
+                    .notify(VpnNotifications.NOTIFICATION_ID, VpnNotifications.build(this, state))
+            }
+            return START_STICKY
+        }
         if (intent?.action == ACTION_DISCONNECT) {
             // Tear the interface down first. The core can take seconds to let
             // go of its proxy, and the user should not keep being tunnelled —
@@ -70,7 +85,7 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
         }
 
         // ACTION_CONNECT from the app, or android.net.VpnService from the
-        // system when the user has made Aether the always-on VPN.
+        // system when the user has made Freeport the always-on VPN.
         goForeground(app.engine.state.value)
         holdCpuAwake()
         watchNetwork()
@@ -102,7 +117,7 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
         super.onDestroy()
     }
 
-    override fun onTunnelUp(settings: AetherSettings, mappedDns: Boolean): TunMode {
+    override fun onTunnelUp(settings: WarpSettings, mappedDns: Boolean): TunMode {
         val bridge = app.tunBridge
         if (!bridge.isAvailable) return TunMode.ProxyOnly
 
@@ -171,7 +186,7 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
      * explicitly. That is what lets the core's sockets reach the edge instead
      * of looping back into the tunnel they are carrying.
      */
-    private fun applyRouting(builder: Builder, settings: AetherSettings) {
+    private fun applyRouting(builder: Builder, settings: WarpSettings) {
         when (settings.tunnelMode) {
             TunnelMode.WholeDevice ->
                 runCatching { builder.addDisallowedApplication(packageName) }
@@ -287,7 +302,7 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
                 when (state) {
                     is ConnectionState.Failed -> shutDown()
                     else -> getSystemService(NotificationManager::class.java)
-                        .notify(VpnNotifications.NOTIFICATION_ID, VpnNotifications.build(this@AetherVpnService, state))
+                        .notify(VpnNotifications.NOTIFICATION_ID, VpnNotifications.build(this@WarpVpnService, state))
                 }
             }
         }
@@ -330,6 +345,7 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
     companion object {
         const val ACTION_CONNECT = "io.github.mhammaddawudi.freeport.CONNECT"
         const val ACTION_DISCONNECT = "io.github.mhammaddawudi.freeport.DISCONNECT"
+        const val ACTION_RESHOW = "io.github.mhammaddawudi.freeport.RESHOW_NOTIFICATION"
 
         private const val TUN_MTU = 1500
         private const val TUN_V4 = "10.18.19.1"
@@ -347,12 +363,12 @@ class AetherVpnService : VpnService(), AetherEngine.TunnelHost {
         fun connect(context: Context) {
             ContextCompat.startForegroundService(
                 context,
-                Intent(context, AetherVpnService::class.java).setAction(ACTION_CONNECT),
+                Intent(context, WarpVpnService::class.java).setAction(ACTION_CONNECT),
             )
         }
 
         fun disconnect(context: Context) {
-            context.startService(Intent(context, AetherVpnService::class.java).setAction(ACTION_DISCONNECT))
+            context.startService(Intent(context, WarpVpnService::class.java).setAction(ACTION_DISCONNECT))
         }
     }
 }

@@ -1,0 +1,136 @@
+diff --git a/warp/src/prober.rs b/warp/src/prober.rs
+index e92b5bb..1490ad5 100644
+--- a/warp/src/prober.rs
++++ b/warp/src/prober.rs
+@@ -471,6 +471,7 @@ impl IpScan {
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub enum ScanMode {
+     Turbo,
++    Swift,
+     Balanced,
+     Thorough,
+     Verified,
+@@ -481,6 +482,7 @@ impl ScanMode {
+     pub fn parse(s: &str) -> ScanMode {
+         match s.trim().to_lowercase().as_str() {
+             "turbo" | "fast" => ScanMode::Turbo,
++            "swift" | "quick" => ScanMode::Swift,
+             "thorough" | "deep" | "pro" => ScanMode::Thorough,
+             "verified" | "proven" | "stealth" | "quiet" => ScanMode::Verified,
+             "ironclad" | "real" | "verify" | "guaranteed" => ScanMode::Ironclad,
+@@ -491,6 +493,7 @@ impl ScanMode {
+     pub fn label(&self) -> &'static str {
+         match self {
+             ScanMode::Turbo => "turbo",
++            ScanMode::Swift => "swift",
+             ScanMode::Balanced => "balanced",
+             ScanMode::Thorough => "thorough",
+             ScanMode::Verified => "verified",
+@@ -510,6 +513,19 @@ impl ScanMode {
+                 full_subnet: false,
+                 sample_per_cidr: 64,
+             },
++            // Waits a short moment after the first edge answers and keeps the
++            // fastest of everything that answered in that window: nearly the
++            // speed of turbo, without settling for whichever edge was first.
++            ScanMode::Swift => Strategy {
++                concurrency: 24,
++                per_probe_timeout: Duration::from_millis(6000),
++                overall_deadline: Duration::from_secs(60),
++                quiet_after_first: Duration::from_millis(2000),
++                target_successes: 1,
++                early_exit_first: false,
++                full_subnet: false,
++                sample_per_cidr: 140,
++            },
+             ScanMode::Balanced => Strategy {
+                 concurrency: 16,
+                 per_probe_timeout: Duration::from_millis(6000),
+diff --git a/warp/src/socks.rs b/warp/src/socks.rs
+index 46cbf5f..85dbd0e 100644
+--- a/warp/src/socks.rs
++++ b/warp/src/socks.rs
+@@ -71,6 +71,24 @@ fn host_of(target: &Target) -> Host<'_> {
+     }
+ }
+ 
++const QUIC_PORT: u16 = 443;
++
++/// Whether QUIC (UDP to 443) is dropped, from `WARP_BLOCK_QUIC=1`. Inside a tunnel QUIC
++/// stalls on every loss, and on an HTTP/2 carrier it rides TCP twice over; apps such as
++/// Instagram then wait on it rather than use TCP. Dropped, they fall back to TCP at once.
++fn quic_blocked() -> bool {
++    static BLOCKED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *BLOCKED.get_or_init(|| {
++        let on = std::env::var("WARP_BLOCK_QUIC")
++            .map(|v| matches!(v.trim(), "1" | "true" | "on" | "yes"))
++            .unwrap_or(false);
++        if on {
++            log::info!("[*] quic is dropped, so apps use tcp through the tunnel");
++        }
++        on
++    })
++}
++
+ static GATEWAY_HEALTHY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+ 
+ fn gateway_proxy() -> Option<SocketAddr> {
+@@ -1559,6 +1577,10 @@ async fn handle_udp_associate(
+                 if let Some((dst, payload)) = parse_udp_request(&cbuf[..n]) {
+                     let dst_port = payload.0;
+ 
++                    if dst_port == QUIC_PORT && quic_blocked() {
++                        continue;
++                    }
++
+                     match routes().decide(host_of(&dst), dst_port) {
+                         Action::Block => {
+                             log::debug!("[route] block udp {dst}:{dst_port}");
+diff --git a/warp/src/wg_prober.rs b/warp/src/wg_prober.rs
+index 0bc630b..ce1abff 100644
+--- a/warp/src/wg_prober.rs
++++ b/warp/src/wg_prober.rs
+@@ -21,6 +21,7 @@ pub struct WgProbeResult {
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub enum WgScanMode {
+     Turbo,
++    Swift,
+     Balanced,
+     Thorough,
+     Verified,
+@@ -31,6 +32,7 @@ impl WgScanMode {
+     pub fn parse(s: &str) -> WgScanMode {
+         match s.trim().to_lowercase().as_str() {
+             "turbo" | "fast" => WgScanMode::Turbo,
++            "swift" | "quick" => WgScanMode::Swift,
+             "thorough" | "deep" | "pro" => WgScanMode::Thorough,
+             "verified" | "proven" | "stealth" | "quiet" => WgScanMode::Verified,
+             "ironclad" | "real" | "verify" | "guaranteed" => WgScanMode::Ironclad,
+@@ -41,6 +43,7 @@ impl WgScanMode {
+     pub fn label(&self) -> &'static str {
+         match self {
+             WgScanMode::Turbo => "turbo",
++            WgScanMode::Swift => "swift",
+             WgScanMode::Balanced => "balanced",
+             WgScanMode::Thorough => "thorough",
+             WgScanMode::Verified => "verified",
+@@ -61,6 +64,19 @@ impl WgScanMode {
+                 sample_per_cidr: 40,
+                 pool_port_waves: 1,
+             },
++            // See ScanMode::Swift: the fastest of what answers within a short
++            // window after the first reply.
++            WgScanMode::Swift => WgStrategy {
++                concurrency: 12,
++                per_probe_timeout: Duration::from_millis(6000),
++                overall_deadline: Duration::from_secs(60),
++                quiet_after_first: Duration::from_millis(2000),
++                target_successes: 1,
++                early_exit_first: false,
++                full_subnet: false,
++                sample_per_cidr: 120,
++                pool_port_waves: 2,
++            },
+             WgScanMode::Balanced => WgStrategy {
+                 concurrency: 8,
+                 per_probe_timeout: Duration::from_millis(7000),

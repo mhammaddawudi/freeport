@@ -7,14 +7,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Everything the user can change, in one immutable snapshot. */
-data class AetherSettings(
+data class WarpSettings(
     val protocol: Protocol = Protocol.Auto,
     val language: AppLanguage = AppLanguage.English,
     /** Whole device, or only the apps in [tunneledApps]. */
     val tunnelMode: TunnelMode = TunnelMode.WholeDevice,
     /** Package names to route, used only in [TunnelMode.SelectedApps]. */
     val tunneledApps: Set<String> = emptySet(),
-    val scanMode: ScanMode = ScanMode.Swift,
+    val scanMode: ScanMode = ScanMode.Balanced,
     val noize: NoizeProfile = NoizeProfile.Firewall,
     val ipVersion: IpVersion = IpVersion.V4,
     val socksPort: Int = DEFAULT_SOCKS_PORT,
@@ -60,22 +60,22 @@ class SettingsRepository(context: Context) {
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     private val _settings = MutableStateFlow(read())
-    val settings: StateFlow<AetherSettings> = _settings.asStateFlow()
+    val settings: StateFlow<WarpSettings> = _settings.asStateFlow()
 
-    fun update(transform: (AetherSettings) -> AetherSettings) {
+    fun update(transform: (WarpSettings) -> WarpSettings) {
         val next = transform(_settings.value)
         write(next)
         _settings.value = next
     }
 
     /** The settings as they are on disk, for a service starting without the UI. */
-    fun current(): AetherSettings = _settings.value
+    fun current(): WarpSettings = _settings.value
 
-    private fun read(): AetherSettings {
+    private fun read(): WarpSettings {
         migrate()
-        val defaults = AetherSettings()
+        val defaults = WarpSettings()
         val protocol = Protocol.fromId(prefs.getString(KEY_PROTOCOL, null))
-        return AetherSettings(
+        return WarpSettings(
             protocol = protocol,
             language = AppLanguage.fromTag(prefs.getString(KEY_LANGUAGE, null)),
             tunnelMode = TunnelMode.fromWire(prefs.getString(KEY_TUNNEL_MODE, null)),
@@ -104,20 +104,21 @@ class SettingsRepository(context: Context) {
 
     /**
      * Every write stores the scan mode, so everyone who never touched it has
-     * the old default, balanced, on disk. Move them to swift once; anyone
-     * who picks balanced again afterwards keeps it.
+     * whatever the default was on disk. Schema 2 moved balanced to swift;
+     * schema 3 moves swift back to balanced, which picks steadier edges.
+     * Anyone who picks a mode afterwards keeps it.
      */
     private fun migrate() {
         val version = prefs.getInt(KEY_VERSION, 1)
         if (version >= SCHEMA_VERSION) return
         val editor = prefs.edit()
-        if (prefs.getString(KEY_SCAN, null) == ScanMode.Balanced.wire) {
-            editor.putString(KEY_SCAN, ScanMode.Swift.wire)
+        if (prefs.getString(KEY_SCAN, null) == ScanMode.Swift.wire) {
+            editor.putString(KEY_SCAN, ScanMode.Balanced.wire)
         }
         editor.putInt(KEY_VERSION, SCHEMA_VERSION).apply()
     }
 
-    private fun write(value: AetherSettings) {
+    private fun write(value: WarpSettings) {
         prefs.edit()
             .putString(KEY_PROTOCOL, value.protocol.id)
             .putString(KEY_LANGUAGE, value.language.tag)
@@ -150,9 +151,9 @@ class SettingsRepository(context: Context) {
             context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY_LANGUAGE, null),
         )
 
-        const val FILE = "aether.settings"
+        const val FILE = "warp.settings"
         const val KEY_VERSION = "schema_version"
-        const val SCHEMA_VERSION = 2
+        const val SCHEMA_VERSION = 3
         const val KEY_LANGUAGE = "language"
         const val KEY_PROTOCOL = "protocol"
         const val KEY_TUNNEL_MODE = "tunnel_mode"

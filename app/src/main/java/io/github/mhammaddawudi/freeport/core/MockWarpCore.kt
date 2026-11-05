@@ -1,7 +1,7 @@
 package io.github.mhammaddawudi.freeport.core
 
 import kotlinx.coroutines.delay
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.IpVersion
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.data.ScanMode
@@ -11,21 +11,21 @@ import kotlin.random.Random
 
 /**
  * A stand-in for the Rust core so the whole app — UI, service, notification,
- * reconnect — can be exercised before `libaether.so` exists.
+ * reconnect — can be exercised before `libwarp.so` exists.
  *
  * It reports the same kinds of values the real core does (edges in the
  * published MASQUE and WARP ranges, the documented ports, realistic RTTs) and
  * paces itself by scan mode, so the interface behaves the way it will against
  * the real thing. It never opens a socket.
  */
-class MockAetherCore(
+class MockWarpCore(
     private val random: Random = Random.Default,
-) : AetherCore {
+) : WarpCore {
 
     private val ids = AtomicLong(1)
     private val tunnels = ConcurrentHashMap<Long, Boolean>()
 
-    override suspend fun applyEnvironment(settings: AetherSettings) = Unit
+    override suspend fun applyEnvironment(settings: WarpSettings) = Unit
 
     override suspend fun version(): String = "1.6.0-mock"
 
@@ -46,7 +46,7 @@ class MockAetherCore(
 
     override suspend fun scan(
         identity: Identity,
-        settings: AetherSettings,
+        settings: WarpSettings,
         excluded: Set<String>,
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint> {
@@ -89,7 +89,7 @@ class MockAetherCore(
     override suspend fun startTunnel(
         identity: Identity,
         endpoint: Endpoint,
-        settings: AetherSettings,
+        settings: WarpSettings,
     ): CoreResult<JobHandle> {
         // Gool opens two sessions, and the second handshake is the slow one.
         delay(if (settings.protocol == Protocol.Gool) 1200 else 600)
@@ -99,7 +99,7 @@ class MockAetherCore(
     }
 
     override suspend fun startManaged(
-        settings: AetherSettings,
+        settings: WarpSettings,
         configDir: String,
     ): CoreResult<JobHandle> {
         delay(400)
@@ -110,7 +110,7 @@ class MockAetherCore(
 
     override suspend fun awaitProxyReady(
         job: JobHandle,
-        settings: AetherSettings,
+        settings: WarpSettings,
         timeoutMs: Long,
     ): String? {
         // Two scans and two handshakes: the outer hop, then the inner one.
@@ -118,7 +118,7 @@ class MockAetherCore(
         return if (tunnels[job.id] == true) null else "the core exited"
     }
 
-    override suspend fun awaitProxyClosed(settings: AetherSettings, timeoutMs: Long): Boolean = true
+    override suspend fun awaitProxyClosed(settings: WarpSettings, timeoutMs: Long): Boolean = true
 
     /** The mock carries whenever one of its tunnels is up. */
     override suspend fun carries(port: Int): Boolean = tunnels.values.any { it }
@@ -133,7 +133,7 @@ class MockAetherCore(
 
     override suspend fun closeIdentity(identity: Identity) = Unit
 
-    private fun pickEndpoint(settings: AetherSettings, rtt: Long): Endpoint {
+    private fun pickEndpoint(settings: WarpSettings, rtt: Long): Endpoint {
         val v6 = when (settings.ipVersion) {
             IpVersion.V4 -> false
             IpVersion.V6 -> true

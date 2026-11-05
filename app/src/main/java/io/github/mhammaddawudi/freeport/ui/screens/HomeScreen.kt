@@ -50,7 +50,7 @@ import io.github.mhammaddawudi.freeport.BuildConfig
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.TunMode
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.ui.components.ConnectOrb
 import io.github.mhammaddawudi.freeport.ui.components.Formats
@@ -64,7 +64,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import io.github.mhammaddawudi.freeport.ui.TrafficUi
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import io.github.mhammaddawudi.freeport.ui.theme.NumericStyle
 import io.github.mhammaddawudi.freeport.ui.theme.Tone
 import io.github.mhammaddawudi.freeport.ui.theme.Tones
@@ -81,7 +81,7 @@ private const val GITHUB_PROFILE = "https://github.com/mhammaddawudi"
 @Composable
 fun HomeScreen(
     state: ConnectionState,
-    settings: AetherSettings,
+    settings: WarpSettings,
     isNativeCore: Boolean,
     traffic: TrafficUi,
     pingMs: Long?,
@@ -144,8 +144,8 @@ private fun BrandBar(state: ConnectionState) {
             Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(Brush.verticalGradient(listOf(AetherColors.SurfaceRaised, AetherColors.Void)))
-                .border(1.dp, AetherColors.Hairline, RoundedCornerShape(12.dp)),
+                .background(Brush.verticalGradient(listOf(WarpColors.SurfaceRaised, WarpColors.Void)))
+                .border(1.dp, WarpColors.Hairline, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Image(painterResource(R.mipmap.ic_launcher_foreground), contentDescription = null, Modifier.size(52.dp))
@@ -155,21 +155,21 @@ private fun BrandBar(state: ConnectionState) {
             Text(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleLarge,
-                color = AetherColors.Ink,
+                color = WarpColors.Ink,
                 maxLines = 1,
             )
             Text(
                 text = "v${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.labelSmall,
-                color = AetherColors.InkFaint,
+                color = WarpColors.InkFaint,
                 maxLines = 1,
             )
         }
         val (label, tint) = when (state) {
-            is ConnectionState.Connected -> R.string.state_connected to AetherColors.Mint
-            is ConnectionState.Failed -> R.string.state_failed to AetherColors.Rose
-            ConnectionState.Idle, ConnectionState.Disconnecting -> R.string.state_idle to AetherColors.InkFaint
-            else -> R.string.state_connecting to AetherColors.Amber
+            is ConnectionState.Connected -> R.string.state_connected to WarpColors.Mint
+            is ConnectionState.Failed -> R.string.state_failed to WarpColors.Rose
+            ConnectionState.Idle, ConnectionState.Disconnecting -> R.string.state_idle to WarpColors.InkFaint
+            else -> R.string.state_connecting to WarpColors.Amber
         }
         StatusPill(stringResource(label), tint, pulsing = state is ConnectionState.Connected)
         Spacer(Modifier.width(8.dp))
@@ -177,8 +177,8 @@ private fun BrandBar(state: ConnectionState) {
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(AetherColors.Ink.copy(alpha = 0.05f))
-                .border(1.dp, AetherColors.Hairline, CircleShape)
+                .background(WarpColors.Ink.copy(alpha = 0.05f))
+                .border(1.dp, WarpColors.Hairline, CircleShape)
                 .clickable {
                     runCatching {
                         context.startActivity(
@@ -191,7 +191,7 @@ private fun BrandBar(state: ConnectionState) {
             Icon(
                 painter = painterResource(R.drawable.ic_github),
                 contentDescription = GITHUB_PROFILE,
-                tint = AetherColors.InkMuted,
+                tint = WarpColors.InkMuted,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -248,7 +248,7 @@ private fun StatusBlock(state: ConnectionState) {
             Text(
                 text,
                 style = MaterialTheme.typography.displaySmall,
-                color = AetherColors.Ink,
+                color = WarpColors.Ink,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -258,7 +258,7 @@ private fun StatusBlock(state: ConnectionState) {
             Text(
                 detail,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (state is ConnectionState.Failed) AetherColors.Rose else AetherColors.InkFaint,
+                color = if (state is ConnectionState.Failed) WarpColors.Rose else WarpColors.InkFaint,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -285,7 +285,7 @@ private fun SessionLine(state: ConnectionState, tone: Tone) {
                     Text(
                         Formats.duration(now - state.sinceMillis),
                         style = MaterialTheme.typography.titleMedium.merge(NumericStyle),
-                        color = AetherColors.Ink,
+                        color = WarpColors.Ink,
                     )
                 }
             }

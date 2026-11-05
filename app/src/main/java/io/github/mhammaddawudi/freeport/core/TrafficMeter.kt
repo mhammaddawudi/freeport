@@ -53,3 +53,24 @@ class SimulatedTrafficMeter(private val random: Random = Random.Default) : Traff
         return TrafficTotals(rx, tx)
     }
 }
+
+/**
+ * Whether the tunnel is visibly carrying data. A health probe that times out
+ * while megabytes are flowing says the tunnel is busy, not that it is dead.
+ */
+class TunnelTraffic(private val meter: TrafficMeter?) {
+    private var last: Long? = null
+
+    /** True when more than [BUSY_BYTES] came in since the previous call. */
+    @Synchronized
+    fun moved(): Boolean {
+        val now = meter?.totals()?.rxBytes ?: return false
+        val before = last
+        last = now
+        return before != null && now - before > BUSY_BYTES
+    }
+
+    private companion object {
+        const val BUSY_BYTES = 64 * 1024L
+    }
+}

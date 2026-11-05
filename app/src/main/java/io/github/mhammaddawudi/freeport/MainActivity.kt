@@ -6,8 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import io.github.mhammaddawudi.freeport.ui.AetherRoot
-import io.github.mhammaddawudi.freeport.ui.theme.AetherTheme
+import io.github.mhammaddawudi.freeport.ui.WarpRoot
+import io.github.mhammaddawudi.freeport.ui.theme.WarpTheme
 
 class MainActivity : ComponentActivity() {
     override fun attachBaseContext(base: android.content.Context) {
@@ -24,8 +24,8 @@ class MainActivity : ComponentActivity() {
         )
         val language = io.github.mhammaddawudi.freeport.data.SettingsRepository.savedLanguage(this)
         setContent {
-            AetherTheme(language = language) {
-                AetherRoot()
+            WarpTheme(language = language) {
+                WarpRoot()
             }
         }
     }

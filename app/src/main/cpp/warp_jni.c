@@ -1,8 +1,8 @@
 /*
- * JNI shim over Aether's C ABI (aether/src/ffi.rs).
+ * JNI shim over Warp's C ABI (warp/src/ffi.rs).
  *
  * Every core function returns a heap-allocated, NUL-terminated JSON string
- * that must be released with aether_string_free. This shim copies each reply
+ * that must be released with warp_string_free. This shim copies each reply
  * into a Java string and frees the original, so no native buffer ever
  * crosses into Kotlin.
  */
@@ -15,16 +15,16 @@
 #include <pthread.h>
 #include <android/log.h>
 
-extern char *aether_version(void);
-extern void aether_string_free(char *raw);
-extern char *aether_job_poll(uint64_t id);
-extern char *aether_job_cancel(uint64_t id);
-extern char *aether_job_free(uint64_t id);
-extern char *aether_identity_open(const char *payload);
-extern char *aether_identity_free(uint64_t id);
-extern char *aether_scan_start(uint64_t identity, const char *payload);
-extern char *aether_tunnel_start(uint64_t identity, const char *payload);
-extern char *aether_core_start(const char *arguments);
+extern char *warp_version(void);
+extern void warp_string_free(char *raw);
+extern char *warp_job_poll(uint64_t id);
+extern char *warp_job_cancel(uint64_t id);
+extern char *warp_job_free(uint64_t id);
+extern char *warp_identity_open(const char *payload);
+extern char *warp_identity_free(uint64_t id);
+extern char *warp_scan_start(uint64_t identity, const char *payload);
+extern char *warp_tunnel_start(uint64_t identity, const char *payload);
+extern char *warp_core_start(const char *arguments);
 
 static const char *NULL_REPLY = "{\"ok\":false,\"error\":\"the core returned nothing\"}";
 
@@ -38,11 +38,11 @@ static jstring take_reply(JNIEnv *env, char *reply) {
         return (*env)->NewStringUTF(env, NULL_REPLY);
     }
     jstring result = (*env)->NewStringUTF(env, reply);
-    aether_string_free(reply);
+    warp_string_free(reply);
     return result;
 }
 
-#define JNI_FN(name) Java_io_github_mhammaddawudi_freeport_core_NativeAetherCore_##name
+#define JNI_FN(name) Java_io_github_mhammaddawudi_freeport_core_NativeWarpCore_##name
 
 /*
  * The core logs through env_logger, which writes to stderr. On Android
@@ -73,7 +73,7 @@ static void *pump_core_log(void *unused) {
         while ((newline = strchr(start, '\n')) != NULL) {
             *newline = '\0';
             if (*start != '\0') {
-                __android_log_write(ANDROID_LOG_INFO, "AetherCore", start);
+                __android_log_write(ANDROID_LOG_INFO, "WarpCore", start);
                 jstring line = (*env)->NewStringUTF(env, start);
                 if (line != NULL) {
                     (*env)->CallStaticVoidMethod(env, g_log_class, g_log_method, line);
@@ -116,7 +116,7 @@ JNIEXPORT jstring JNICALL JNI_FN(nativeCaptureLogs)(JNIEnv *env, jobject self) {
     return (*env)->NewStringUTF(env, "{\"ok\":true,\"capturing\":true}");
 }
 
-/* The core reads its AETHER_* switches from the environment. */
+/* The core reads its WARP_* switches from the environment. */
 JNIEXPORT jstring JNICALL JNI_FN(nativeSetEnv)(JNIEnv *env, jobject self, jstring name, jstring value) {
     const char *n = (*env)->GetStringUTFChars(env, name, NULL);
     const char *v = (*env)->GetStringUTFChars(env, value, NULL);
@@ -148,39 +148,39 @@ static jstring call_with_id_and_text(
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeVersion)(JNIEnv *env, jobject self) {
-    return take_reply(env, aether_version());
+    return take_reply(env, warp_version());
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeIdentityOpen)(JNIEnv *env, jobject self, jstring payload) {
-    return call_with_text(env, payload, aether_identity_open);
+    return call_with_text(env, payload, warp_identity_open);
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeIdentityFree)(JNIEnv *env, jobject self, jlong id) {
-    return take_reply(env, aether_identity_free((uint64_t) id));
+    return take_reply(env, warp_identity_free((uint64_t) id));
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeScanStart)(
     JNIEnv *env, jobject self, jlong identity, jstring payload) {
-    return call_with_id_and_text(env, identity, payload, aether_scan_start);
+    return call_with_id_and_text(env, identity, payload, warp_scan_start);
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeTunnelStart)(
     JNIEnv *env, jobject self, jlong identity, jstring payload) {
-    return call_with_id_and_text(env, identity, payload, aether_tunnel_start);
+    return call_with_id_and_text(env, identity, payload, warp_tunnel_start);
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeJobPoll)(JNIEnv *env, jobject self, jlong id) {
-    return take_reply(env, aether_job_poll((uint64_t) id));
+    return take_reply(env, warp_job_poll((uint64_t) id));
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeJobCancel)(JNIEnv *env, jobject self, jlong id) {
-    return take_reply(env, aether_job_cancel((uint64_t) id));
+    return take_reply(env, warp_job_cancel((uint64_t) id));
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeJobFree)(JNIEnv *env, jobject self, jlong id) {
-    return take_reply(env, aether_job_free((uint64_t) id));
+    return take_reply(env, warp_job_free((uint64_t) id));
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeCoreStart)(JNIEnv *env, jobject self, jstring arguments) {
-    return call_with_text(env, arguments, aether_core_start);
+    return call_with_text(env, arguments, warp_core_start);
 }

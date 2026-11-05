@@ -3,6 +3,7 @@ package io.github.mhammaddawudi.freeport.core
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import io.github.mhammaddawudi.freeport.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -24,6 +25,8 @@ data class AppUpdate(
     val apkUrl: String,
     val apkBytes: Long,
     val pageUrl: String,
+    /** The release's notes as written; see [ReleaseNotes]. */
+    val notes: String = "",
 )
 
 /**
@@ -35,20 +38,40 @@ data class AppUpdate(
 class UpdateChecker(
     private val context: Context,
     private val repo: String = REPO,
+    /** The edge board, which serves GitHub's answer from its cache; empty to ask GitHub only. */
+    private val mirror: String = BuildConfig.EDGE_BOARD_URL,
 ) {
 
     val installedVersion: String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull().orEmpty()
 
-    /** The newer release, null when up to date. Throws when GitHub did not answer. */
+    /**
+     * The newer release, null when up to date. Throws when nothing answered.
+     *
+     * The board's cached copy comes first: through the tunnel the app shares a
+     * Cloudflare address with many others, and GitHub limits each address,
+     * answering 403 long before this app has asked even once.
+     */
     suspend fun check(proxyPort: Int?): AppUpdate? = withContext(Dispatchers.IO) {
-        val body = open(URL("https://api.github.com/repos/$repo/releases/latest"), proxyPort).use { connection ->
-            connection.setRequestProperty("Accept", "application/vnd.github+json")
-            if (connection.responseCode != 200) throw IOException("GitHub answered ${connection.responseCode}")
-            connection.inputStream.bufferedReader().use { it.readText() }
+        val sources = listOfNotNull(
+            mirror.takeIf { it.isNotBlank() }?.let { "$it/v1/release" },
+            "https://api.github.com/repos/$repo/releases/latest",
+        )
+        var failure: IOException? = null
+        for (source in sources) {
+            val body = runCatching { fetch(URL(source), proxyPort) }
+                .onFailure { failure = it as? IOException ?: IOException(it.message) }
+                .getOrNull() ?: continue
+            return@withContext parse(body, installedVersion, Build.SUPPORTED_ABIS.toList())
         }
-        parse(body, installedVersion, Build.SUPPORTED_ABIS.toList())
+        throw failure ?: IOException("no release source answered")
+    }
+
+    private fun fetch(url: URL, proxyPort: Int?): String = open(url, proxyPort).use { connection ->
+        connection.setRequestProperty("Accept", "application/vnd.github+json")
+        if (connection.responseCode != 200) throw IOException("${url.host} answered ${connection.responseCode}")
+        connection.inputStream.bufferedReader().use { it.readText() }
     }
 
     private fun open(url: URL, proxyPort: Int?): HttpURLConnection {
@@ -90,6 +113,7 @@ class UpdateChecker(
                 apkUrl = chosen.optString("browser_download_url"),
                 apkBytes = chosen.optLong("size"),
                 pageUrl = release.optString("html_url"),
+                notes = release.optString("body"),
             )
         }
 

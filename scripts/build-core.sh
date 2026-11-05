@@ -2,8 +2,8 @@
 #
 # Builds the native half of the app for every ABI the app ships:
 #
-#   libaether.so            the Aether core (Rust)
-#   libaether_jni.so        the JNI shim in app/src/main/cpp
+#   libwarp.so            the Warp core (Rust)
+#   libwarp_jni.so        the JNI shim in app/src/main/cpp
 #   libhev-socks5-tunnel.so the tun2socks that feeds the core's proxy
 #
 # Usage:
@@ -19,8 +19,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-AETHER_SRC="${AETHER_SRC:-$ROOT/../aether-src}"
-AETHER_REF="${AETHER_REF:-main}"
+CORE_SRC="${CORE_SRC:-$ROOT/../warp-src}"
+CORE_REF="${CORE_REF:-main}"
+# The upstream core this one is built from (AGPL-3.0, see NOTICE.md).
+CORE_REPO="${CORE_REPO:-https://github.com/CluvexStudio/Aether.git}"
 HEV_SRC="${HEV_SRC:-$ROOT/../hev-socks5-tunnel}"
 API="${ANDROID_API:-26}"
 ABIS="${ABIS:-arm64-v8a armeabi-v7a x86_64}"
@@ -37,10 +39,26 @@ TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$HOST_TAG"
 mkdir -p "$WORK" "$JNILIBS"
 
 echo "==> sources"
-[ -d "$AETHER_SRC/aether" ] || git clone --depth 1 --branch "$AETHER_REF" \
-  https://github.com/CluvexStudio/Aether.git "$AETHER_SRC"
+[ -d "$CORE_SRC" ] || git clone --depth 1 --branch "$CORE_REF" "$CORE_REPO" "$CORE_SRC"
 [ -d "$HEV_SRC" ] || git clone --recursive --depth 1 \
   https://github.com/heiher/hev-socks5-tunnel.git "$HEV_SRC"
+
+# The crate is the folder whose Cargo.toml builds a cdylib.
+CRATE="$(dirname "$(grep -l 'cdylib' "$CORE_SRC"/*/Cargo.toml | head -1)")"
+[ -d "$CRATE/src" ] || { echo "no core crate under $CORE_SRC" >&2; exit 1; }
+
+echo "==> warp core"
+"$ROOT/scripts/rebrand-core.sh" "$CRATE"
+# Freeport's changes to the core, written against the renamed sources.
+for patch in "$ROOT"/scripts/core-patches/*.patch; do
+  if patch -p2 -d "$CRATE" -N --dry-run -s < "$patch" >/dev/null 2>&1; then
+    patch -p2 -d "$CRATE" -N -s < "$patch"
+  elif patch -p2 -d "$CRATE" -R --dry-run -s < "$patch" >/dev/null 2>&1; then
+    echo "   $(basename "$patch") is already in"
+  else
+    echo "$(basename "$patch") does not apply to this core" >&2; exit 1
+  fi
+done
 
 # Each ABI needs its own BoringSSL, core and shim.
 #
@@ -88,10 +106,10 @@ install_std () {
      "$(rustc --print sysroot)/lib/rustlib/"
 }
 
-(cd "$AETHER_SRC/aether" && cargo fetch --quiet)
+(cd "$CRATE" && cargo fetch --quiet)
 # The boring-sys the core's lockfile names, not whichever one the registry
 # happens to list first: an older one's headers do not match the boring crate.
-BSSL_VERSION="$(awk '/^name = "boring-sys"/{getline; gsub(/"/, "", $3); print $3; exit}' "$AETHER_SRC/aether/Cargo.lock")"
+BSSL_VERSION="$(awk '/^name = "boring-sys"/{getline; gsub(/"/, "", $3); print $3; exit}' "$CRATE/Cargo.lock")"
 BSSL_SRC="$(ls -d "$HOME"/.cargo/registry/src/*/boring-sys-"$BSSL_VERSION"/deps/boringssl 2>/dev/null | head -1)"
 [ -n "$BSSL_SRC" ] || { echo "could not find the boringssl source of boring-sys $BSSL_VERSION" >&2; exit 1; }
 
@@ -136,20 +154,20 @@ for abi in $ABIS; do
   # 16 KB pages: newer devices refuse a library laid out for 4 KB ones.
   # --no-undefined: fail the link rather than ship a .so whose symbols only
   # turn out to be missing when the phone tries to load it.
-  export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,--no-undefined --remap-path-prefix=$HOME=/build"
+  export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,--no-undefined --remap-path-prefix=$HOME=/build --remap-path-prefix=$CORE_SRC=/build/core"
 
-  (cd "$AETHER_SRC/aether" && cargo build --release --target "$triple" --lib)
-  needed="$("$TOOLCHAIN/bin/llvm-readelf" -d "$AETHER_SRC/aether/target/$triple/release/libaether.so" | awk '/NEEDED/{print $NF}')"
+  (cd "$CRATE" && cargo build --release --target "$triple" --lib)
+  needed="$("$TOOLCHAIN/bin/llvm-readelf" -d "$CRATE/target/$triple/release/libwarp.so" | awk '/NEEDED/{print $NF}')"
   if grep -q 'libc++_shared' <<<"$needed"; then
-    echo "libaether.so for $abi still needs libc++_shared.so; the static libc++ link failed" >&2
+    echo "libwarp.so for $abi still needs libc++_shared.so; the static libc++ link failed" >&2
     exit 1
   fi
   mkdir -p "$JNILIBS/$abi"
-  cp "$AETHER_SRC/aether/target/$triple/release/libaether.so" "$JNILIBS/$abi/"
+  cp "$CRATE/target/$triple/release/libwarp.so" "$JNILIBS/$abi/"
   "$TOOLCHAIN/bin/$cc-clang" -shared -fPIC -O2 $REMAP \
     -Wl,-z,max-page-size=16384 -Wl,--no-undefined \
-    -o "$JNILIBS/$abi/libaether_jni.so" "$ROOT/app/src/main/cpp/aether_jni.c" \
-    -L"$JNILIBS/$abi" -laether -llog
+    -o "$JNILIBS/$abi/libwarp_jni.so" "$ROOT/app/src/main/cpp/warp_jni.c" \
+    -L"$JNILIBS/$abi" -lwarp -llog
 done
 
 echo "==> tun2socks"
@@ -162,7 +180,7 @@ for abi in arm64-v8a armeabi-v7a x86_64; do
 done
 
 echo "==> local paths left in the libraries (should all be 0)"
-for lib in "$JNILIBS"/*/libaether.so "$JNILIBS"/*/libaether_jni.so "$JNILIBS"/*/libhev-socks5-tunnel.so; do
+for lib in "$JNILIBS"/*/libwarp.so "$JNILIBS"/*/libwarp_jni.so "$JNILIBS"/*/libhev-socks5-tunnel.so; do
   printf '%6s  %s\n' "$(strings "$lib" | grep -c "$HOME" || true)" "${lib#$ROOT/}"
 done
 

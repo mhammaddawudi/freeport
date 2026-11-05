@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.Color
  * is the ink used for text.
  */
 @Immutable
-data class AetherPalette(
+data class WarpPalette(
     val void: Color,
     val abyss: Color,
     val surface: Color,
@@ -47,7 +47,7 @@ data class AetherPalette(
  * and error tones hold any real colour, because those have to be read as
  * warnings rather than as decoration.
  */
-val DarkPalette = AetherPalette(
+val DarkPalette = WarpPalette(
     // A cool near-black rather than neutral grey: it reads as depth, and
     // the white mark and the green "connected" both sit brighter on it.
     void = Color(0xFF08080C),
@@ -80,7 +80,7 @@ val DarkPalette = AetherPalette(
     rose = Color(0xFFFF5F6D),
 )
 
-val LocalAetherPalette = staticCompositionLocalOf { DarkPalette }
+val LocalWarpPalette = staticCompositionLocalOf { DarkPalette }
 
 /**
  * Call sites read colours from here.
@@ -88,25 +88,25 @@ val LocalAetherPalette = staticCompositionLocalOf { DarkPalette }
  * Every colour resolves through the palette in force, which is why these are
  * composable getters rather than plain constants.
  */
-object AetherColors {
+object WarpColors {
 
-    val Void: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.void
-    val Abyss: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.abyss
-    val Surface: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.surface
-    val SurfaceRaised: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.surfaceRaised
-    val Hairline: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.hairline
-    val HairlineStrong: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.hairlineStrong
-    val Ink: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.ink
-    val InkMuted: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.inkMuted
-    val InkFaint: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.inkFaint
-    val Cyan: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.cyan
-    val Selected: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.selected
-    val Control: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.control
-    val Aqua: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.aqua
-    val Mint: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.mint
-    val Violet: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.violet
-    val Indigo: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.indigo
-    val Amber: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.amber
-    val Coral: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.coral
-    val Rose: Color @Composable @ReadOnlyComposable get() = LocalAetherPalette.current.rose
+    val Void: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.void
+    val Abyss: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.abyss
+    val Surface: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.surface
+    val SurfaceRaised: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.surfaceRaised
+    val Hairline: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.hairline
+    val HairlineStrong: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.hairlineStrong
+    val Ink: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.ink
+    val InkMuted: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.inkMuted
+    val InkFaint: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.inkFaint
+    val Cyan: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.cyan
+    val Selected: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.selected
+    val Control: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.control
+    val Aqua: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.aqua
+    val Mint: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.mint
+    val Violet: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.violet
+    val Indigo: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.indigo
+    val Amber: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.amber
+    val Coral: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.coral
+    val Rose: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.rose
 }

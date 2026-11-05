@@ -12,7 +12,7 @@ data class Tone(val primary: Color, val secondary: Color)
 object Tones {
     @Composable
     fun of(state: ConnectionState): Tone {
-        val p = LocalAetherPalette.current
+        val p = LocalWarpPalette.current
         return when (state) {
             ConnectionState.Idle -> Tone(p.violet, p.indigo)
             is ConnectionState.Connected -> Tone(p.mint, p.aqua)

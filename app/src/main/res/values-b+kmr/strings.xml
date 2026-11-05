@@ -177,6 +177,8 @@
     <string name="update_subtitle">Amade ye · %1$s</string>
     <string name="update_install">Nûve bike</string>
     <string name="update_later">Paşê</string>
+    <string name="update_download">Daxîne</string>
+    <string name="update_size">Mezinahî: %1$s</string>
     <string name="update_downloading">Tê daxistin… %1$d%%</string>
     <string name="update_ready">Saz bike</string>
     <string name="update_ready_subtitle">Hate daxistin. Ji bo qedandinê Saz bike bitikîne</string>

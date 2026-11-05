@@ -179,6 +179,8 @@
     <string name="update_subtitle">ئامادەی دامەزراندن · %1$s</string>
     <string name="update_install">نوێکردنەوە</string>
     <string name="update_later">دواتر</string>
+    <string name="update_download">داگرتن</string>
+    <string name="update_size">قەبارە: %1$s</string>
     <string name="update_downloading">داگرتن… %1$d%%</string>
     <string name="update_ready">دامەزراندن</string>
     <string name="update_ready_subtitle">داگیرا. بۆ تەواوکردن «دامەزراندن» دابگرە</string>

@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS edges (
   port    INTEGER NOT NULL,
   rtt     INTEGER NOT NULL,
   kbps    INTEGER NOT NULL,
+  up      INTEGER NOT NULL DEFAULT 0,
   n       INTEGER NOT NULL DEFAULT 1,
   updated INTEGER NOT NULL,
   PRIMARY KEY (net, proto, fam, addr, port)

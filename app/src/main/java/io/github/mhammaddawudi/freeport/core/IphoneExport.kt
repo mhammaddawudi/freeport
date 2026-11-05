@@ -1,6 +1,6 @@
 package io.github.mhammaddawudi.freeport.core
 
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.IpVersion
 import io.github.mhammaddawudi.freeport.data.NoizeProfile
 import io.github.mhammaddawudi.freeport.data.Protocol
@@ -28,14 +28,14 @@ data class IphoneConfig(
  */
 class IphoneExporter(
     private val identityDir: File,
-    private val core: AetherCore,
+    private val core: WarpCore,
     private val log: CoreLog = CoreLog,
 ) {
 
     enum class Phase { Registering, Scanning }
 
     suspend fun export(
-        base: AetherSettings,
+        base: WarpSettings,
         onPhase: (Phase) -> Unit,
     ): CoreResult<IphoneConfig> {
         onPhase(Phase.Registering)

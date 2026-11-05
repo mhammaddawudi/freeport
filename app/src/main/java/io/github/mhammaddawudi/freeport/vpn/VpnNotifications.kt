@@ -39,17 +39,27 @@ object VpnNotifications {
         val disconnect = PendingIntent.getService(
             context,
             1,
-            Intent(context, AetherVpnService::class.java).setAction(AetherVpnService.ACTION_DISCONNECT),
+            Intent(context, WarpVpnService::class.java).setAction(WarpVpnService.ACTION_DISCONNECT),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+        val reshow = PendingIntent.getService(
+            context,
+            2,
+            Intent(context, WarpVpnService::class.java).setAction(WarpVpnService.ACTION_RESHOW),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_aether)
+            .setSmallIcon(R.drawable.ic_stat_warp)
             .setColor(0xFFFCBF11.toInt())
             .setContentTitle(context.getString(titleOf(state)))
             .setContentText(detailOf(context, state))
             .setContentIntent(open)
             .setOngoing(true)
+            // Android 14+ lets the person swipe even an ongoing notification
+            // away; while connected the service shows it again at once.
+            .setDeleteIntent(reshow)
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

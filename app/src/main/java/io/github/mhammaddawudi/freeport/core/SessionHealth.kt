@@ -25,6 +25,8 @@ internal class SessionHealth(
     private val relay: UnlockRelay?,
     private val restartRelay: suspend (country: String) -> String?,
     private val carries: suspend (port: Int) -> Boolean,
+    /** Whether data came in since the last check; a busy tunnel is not a dead one. */
+    private val moving: () -> Boolean = { false },
     private val onUnlockDown: () -> Unit,
     private val onUnlockBack: () -> Unit,
     private val log: CoreLog = CoreLog,
@@ -41,10 +43,18 @@ internal class SessionHealth(
             if (relay.isStarting) return null
             if (relay.health != PsiphonRelay.Health.Up) return recoverUnlock(relayPort, mayRegain = true)
         }
+        val busy = moving()
         if (now() < nextProbeAt) return null
         nextProbeAt = now() + PROBE_EVERY_MS
 
         if (!carries(tunnelPort)) {
+            // Under a heavy load — a video, say — the test connection can wait
+            // in line longer than its timeout. Data still coming in means the
+            // tunnel is alive; reconnecting would only interrupt it.
+            if (busy || moving()) {
+                tunnelMisses = 0
+                return null
+            }
             tunnelMisses++
             nextProbeAt = now() + RETRY_AFTER_MISS_MS
             log.warn("[-] the tunnel did not carry a test connection ($tunnelMisses/$TUNNEL_MISSES)")

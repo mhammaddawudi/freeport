@@ -1,7 +1,7 @@
 package io.github.mhammaddawudi.freeport
 
 import android.app.Application
-import io.github.mhammaddawudi.freeport.core.AetherEngine
+import io.github.mhammaddawudi.freeport.core.WarpEngine
 import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.core.CoreProvider
 import io.github.mhammaddawudi.freeport.core.IphoneExporter
@@ -14,6 +14,7 @@ import io.github.mhammaddawudi.freeport.core.PrefsEndpointCache
 import io.github.mhammaddawudi.freeport.core.PsiphonRelay
 import io.github.mhammaddawudi.freeport.core.SimulatedTrafficMeter
 import io.github.mhammaddawudi.freeport.core.TrafficMeter
+import io.github.mhammaddawudi.freeport.core.TunnelTraffic
 import io.github.mhammaddawudi.freeport.core.UidTrafficMeter
 import io.github.mhammaddawudi.freeport.data.SettingsRepository
 import io.github.mhammaddawudi.freeport.vpn.HevTunBridge
@@ -21,7 +22,7 @@ import io.github.mhammaddawudi.freeport.vpn.ProxyOnlyBridge
 import io.github.mhammaddawudi.freeport.vpn.TunBridge
 import io.github.mhammaddawudi.freeport.vpn.VpnNotifications
 
-class AetherApp : Application() {
+class WarpApp : Application() {
 
     /**
      * Whether any screen of the app is on display.
@@ -37,7 +38,7 @@ class AetherApp : Application() {
 
     lateinit var settings: SettingsRepository
         private set
-    lateinit var engine: AetherEngine
+    lateinit var engine: WarpEngine
         private set
     lateinit var trafficMeter: TrafficMeter
         private set
@@ -57,6 +58,7 @@ class AetherApp : Application() {
     }
 
     override fun attachBaseContext(base: android.content.Context) {
+        io.github.mhammaddawudi.freeport.data.LegacyStorage.migrate(base)
         super.attachBaseContext(io.github.mhammaddawudi.freeport.data.Locales.wrap(base))
     }
 
@@ -70,11 +72,12 @@ class AetherApp : Application() {
         } else {
             NoEdgeBoard
         }
-        engine = AetherEngine(
+        engine = WarpEngine(
             this, settings, CoreProvider.core, cache, relay, board,
             networkOf = { NetworkKey.current(this) },
+            traffic = TunnelTraffic(if (CoreProvider.isNative) UidTrafficMeter() else null),
             scout = if (CoreProvider.isNative) {
-                BackgroundScout(this, CoreProvider.core, board, UidTrafficMeter(), java.io.File(filesDir, "identity/probe"))
+                BackgroundScout(CoreProvider.core, board, UidTrafficMeter(), java.io.File(filesDir, "identity/probe"))
             } else {
                 null
             },

@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.data.Protocol
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -111,8 +111,8 @@ fun AppBadge(app: SuitedApp, modifier: Modifier = Modifier, size: Dp = 24.dp) {
         modifier
             .size(size)
             .clip(CircleShape)
-            .background(AetherColors.Surface)
-            .border(1.5.dp, AetherColors.Surface, CircleShape),
+            .background(WarpColors.Surface)
+            .border(1.5.dp, WarpColors.Surface, CircleShape),
     ) {
         if (icon != null) {
             Image(icon, contentDescription = null, modifier = Modifier.size(size).clip(CircleShape))

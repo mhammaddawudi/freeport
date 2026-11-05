@@ -44,7 +44,7 @@ import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.isEngaged
 import io.github.mhammaddawudi.freeport.core.isTransitioning
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import io.github.mhammaddawudi.freeport.ui.theme.Tones
 import kotlin.math.PI
 import kotlin.math.cos
@@ -107,8 +107,8 @@ fun ConnectOrb(
     )
 
     val tone = Tones.of(state)
-    val core = lerp(AetherColors.InkFaint, tone.primary, warmth)
-    val rim = lerp(AetherColors.InkFaint, tone.secondary, warmth)
+    val core = lerp(WarpColors.InkFaint, tone.primary, warmth)
+    val rim = lerp(WarpColors.InkFaint, tone.secondary, warmth)
 
     // How full the ring is, as one climb from empty to closed.
     //
@@ -143,9 +143,9 @@ fun ConnectOrb(
         else -> stringResource(R.string.action_connect)
     }
 
-    val discTop = AetherColors.SurfaceRaised
-    val discBottom = AetherColors.Void
-    val dialIdle = AetherColors.Ink
+    val discTop = WarpColors.SurfaceRaised
+    val discBottom = WarpColors.Void
+    val dialIdle = WarpColors.Ink
 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
@@ -405,7 +405,7 @@ fun ConnectOrb(
         Text(
             text = label.uppercase(),
             style = MaterialTheme.typography.labelSmall,
-            color = AetherColors.InkMuted,
+            color = WarpColors.InkMuted,
         )
     }
 }

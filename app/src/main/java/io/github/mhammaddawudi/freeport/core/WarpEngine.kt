@@ -22,7 +22,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.data.ScanMode
 import io.github.mhammaddawudi.freeport.data.SettingsRepository
@@ -30,7 +30,6 @@ import java.io.File
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicReference
 
 /** Whether device traffic is captured, or only the local proxy is up. */
 enum class TunMode { FullDevice, ProxyOnly }
@@ -88,26 +87,27 @@ val ConnectionState.isTransitioning: Boolean
  * Control calls are serialised through [control], so a double tap or a
  * protocol switch in the middle of a scan cannot leave two sessions alive.
  */
-class AetherEngine(
+class WarpEngine(
     context: Context,
     private val settings: SettingsRepository,
-    private val core: AetherCore,
+    private val core: WarpCore,
     private val cache: EndpointCache = NoEndpointCache,
     private val relay: PsiphonRelay? = null,
     private val board: EdgeBoard = NoEdgeBoard,
     private val networkOf: () -> String = { NetworkKey.UNKNOWN },
     private val scout: BackgroundScout? = null,
+    private val traffic: TunnelTraffic = TunnelTraffic(null),
     private val log: CoreLog = CoreLog,
 ) {
 
     interface TunnelHost {
         /**
-         * The proxy at [AetherSettings.socksPort] is up. Capture traffic if
+         * The proxy at [WarpSettings.socksPort] is up. Capture traffic if
          * possible and say how. [mappedDns] asks for DNS to be answered
          * locally, so connections reach the proxy by name — needed by a proxy
          * that carries no UDP.
          */
-        fun onTunnelUp(settings: AetherSettings, mappedDns: Boolean = false): TunMode
+        fun onTunnelUp(settings: WarpSettings, mappedDns: Boolean = false): TunMode
 
         /** The tunnel is gone. Must be safe to call when nothing is up. */
         fun onTunnelDown()
@@ -142,7 +142,7 @@ class AetherEngine(
         scope.launch {
             control.withLock {
                 if (session?.isActive == true) return@withLock
-                this@AetherEngine.host = host
+                this@WarpEngine.host = host
                 session = scope.launch { runSession(host) }
             }
         }
@@ -235,7 +235,7 @@ class AetherEngine(
         val rotate: Boolean = false,
     )
 
-    private suspend fun attemptOnce(requested: AetherSettings, host: TunnelHost): Outcome {
+    private suspend fun attemptOnce(requested: WarpSettings, host: TunnelHost): Outcome {
         if (requested.protocol == Protocol.Auto) return attemptAuto(requested, host)
         val protocol = requested.protocol
         clearGatewayCache()
@@ -289,12 +289,12 @@ class AetherEngine(
      * the edge that answers quickest wins, and its real speed is checked once
      * connected ([judge]) like any other.
      */
-    private suspend fun attemptAuto(requested: AetherSettings, host: TunnelHost): Outcome {
+    private suspend fun attemptAuto(requested: WarpSettings, host: TunnelHost): Outcome {
         clearGatewayCache()
         val base = withFreePort(requested)
         _state.value = ConnectionState.Preparing(Protocol.Auto)
         val candidates = AUTO_CANDIDATES.associateWith { protocol ->
-            base.copy(protocol = protocol, scanMode = if (protocol == Protocol.WireGuard) ScanMode.Turbo else base.scanMode)
+            base.copy(protocol = protocol)
         }
         val shared = candidates.mapValues { (_, settings) -> sharedEdgesAsync(settings) }
 
@@ -367,10 +367,9 @@ class AetherEngine(
 
         val best = found.entries.minByOrNull { it.value.rttMs }?.let { it.key to it.value }
         if (best == null) {
-            log.warn("[-] automatic: nothing answered, handing over to ${Protocol.Gool.displayName}")
-            val gool = base.copy(protocol = Protocol.Gool)
-            core.applyEnvironment(gool)
-            return runManaged(gool, host)
+            // Warp in warp is left to whoever picks it by hand; automatic
+            // stays with the protocols it can measure and retries them.
+            return Outcome("automatic: nothing answered on MASQUE or WireGuard")
         }
 
         val (protocol, endpoint) = best
@@ -386,12 +385,12 @@ class AetherEngine(
      * measured ones; TCP edges that do not even accept a connection are dropped.
      */
     private suspend fun fastestKnown(
-        candidates: Map<Protocol, AetherSettings>,
+        candidates: Map<Protocol, WarpSettings>,
         shared: Map<Protocol, List<SharedEdge>>,
     ): List<Pair<Protocol, SharedEdge>> {
         val measured = shared.flatMap { (protocol, edges) -> edges.map { protocol to it } }
             .filter { (_, edge) -> edge.kbps >= SLOW_KBPS }
-            .sortedByDescending { (_, edge) -> edge.kbps }
+            .sortedBy { (_, edge) -> edge.reelMs }
         val remembered = candidates.mapNotNull { (protocol, settings) ->
             cache.recall(cacheKey(settings))?.let { protocol to SharedEdge(it, 0) }
         }
@@ -405,7 +404,7 @@ class AetherEngine(
     }
 
     /** Starts fetching the shared edges at once; the identity opens meanwhile. */
-    private fun sharedEdgesAsync(settings: AetherSettings): Deferred<List<SharedEdge>> = scope.async {
+    private fun sharedEdgesAsync(settings: WarpSettings): Deferred<List<SharedEdge>> = scope.async {
         withTimeoutOrNull(SHARED_FETCH_MS) {
             board.fetch(settings.protocol, settings.ipVersion.wire, network)
         }.orEmpty()
@@ -419,13 +418,13 @@ class AetherEngine(
      */
     private suspend fun tryKnown(
         identity: Identity,
-        settings: AetherSettings,
+        settings: WarpSettings,
         shared: List<SharedEdge>,
         host: TunnelHost,
         viaAuto: Boolean,
     ): Outcome? {
         val key = cacheKey(settings)
-        val known = (shared.filter { it.kbps >= SLOW_KBPS }.sortedByDescending { it.kbps }.map { it.endpoint } +
+        val known = (shared.filter { it.kbps >= SLOW_KBPS }.sortedBy { it.reelMs }.map { it.endpoint } +
             listOfNotNull(cache.recall(key)))
             .distinctBy { it.socket }
             .filter { it.socket !in slowEdges }
@@ -448,13 +447,13 @@ class AetherEngine(
     private suspend fun tryRemembered(
         identity: Identity,
         endpoint: Endpoint,
-        settings: AetherSettings,
+        settings: WarpSettings,
         host: TunnelHost,
         viaAuto: Boolean,
     ): Outcome {
         log.info("[*] trying the last good ${settings.protocol.displayName} edge ${endpoint.socket} first")
         val outcome = runTunnel(identity, endpoint, settings, host, REMEMBERED_STARTUP_MS, viaAuto)
-        if (!outcome.connected) {
+        if (!outcome.connected && !outcome.rotate) {
             log.warn("[-] ${endpoint.socket} did not come back (${outcome.reason}), scanning instead")
         }
         return outcome
@@ -463,7 +462,7 @@ class AetherEngine(
     private suspend fun runTunnel(
         identity: Identity,
         endpoint: Endpoint,
-        settings: AetherSettings,
+        settings: WarpSettings,
         host: TunnelHost,
         startupMs: Long = TUNNEL_STARTUP_MS,
         viaAuto: Boolean = false,
@@ -493,7 +492,7 @@ class AetherEngine(
         }
     }
 
-    private suspend fun runManaged(settings: AetherSettings, host: TunnelHost): Outcome {
+    private suspend fun runManaged(settings: WarpSettings, host: TunnelHost): Outcome {
         _state.value = ConnectionState.Connecting(settings.protocol, null)
         log.info("[*] handing the double hop to the core")
 
@@ -526,13 +525,21 @@ class AetherEngine(
     private suspend fun holdConnected(
         job: JobHandle,
         endpoint: Endpoint?,
-        settings: AetherSettings,
+        settings: WarpSettings,
         host: TunnelHost,
         viaAuto: Boolean = false,
     ): Outcome = coroutineScope {
-        // The tunnel carried a test connection, so the edge is worth coming
-        // back to even if Psiphon does not come up behind it.
-        if (endpoint != null) remember(settings, endpoint, viaAuto)
+        // Speed is checked before the device is handed over, so a slow edge
+        // is swapped while the button still says connecting — the person
+        // never sees a connection drop and come back.
+        if (endpoint != null) {
+            judge(settings, endpoint, viaAuto)?.let { reason ->
+                return@coroutineScope Outcome(reason, rotate = true)
+            }
+            // It carried real data, so it is worth coming back to even if
+            // Psiphon does not come up behind it.
+            remember(settings, endpoint, viaAuto)
+        }
         val relayPort = when (val relay = startRelay(settings, endpoint, viaAuto)) {
             is RelayStart.Off -> null
             is RelayStart.Up -> relay.port
@@ -547,8 +554,6 @@ class AetherEngine(
             )
             _state.value = connected
             launch { reportExit(connected) }
-            val slow = AtomicReference<String?>(null)
-            if (endpoint != null) launch { slow.set(judge(settings, endpoint, viaAuto)) }
             if (endpoint != null && settings.pinnedPeer.isBlank() && scout != null) {
                 launch {
                     scout.watch(
@@ -578,6 +583,7 @@ class AetherEngine(
                         ?: "this build has no psiphon client"
                 },
                 carries = core::carries,
+                moving = traffic::moved,
                 onUnlockDown = {
                     _state.value = ConnectionState.Connecting(settings.protocol, endpoint, viaAuto, relaying = true)
                 },
@@ -590,10 +596,6 @@ class AetherEngine(
             )
             while (true) {
                 delay(POLL_MS)
-                slow.get()?.let { reason ->
-                    coroutineContext.cancelChildren()
-                    return@coroutineScope Outcome(reason, System.currentTimeMillis() - since, connected = true, rotate = true)
-                }
                 val polled = core.pollJob(job)
                 val unhealthy = if (polled is JobState.Done) null else health.check()
                 if (polled is JobState.Done || unhealthy != null) {
@@ -623,14 +625,21 @@ class AetherEngine(
      * null to stay. Only [MAX_ROTATIONS] moves per session, so a network that
      * is slow everywhere still ends up connected.
      */
-    private suspend fun judge(settings: AetherSettings, endpoint: Endpoint, viaAuto: Boolean): String? {
-        delay(MEASURE_AFTER_MS)
-        val kbps = ThroughputProbe.measure(settings.socksPort) ?: return null
-        log.info("[*] ${endpoint.socket} delivers $kbps KB/s")
+    private suspend fun judge(settings: WarpSettings, endpoint: Endpoint, viaAuto: Boolean): String? {
+        val measured = ThroughputProbe.measure(settings.socksPort, JUDGE_BYTES, JUDGE_WINDOW_MS) ?: return null
+        val kbps = measured.kbps
+        log.info("[*] ${endpoint.socket} delivers $kbps KB/s, first byte in ${measured.firstByteMs}ms")
+        val tested = endpoint.copy(rttMs = measured.firstByteMs)
         // Through the tunnel: the board is usually blocked on the open network.
         // Fetching here also keeps this operator's list on the phone for next time.
-        board.report(settings.protocol, settings.ipVersion.wire, network, SharedEdge(endpoint, kbps), settings.socksPort)
-        board.fetch(settings.protocol, settings.ipVersion.wire, network, settings.socksPort)
+        // In the background, so the connection does not wait for it.
+        val shared = network
+        scope.launch {
+            val up = ThroughputProbe.upload(settings.socksPort, UPLOAD_BYTES) ?: 0
+            if (up > 0) log.info("[*] ${endpoint.socket} uploads $up KB/s")
+            board.report(settings.protocol, settings.ipVersion.wire, shared, SharedEdge(tested, kbps, up), settings.socksPort)
+            board.fetch(settings.protocol, settings.ipVersion.wire, shared, settings.socksPort)
+        }
         if (kbps >= SLOW_KBPS || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
         rotations++
         slowEdges += endpoint.socket
@@ -638,7 +647,7 @@ class AetherEngine(
         return "${endpoint.socket} carries only $kbps KB/s, moving to a faster edge"
     }
 
-    private fun cacheKey(settings: AetherSettings): String =
+    private fun cacheKey(settings: WarpSettings): String =
         "$network.${PrefsEndpointCache.keyOf(settings.protocol, settings.ipVersion.wire)}"
 
     private sealed interface RelayStart {
@@ -653,7 +662,7 @@ class AetherEngine(
      * attempt rather than letting traffic leave from Cloudflare's exit, which
      * sites see as Iran.
      */
-    private suspend fun startRelay(settings: AetherSettings, endpoint: Endpoint?, viaAuto: Boolean): RelayStart {
+    private suspend fun startRelay(settings: WarpSettings, endpoint: Endpoint?, viaAuto: Boolean): RelayStart {
         if (!settings.regionUnlock) return RelayStart.Off
         val relay = relay ?: return RelayStart.Failed("region unlock is on, but this build has no psiphon client")
         if (!relay.isAvailable) return RelayStart.Failed("region unlock is on, but this build has no psiphon client")
@@ -682,13 +691,13 @@ class AetherEngine(
         } ?: start
     }
 
-    private fun remember(settings: AetherSettings, endpoint: Endpoint, viaAuto: Boolean) {
+    private fun remember(settings: WarpSettings, endpoint: Endpoint, viaAuto: Boolean) {
         if (settings.pinnedPeer.isNotBlank() || settings.protocol == Protocol.Gool) return
         cache.remember(cacheKey(settings), endpoint)
         if (viaAuto) cache.rememberAuto(settings.protocol, endpoint)
     }
 
-    private fun forget(settings: AetherSettings, viaAuto: Boolean) {
+    private fun forget(settings: WarpSettings, viaAuto: Boolean) {
         cache.forget(cacheKey(settings))
         if (viaAuto) cache.forgetAuto()
     }
@@ -710,7 +719,7 @@ class AetherEngine(
     }
 
     /** Picks a local port nothing is sitting on, starting from the chosen one. */
-    private fun withFreePort(settings: AetherSettings): AetherSettings {
+    private fun withFreePort(settings: WarpSettings): WarpSettings {
         val loopback = InetAddress.getByName("127.0.0.1")
         for (port in settings.socksPort..(settings.socksPort + 40)) {
             val free = runCatching { ServerSocket(port, 1, loopback).close() }.isSuccess
@@ -739,14 +748,14 @@ class AetherEngine(
             ?.forEach { it.delete() }
     }
 
-    private suspend fun identityFor(settings: AetherSettings): CoreResult<Identity> {
+    private suspend fun identityFor(settings: WarpSettings): CoreResult<Identity> {
         val transport = settings.protocol.transport
         identities[transport]?.let {
             _identity.value = it
             return CoreResult.Ok(it)
         }
         log.info("[*] opening $transport identity")
-        val opened = core.openIdentity(File(identityDir, "aether.toml").absolutePath, transport)
+        val opened = core.openIdentity(File(identityDir, "warp.toml").absolutePath, transport)
         if (opened is CoreResult.Ok) {
             val identity = opened.value
             identities[transport] = identity
@@ -786,8 +795,12 @@ class AetherEngine(
          */
         const val SHARED_FETCH_MS = 4_000L
 
-        /** Lets the tunnel settle before its speed is taken. */
-        const val MEASURE_AFTER_MS = 1_500L
+        /** The speed check before connecting: short, at most ~2 MB. */
+        const val JUDGE_BYTES = 2_000_000
+        const val JUDGE_WINDOW_MS = 2_500L
+
+        /** The session edge's upload, measured once it is up. */
+        const val UPLOAD_BYTES = 384 * 1024
 
         /** Below this (about 2.4 Mbit/s) Instagram video stalls; such an edge is swapped. */
         const val SLOW_KBPS = 300L

@@ -32,9 +32,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import io.github.mhammaddawudi.freeport.R
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 
-enum class AetherTab(@StringRes val label: Int, val glyph: GlyphKind) {
+enum class WarpTab(@StringRes val label: Int, val glyph: GlyphKind) {
     Home(R.string.tab_home, GlyphKind.Shield),
     Settings(R.string.tab_settings, GlyphKind.Sliders),
     Logs(R.string.tab_logs, GlyphKind.Terminal),
@@ -43,8 +43,8 @@ enum class AetherTab(@StringRes val label: Int, val glyph: GlyphKind) {
 /** A floating pill; the active tab expands to show its name. */
 @Composable
 fun FloatingTabBar(
-    selected: AetherTab,
-    onSelect: (AetherTab) -> Unit,
+    selected: WarpTab,
+    onSelect: (WarpTab) -> Unit,
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
@@ -55,15 +55,15 @@ fun FloatingTabBar(
             .clip(shape)
             .background(
                 Brush.verticalGradient(
-                    listOf(AetherColors.SurfaceRaised, AetherColors.Surface),
+                    listOf(WarpColors.SurfaceRaised, WarpColors.Surface),
                 ),
             )
-            .border(1.dp, Brush.verticalGradient(listOf(AetherColors.Ink.copy(alpha = 0.14f), AetherColors.Ink.copy(alpha = 0.04f))), shape)
+            .border(1.dp, Brush.verticalGradient(listOf(WarpColors.Ink.copy(alpha = 0.14f), WarpColors.Ink.copy(alpha = 0.04f))), shape)
             .padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AetherTab.entries.forEach { tab ->
+        WarpTab.entries.forEach { tab ->
             val active = tab == selected
             // A solid pill with dark content, rather than a translucent white
             // wash under white text: the old pair sat a few percent apart and
@@ -72,7 +72,7 @@ fun FloatingTabBar(
                 if (active) accent else Color.Transparent, tween(240), label = "tabBg",
             )
             val foreground by animateColorAsState(
-                if (active) AetherColors.Void else AetherColors.InkMuted, tween(240), label = "tabFg",
+                if (active) WarpColors.Void else WarpColors.InkMuted, tween(240), label = "tabFg",
             )
             Row(
                 modifier = Modifier

@@ -51,7 +51,7 @@ import kotlinx.coroutines.withContext
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.ui.components.Glyph
 import io.github.mhammaddawudi.freeport.ui.components.GlyphKind
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import io.github.mhammaddawudi.freeport.ui.theme.MonoStyle
 
 private data class AppEntry(
@@ -85,7 +85,7 @@ fun AppPickerScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(AetherColors.Void)
+            .background(WarpColors.Void)
             .padding(contentPadding)
             .padding(horizontal = 20.dp),
     ) {
@@ -94,19 +94,19 @@ fun AppPickerScreen(
                 Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .border(1.dp, AetherColors.Hairline, CircleShape)
+                    .border(1.dp, WarpColors.Hairline, CircleShape)
                     .clickable(onClick = onClose),
                 contentAlignment = Alignment.Center,
             ) {
-                Glyph(GlyphKind.Close, AetherColors.InkMuted, Modifier.size(17.dp))
+                Glyph(GlyphKind.Close, WarpColors.InkMuted, Modifier.size(17.dp))
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.apps_title), style = MaterialTheme.typography.titleLarge, color = AetherColors.Ink)
+                Text(stringResource(R.string.apps_title), style = MaterialTheme.typography.titleLarge, color = WarpColors.Ink)
                 Text(
                     stringResource(R.string.apps_selected, selected.size),
                     style = MaterialTheme.typography.bodySmall,
-                    color = AetherColors.InkMuted,
+                    color = WarpColors.InkMuted,
                 )
             }
         }
@@ -117,26 +117,26 @@ fun AppPickerScreen(
             value = query,
             onValueChange = { query = it },
             singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = AetherColors.Ink),
-            cursorBrush = SolidColor(AetherColors.Cyan),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = WarpColors.Ink),
+            cursorBrush = SolidColor(WarpColors.Cyan),
             decorationBox = { inner ->
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .clip(searchShape)
-                        .background(AetherColors.Ink.copy(alpha = 0.04f))
-                        .border(1.dp, AetherColors.Hairline, searchShape)
+                        .background(WarpColors.Ink.copy(alpha = 0.04f))
+                        .border(1.dp, WarpColors.Hairline, searchShape)
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Glyph(GlyphKind.Radar, AetherColors.InkFaint, Modifier.size(16.dp))
+                    Glyph(GlyphKind.Radar, WarpColors.InkFaint, Modifier.size(16.dp))
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.weight(1f)) {
                         if (query.isEmpty()) {
                             Text(
                                 stringResource(R.string.apps_search),
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = AetherColors.InkFaint,
+                                color = WarpColors.InkFaint,
                             )
                         }
                         inner()
@@ -149,7 +149,7 @@ fun AppPickerScreen(
         val list = apps
         if (list == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AetherColors.Cyan, strokeWidth = 2.dp)
+                CircularProgressIndicator(color = WarpColors.Cyan, strokeWidth = 2.dp)
             }
         } else {
             val filtered = remember(list, query) {
@@ -186,7 +186,7 @@ private fun AppRow(app: AppEntry, checked: Boolean, onToggle: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(AetherColors.Ink.copy(alpha = 0.05f)),
+            Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(WarpColors.Ink.copy(alpha = 0.05f)),
             contentAlignment = Alignment.Center,
         ) {
             val icon = app.icon
@@ -198,7 +198,7 @@ private fun AppRow(app: AppEntry, checked: Boolean, onToggle: () -> Unit) {
                     contentScale = ContentScale.Fit,
                 )
             } else {
-                Glyph(GlyphKind.Stack, AetherColors.InkFaint, Modifier.size(18.dp))
+                Glyph(GlyphKind.Stack, WarpColors.InkFaint, Modifier.size(18.dp))
             }
         }
         Spacer(Modifier.width(14.dp))
@@ -206,14 +206,14 @@ private fun AppRow(app: AppEntry, checked: Boolean, onToggle: () -> Unit) {
             Text(
                 app.label,
                 style = MaterialTheme.typography.titleSmall,
-                color = AetherColors.Ink,
+                color = WarpColors.Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 app.packageName,
                 style = MonoStyle,
-                color = AetherColors.InkFaint,
+                color = WarpColors.InkFaint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -223,15 +223,15 @@ private fun AppRow(app: AppEntry, checked: Boolean, onToggle: () -> Unit) {
             Modifier
                 .size(24.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(if (checked) AetherColors.Control.copy(alpha = 0.18f) else AetherColors.Ink.copy(alpha = 0.04f))
+                .background(if (checked) WarpColors.Control.copy(alpha = 0.18f) else WarpColors.Ink.copy(alpha = 0.04f))
                 .border(
                     1.dp,
-                    if (checked) AetherColors.Control else AetherColors.HairlineStrong,
+                    if (checked) WarpColors.Control else WarpColors.HairlineStrong,
                     RoundedCornerShape(8.dp),
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            if (checked) Glyph(GlyphKind.Check, AetherColors.Control, Modifier.size(14.dp), strokeWidth = 2.2.dp)
+            if (checked) Glyph(GlyphKind.Check, WarpColors.Control, Modifier.size(14.dp), strokeWidth = 2.2.dp)
         }
     }
 }

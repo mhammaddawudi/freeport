@@ -8,7 +8,7 @@ import io.github.mhammaddawudi.freeport.data.AppLanguage
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 
-private fun darkScheme(p: AetherPalette) = darkColorScheme(
+private fun darkScheme(p: WarpPalette) = darkColorScheme(
     primary = p.cyan,
     onPrimary = p.void,
     secondary = p.mint,
@@ -31,14 +31,14 @@ private fun darkScheme(p: AetherPalette) = darkColorScheme(
  * ground, so there is no light variant to fall out of step with it.
  */
 @Composable
-fun AetherTheme(
+fun WarpTheme(
     language: AppLanguage = AppLanguage.English,
     content: @Composable () -> Unit,
 ) {
     val palette = DarkPalette
     // Sorani and Persian read right to left; English and Kurmanji do not.
     CompositionLocalProvider(
-        LocalAetherPalette provides palette,
+        LocalWarpPalette provides palette,
         LocalLayoutDirection provides if (language.rightToLeft) {
             LayoutDirection.Rtl
         } else {
@@ -47,7 +47,7 @@ fun AetherTheme(
     ) {
         MaterialTheme(
             colorScheme = darkScheme(palette),
-            typography = AetherTypography,
+            typography = WarpTypography,
             content = content,
         )
     }

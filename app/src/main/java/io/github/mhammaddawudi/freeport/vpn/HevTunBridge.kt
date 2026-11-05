@@ -10,7 +10,7 @@ import java.io.File
  *
  * The library terminates TCP and UDP from the raw IP packets and replays each
  * flow against the core's local proxy. UDP goes over SOCKS5 UDP ASSOCIATE,
- * which Aether's `socks.rs` implements — without it DNS inside the tunnel
+ * which Warp's `socks.rs` implements — without it DNS inside the tunnel
  * would have nowhere to go.
  */
 class HevTunBridge(private val context: Context) : TunBridge {

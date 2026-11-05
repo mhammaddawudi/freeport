@@ -43,7 +43,7 @@ import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.CorePayloads
 import io.github.mhammaddawudi.freeport.core.Identity
 import io.github.mhammaddawudi.freeport.core.isEngaged
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.AppLanguage
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.data.TunnelMode
@@ -62,7 +62,7 @@ import io.github.mhammaddawudi.freeport.ui.components.SwitchRow
 import io.github.mhammaddawudi.freeport.ui.components.TuningSheet
 import io.github.mhammaddawudi.freeport.ui.components.TuningSheetHost
 import io.github.mhammaddawudi.freeport.ui.IphoneExportUi
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 
 /**
  * Four sections, in the order someone actually needs them: what gets routed,
@@ -75,12 +75,12 @@ import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
 @Composable
 fun SettingsScreen(
     state: ConnectionState,
-    settings: AetherSettings,
+    settings: WarpSettings,
     identity: Identity?,
     coreVersion: String?,
     isNativeCore: Boolean,
     bridgeName: String,
-    onUpdateSettings: ((AetherSettings) -> AetherSettings) -> Unit,
+    onUpdateSettings: ((WarpSettings) -> WarpSettings) -> Unit,
     onSelectLanguage: (AppLanguage) -> Unit,
     onReconnect: () -> Unit,
     onOpenAppPicker: () -> Unit,
@@ -115,20 +115,20 @@ fun SettingsScreen(
 
         if (state.isEngaged && state !is ConnectionState.Disconnecting) {
             Spacer(Modifier.height(16.dp))
-            GlassCard(Modifier.fillMaxWidth(), accent = AetherColors.Amber, contentPadding = PaddingValues(14.dp)) {
+            GlassCard(Modifier.fillMaxWidth(), accent = WarpColors.Amber, contentPadding = PaddingValues(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Glyph(GlyphKind.Bolt, AetherColors.Amber, Modifier.size(18.dp))
+                    Glyph(GlyphKind.Bolt, WarpColors.Amber, Modifier.size(18.dp))
                     Spacer(Modifier.width(10.dp))
                     Text(
                         stringResource(R.string.settings_changes_pending),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AetherColors.Ink,
+                        color = WarpColors.Ink,
                         modifier = Modifier.weight(1f),
                     )
                     Text(
                         stringResource(R.string.action_reconnect),
                         style = MaterialTheme.typography.labelLarge,
-                        color = AetherColors.Amber,
+                        color = WarpColors.Amber,
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .clickable(onClick = onReconnect)
@@ -147,13 +147,13 @@ fun SettingsScreen(
                 selected = settings.tunnelMode,
                 label = { stringResource(it.labelRes) },
                 onSelect = { mode -> onUpdateSettings { it.copy(tunnelMode = mode) } },
-                accent = AetherColors.Control,
+                accent = WarpColors.Control,
             )
             Spacer(Modifier.height(10.dp))
             Text(
                 stringResource(settings.tunnelMode.descriptionRes),
                 style = MaterialTheme.typography.bodySmall,
-                color = AetherColors.InkMuted,
+                color = WarpColors.InkMuted,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
             )
             AnimatedVisibility(visible = settings.tunnelMode == TunnelMode.SelectedApps) {
@@ -169,7 +169,7 @@ fun SettingsScreen(
                             }
                         },
                         glyph = GlyphKind.Stack,
-                        valueColor = if (settings.tunneledApps.isEmpty()) AetherColors.Amber else AetherColors.InkMuted,
+                        valueColor = if (settings.tunneledApps.isEmpty()) WarpColors.Amber else WarpColors.InkMuted,
                         onClick = onOpenAppPicker,
                     )
                 }
@@ -210,7 +210,7 @@ fun SettingsScreen(
                 selected = settings.language,
                 label = { stringResource(it.labelRes) },
                 onSelect = onSelectLanguage,
-                accent = AetherColors.Control,
+                accent = WarpColors.Control,
             )
             Spacer(Modifier.height(8.dp))
         }
@@ -228,15 +228,15 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.advanced_title), style = MaterialTheme.typography.titleSmall, color = AetherColors.Ink)
+                    Text(stringResource(R.string.advanced_title), style = MaterialTheme.typography.titleSmall, color = WarpColors.Ink)
                     Spacer(Modifier.height(2.dp))
                     Text(
                         stringResource(R.string.advanced_subtitle),
                         style = MaterialTheme.typography.bodySmall,
-                        color = AetherColors.InkMuted,
+                        color = WarpColors.InkMuted,
                     )
                 }
-                Glyph(GlyphKind.Chevron, AetherColors.InkFaint, Modifier.size(16.dp).rotate(turn))
+                Glyph(GlyphKind.Chevron, WarpColors.InkFaint, Modifier.size(16.dp).rotate(turn))
             }
 
             AnimatedVisibility(visible = advanced) {
@@ -273,7 +273,7 @@ fun SettingsScreen(
                             stringResource(R.string.advanced_fragment_tcp_only)
                         },
                         enabled = fragmentApplies,
-                        accent = AetherColors.Control,
+                        accent = WarpColors.Control,
                     )
                     AnimatedVisibility(visible = settings.fragmentEnabled && fragmentApplies) {
                         Column {
@@ -284,7 +284,7 @@ fun SettingsScreen(
                                 unit = "bytes",
                                 onChange = { size -> onUpdateSettings { it.copy(fragmentSize = size) } },
                                 step = 5,
-                                accent = AetherColors.Control,
+                                accent = WarpColors.Control,
                             )
                             SliderRow(
                                 title = stringResource(R.string.advanced_fragment_delay),
@@ -293,7 +293,7 @@ fun SettingsScreen(
                                 unit = "ms",
                                 onChange = { delay -> onUpdateSettings { it.copy(fragmentDelayMs = delay) } },
                                 step = 5,
-                                accent = AetherColors.Control,
+                                accent = WarpColors.Control,
                             )
                         }
                     }
@@ -320,7 +320,7 @@ fun SettingsScreen(
                         unit = "s",
                         onChange = { seconds -> onUpdateSettings { it.copy(keepaliveSeconds = seconds) } },
                         enabled = protocol == Protocol.WireGuard || protocol == Protocol.Gool || auto,
-                        accent = AetherColors.Control,
+                        accent = WarpColors.Control,
                     )
                     val peerError = settings.pinnedPeer
                         .takeIf { it.isNotBlank() && CorePayloads.parsePeer(it) == null }
@@ -338,7 +338,7 @@ fun SettingsScreen(
                         title = stringResource(R.string.advanced_battery),
                         value = stringResource(R.string.advanced_battery_value),
                         glyph = GlyphKind.Bolt,
-                        valueColor = if (batteryUnrestricted) AetherColors.Mint else AetherColors.Amber,
+                        valueColor = if (batteryUnrestricted) WarpColors.Mint else WarpColors.Amber,
                         onClick = {
                             runCatching {
                                 context.startActivity(
@@ -372,7 +372,7 @@ fun SettingsScreen(
                 title = stringResource(R.string.iphone_row),
                 value = stringResource(R.string.iphone_row_value),
                 glyph = GlyphKind.Signal,
-                valueColor = AetherColors.Cyan,
+                valueColor = WarpColors.Cyan,
                 onClick = { iphoneOpen = true },
             )
         }
@@ -382,16 +382,16 @@ fun SettingsScreen(
         GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
             InfoRow(
                 title = stringResource(R.string.about_core),
-                value = if (isNativeCore) "libaether ${coreVersion.orEmpty()}".trim() else stringResource(R.string.about_core_mock),
+                value = if (isNativeCore) "libwarp ${coreVersion.orEmpty()}".trim() else stringResource(R.string.about_core_mock),
                 glyph = GlyphKind.Bolt,
-                valueColor = if (isNativeCore) AetherColors.Mint else AetherColors.Amber,
+                valueColor = if (isNativeCore) WarpColors.Mint else WarpColors.Amber,
             )
             RowDivider()
             InfoRow(
                 title = stringResource(R.string.about_capture),
                 value = if (bridgeName == "proxy-only") stringResource(R.string.about_capture_proxy) else bridgeName,
                 glyph = GlyphKind.Plug,
-                valueColor = if (bridgeName == "proxy-only") AetherColors.Amber else AetherColors.Mint,
+                valueColor = if (bridgeName == "proxy-only") WarpColors.Amber else WarpColors.Mint,
             )
             RowDivider()
             InfoRow(stringResource(R.string.about_device), identity?.deviceId ?: stringResource(R.string.about_device_none), glyph = GlyphKind.Key, mono = identity != null)
@@ -400,7 +400,7 @@ fun SettingsScreen(
                 title = stringResource(R.string.about_developer),
                 value = "mhammaddawudi",
                 glyph = GlyphKind.Key,
-                valueColor = AetherColors.Cyan,
+                valueColor = WarpColors.Cyan,
                 onClick = {
                     runCatching {
                         context.startActivity(
@@ -452,12 +452,12 @@ internal fun ScreenHeader(
             Text(
                 title,
                 style = MaterialTheme.typography.headlineMedium,
-                color = AetherColors.Ink,
+                color = WarpColors.Ink,
                 maxLines = 1,
             )
             if (subtitle != null) {
                 Spacer(Modifier.height(4.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = AetherColors.InkMuted)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = WarpColors.InkMuted)
             }
         }
         trailing?.invoke(this)

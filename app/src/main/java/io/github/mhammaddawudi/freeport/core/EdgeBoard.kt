@@ -14,8 +14,32 @@ import java.net.Proxy
 import java.net.URL
 import java.net.URLEncoder
 
-/** An edge someone on the same operator measured, with how well it did. */
-data class SharedEdge(val endpoint: Endpoint, val kbps: Long)
+/**
+ * An edge someone on the same operator measured, with how well it did.
+ * [Endpoint.rttMs] is the time a new connection took to its first byte;
+ * [upKbps] is 0 when the upload was not measured.
+ */
+data class SharedEdge(val endpoint: Endpoint, val kbps: Long, val upKbps: Long = 0) {
+    /**
+     * Roughly how long a reel takes to start and a photo to post: the first
+     * byte, a megabyte down and a quarter megabyte up at the measured rates.
+     * An unmeasured upload costs a flat [UNKNOWN_UP_MS], so edges measured
+     * before uploads were tested are not thrown out.
+     */
+    val reelMs: Long
+        get() {
+            val down = if (kbps > 0) REEL_BYTES * 1000 / (kbps * 1024) else UNMEASURED_MS
+            val up = if (upKbps > 0) POST_BYTES * 1000 / (upKbps * 1024) else UNKNOWN_UP_MS
+            return endpoint.rttMs + down + up
+        }
+
+    companion object {
+        private const val REEL_BYTES = 1_000_000L
+        private const val POST_BYTES = 250_000L
+        private const val UNMEASURED_MS = 60_000L
+        private const val UNKNOWN_UP_MS = 500L
+    }
+}
 
 /**
  * Edges that worked well for other people on the same operator.
@@ -93,6 +117,7 @@ class HttpEdgeBoard(
                     .put("port", edge.endpoint.port)
                     .put("rtt", edge.endpoint.rttMs)
                     .put("kbps", edge.kbps)
+                    .put("up", edge.upKbps)
                     .toString()
                     .toByteArray()
                 val connection = URL("$baseUrl/v1/report").openConnection(proxyOf(socksPort)) as HttpURLConnection
@@ -117,7 +142,7 @@ class HttpEdgeBoard(
     private fun enc(value: String) = URLEncoder.encode(value, "UTF-8")
 
     companion object {
-        private const val FILE = "aether.shared-edges"
+        private const val FILE = "warp.shared-edges"
         private const val TIMEOUT_MS = 5_000
         private const val DIRECT_TIMEOUT_MS = 1_500
 
@@ -134,7 +159,7 @@ class HttpEdgeBoard(
                     val ip = item.optString("addr")
                     val port = item.optInt("port")
                     if (port !in 1..65535 || !isCloudflareEdge(ip)) return@mapNotNull null
-                    SharedEdge(Endpoint(ip, port, item.optLong("rtt")), item.optLong("kbps"))
+                    SharedEdge(Endpoint(ip, port, item.optLong("rtt")), item.optLong("kbps"), item.optLong("up"))
                 }
                 .take(MAX_EDGES)
         }

@@ -177,6 +177,8 @@
     <string name="update_subtitle">Ready to install · %1$s</string>
     <string name="update_install">Update</string>
     <string name="update_later">Later</string>
+    <string name="update_download">Download</string>
+    <string name="update_size">Size: %1$s</string>
     <string name="update_downloading">Downloading… %1$d%%</string>
     <string name="update_ready">Install</string>
     <string name="update_ready_subtitle">Downloaded. Tap Install to finish</string>

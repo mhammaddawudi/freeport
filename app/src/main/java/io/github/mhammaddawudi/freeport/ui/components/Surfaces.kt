@@ -32,7 +32,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import java.util.Locale
 
 /**
@@ -56,7 +56,7 @@ fun GlassCard(
         Brush.verticalGradient(listOf(accent.copy(alpha = 0.70f), accent.copy(alpha = 0.18f), accent.copy(alpha = 0.06f)))
     } else {
         Brush.verticalGradient(
-            listOf(AetherColors.Ink.copy(alpha = 0.16f), AetherColors.Ink.copy(alpha = 0.05f), AetherColors.Ink.copy(alpha = 0.03f)),
+            listOf(WarpColors.Ink.copy(alpha = 0.16f), WarpColors.Ink.copy(alpha = 0.05f), WarpColors.Ink.copy(alpha = 0.03f)),
         )
     }
     val wash = accent?.copy(alpha = 0.07f) ?: Color.Transparent
@@ -64,7 +64,7 @@ fun GlassCard(
         modifier = modifier
             .shadow(18.dp, shape, ambientColor = Color.Black, spotColor = Color.Black.copy(alpha = 0.6f))
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(AetherColors.SurfaceRaised, AetherColors.Surface)))
+            .background(Brush.verticalGradient(listOf(WarpColors.SurfaceRaised, WarpColors.Surface)))
             .background(Brush.verticalGradient(listOf(wash, Color.Transparent)))
             .border(1.dp, edge, shape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -83,17 +83,17 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: String? 
             Modifier
                 .size(width = 3.dp, height = 12.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(AetherColors.Ink.copy(alpha = 0.35f)),
+                .background(WarpColors.Ink.copy(alpha = 0.35f)),
         )
         Spacer(Modifier.width(8.dp))
         Text(
             text.uppercase(Locale.getDefault()),
             style = MaterialTheme.typography.labelSmall,
-            color = AetherColors.InkMuted,
+            color = WarpColors.InkMuted,
         )
         Spacer(Modifier.weight(1f))
         if (trailing != null) {
-            Text(trailing, style = MaterialTheme.typography.labelMedium, color = AetherColors.InkFaint)
+            Text(trailing, style = MaterialTheme.typography.labelMedium, color = WarpColors.InkFaint)
         }
     }
 }
@@ -112,7 +112,7 @@ fun StatusPill(text: String, tint: Color, modifier: Modifier = Modifier, pulsing
     ) {
         StatusDot(tint, pulsing = pulsing)
         Spacer(Modifier.width(2.dp))
-        Text(text, style = MaterialTheme.typography.labelMedium, color = AetherColors.Ink, maxLines = 1)
+        Text(text, style = MaterialTheme.typography.labelMedium, color = WarpColors.Ink, maxLines = 1)
     }
 }
 
@@ -124,10 +124,10 @@ fun StatusPill(text: String, tint: Color, modifier: Modifier = Modifier, pulsing
  * canvas is otherwise still, so it costs nothing while the screen sits idle.
  */
 @Composable
-fun AuroraBackground(modifier: Modifier = Modifier, glow: Color = AetherColors.Ink) {
-    val ground = AetherColors.Void
+fun AuroraBackground(modifier: Modifier = Modifier, glow: Color = WarpColors.Ink) {
+    val ground = WarpColors.Void
     val light by animateColorAsState(glow, tween(900), label = "auroraGlow")
-    val ink = AetherColors.Ink
+    val ink = WarpColors.Ink
 
     Canvas(modifier.fillMaxSize().background(ground)) {
         val w = size.width
@@ -165,7 +165,7 @@ fun Modifier.topHighlight(alpha: Float = 0.10f): Modifier = drawWithContent {
 @Composable
 fun CircleIconTile(
     modifier: Modifier = Modifier,
-    tint: Color = AetherColors.Ink,
+    tint: Color = WarpColors.Ink,
     content: @Composable () -> Unit,
 ) {
     Box(

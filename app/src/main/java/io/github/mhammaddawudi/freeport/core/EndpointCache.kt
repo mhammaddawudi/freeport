@@ -73,7 +73,7 @@ class PrefsEndpointCache(
     private data class Entry(val endpoint: Endpoint, val savedAt: Long)
 
     companion object {
-        private const val FILE = "aether.endpoints"
+        private const val FILE = "warp.endpoints"
         private const val KEY_AUTO_PROTOCOL = "auto.protocol"
         private const val KEY_AUTO_ENDPOINT = "auto.endpoint"
 

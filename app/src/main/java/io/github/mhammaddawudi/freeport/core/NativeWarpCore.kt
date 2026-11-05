@@ -7,22 +7,22 @@ import kotlinx.coroutines.withContext
 import android.os.SystemClock
 import org.json.JSONArray
 import org.json.JSONObject
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlin.coroutines.coroutineContext
 
 /**
- * [AetherCore] over the real `libaether.so`, through the thin C shim in
- * `src/main/cpp/aether_jni.c`.
+ * [WarpCore] over the real `libwarp.so`, through the thin C shim in
+ * `src/main/cpp/warp_jni.c`.
  *
  * Every native call returns the core's JSON reply as a string. Replies always
  * carry `ok`; on failure they carry `error`, which is passed through verbatim
  * because the core's messages are written for people.
  */
-class NativeAetherCore : AetherCore {
+class NativeWarpCore : WarpCore {
 
-    override suspend fun applyEnvironment(settings: AetherSettings) {
+    override suspend fun applyEnvironment(settings: WarpSettings) {
         io {
             CorePayloads.environment(settings).forEach { (name, value) -> setEnv(name, value) }
         }
@@ -48,7 +48,7 @@ class NativeAetherCore : AetherCore {
 
     override suspend fun scan(
         identity: Identity,
-        settings: AetherSettings,
+        settings: WarpSettings,
         excluded: Set<String>,
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint> {
@@ -78,7 +78,7 @@ class NativeAetherCore : AetherCore {
     override suspend fun startTunnel(
         identity: Identity,
         endpoint: Endpoint,
-        settings: AetherSettings,
+        settings: WarpSettings,
     ): CoreResult<JobHandle> = io {
         val reply = JSONObject(
             nativeTunnelStart(identity.handle, CorePayloads.tunnel(endpoint, settings)),
@@ -91,7 +91,7 @@ class NativeAetherCore : AetherCore {
     }
 
     override suspend fun startManaged(
-        settings: AetherSettings,
+        settings: WarpSettings,
         configDir: String,
     ): CoreResult<JobHandle> = io {
         val arguments = JSONArray(CorePayloads.coreArguments(settings, configDir)).toString()
@@ -105,7 +105,7 @@ class NativeAetherCore : AetherCore {
 
     override suspend fun awaitProxyReady(
         job: JobHandle,
-        settings: AetherSettings,
+        settings: WarpSettings,
         timeoutMs: Long,
     ): String? = io {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
@@ -127,7 +127,7 @@ class NativeAetherCore : AetherCore {
         "the tunnel did not carry a connection within ${timeoutMs / 1000}s"
     }
 
-    override suspend fun awaitProxyClosed(settings: AetherSettings, timeoutMs: Long): Boolean = io {
+    override suspend fun awaitProxyClosed(settings: WarpSettings, timeoutMs: Long): Boolean = io {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (SystemClock.elapsedRealtime() < deadline) {
             val open = runCatching {
@@ -231,20 +231,20 @@ class NativeAetherCore : AetherCore {
     /** Makes the core talk at the level we want, and sends it to the log. */
     fun prepareLogging(level: String = "info") {
         runCatching {
-            nativeSetEnv("AETHER_LOG_LEVEL", level)
-            nativeSetEnv("RUST_LOG", "info,aether=$level")
+            nativeSetEnv("WARP_LOG_LEVEL", level)
+            nativeSetEnv("RUST_LOG", "info,warp=$level")
             nativeCaptureLogs()
         }
     }
 
-    /** Sets one of the core's `AETHER_*` switches for this process. */
+    /** Sets one of the core's `WARP_*` switches for this process. */
     fun setEnv(name: String, value: String) {
         runCatching { nativeSetEnv(name, value) }
     }
 
     companion object {
         /**
-         * Whether both `libaether.so` and the JNI shim loaded.
+         * Whether both `libwarp.so` and the JNI shim loaded.
          *
          * A failure here silently demotes the whole app to the mock core, so
          * the reason goes into the log rather than being swallowed: on a
@@ -253,8 +253,8 @@ class NativeAetherCore : AetherCore {
          */
         val loaded: Boolean by lazy {
             runCatching {
-                System.loadLibrary("aether")
-                System.loadLibrary("aether_jni")
+                System.loadLibrary("warp")
+                System.loadLibrary("warp_jni")
             }.onFailure { failure ->
                 CoreLog.error("[!] the core could not be loaded: ${failure.message}")
             }.isSuccess

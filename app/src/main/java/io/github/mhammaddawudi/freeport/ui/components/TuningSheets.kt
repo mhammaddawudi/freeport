@@ -22,10 +22,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import io.github.mhammaddawudi.freeport.R
-import io.github.mhammaddawudi.freeport.data.AetherSettings
+import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.IpVersion
 import io.github.mhammaddawudi.freeport.data.ScanMode
-import io.github.mhammaddawudi.freeport.ui.theme.AetherColors
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 
 /** The three tuning choices that get their own sheet. */
 enum class TuningSheet { Scan, Noize, Ip }
@@ -38,8 +38,8 @@ enum class TuningSheet { Scan, Noize, Ip }
 @Composable
 fun TuningSheetHost(
     sheet: TuningSheet?,
-    settings: AetherSettings,
-    onUpdateSettings: ((AetherSettings) -> AetherSettings) -> Unit,
+    settings: WarpSettings,
+    onUpdateSettings: ((WarpSettings) -> WarpSettings) -> Unit,
     onDismiss: () -> Unit,
 ) {
     if (sheet == null) return
@@ -53,15 +53,15 @@ fun TuningSheetHost(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = AetherColors.Surface,
-        contentColor = AetherColors.Ink,
+        containerColor = WarpColors.Surface,
+        contentColor = WarpColors.Ink,
         dragHandle = {
             Box(
                 Modifier
                     .padding(top = 12.dp, bottom = 8.dp)
                     .size(width = 40.dp, height = 4.dp)
                     .clip(CircleShape)
-                    .background(AetherColors.HairlineStrong),
+                    .background(WarpColors.HairlineStrong),
             )
         },
     ) {
@@ -79,9 +79,9 @@ fun TuningSheetHost(
                 TuningSheet.Ip ->
                     stringResource(R.string.sheet_ip_title) to stringResource(R.string.sheet_ip_subtitle)
             }
-            Text(title, style = MaterialTheme.typography.headlineSmall, color = AetherColors.Ink)
+            Text(title, style = MaterialTheme.typography.headlineSmall, color = WarpColors.Ink)
             Spacer(Modifier.height(6.dp))
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = AetherColors.InkMuted)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = WarpColors.InkMuted)
             Spacer(Modifier.height(16.dp))
 
             when (sheet) {
@@ -90,7 +90,7 @@ fun TuningSheetHost(
                         title = stringResource(mode.labelRes),
                         description = stringResource(mode.descriptionRes),
                         selected = mode == settings.scanMode,
-                        accent = AetherColors.Control,
+                        accent = WarpColors.Control,
                         onClick = {
                             onUpdateSettings { it.copy(scanMode = mode) }
                             close()
@@ -103,7 +103,7 @@ fun TuningSheetHost(
                         title = stringResource(profile.labelRes),
                         description = stringResource(profile.descriptionRes),
                         selected = profile == settings.effectiveNoize,
-                        accent = AetherColors.Control,
+                        accent = WarpColors.Control,
                         onClick = {
                             onUpdateSettings { it.copy(noize = profile) }
                             close()
@@ -116,7 +116,7 @@ fun TuningSheetHost(
                         title = stringResource(version.labelRes),
                         description = "",
                         selected = version == settings.ipVersion,
-                        accent = AetherColors.Control,
+                        accent = WarpColors.Control,
                         onClick = {
                             onUpdateSettings { it.copy(ipVersion = version) }
                             close()

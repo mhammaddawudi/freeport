@@ -177,6 +177,8 @@
     <string name="update_subtitle">آمادهٔ نصب · %1$s</string>
     <string name="update_install">به‌روزرسانی</string>
     <string name="update_later">بعداً</string>
+    <string name="update_download">دانلود</string>
+    <string name="update_size">حجم: %1$s</string>
     <string name="update_downloading">در حال دانلود… %1$d%%</string>
     <string name="update_ready">نصب</string>
     <string name="update_ready_subtitle">دانلود شد. برای پایان «نصب» را بزنید</string>
