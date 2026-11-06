@@ -12,3 +12,4 @@ CREATE TABLE IF NOT EXISTS edges (
   PRIMARY KEY (net, proto, fam, addr, port)
 );
 CREATE INDEX IF NOT EXISTS edges_rank ON edges (net, proto, fam, kbps DESC);
+CREATE INDEX IF NOT EXISTS edges_pool ON edges (proto, fam, updated);

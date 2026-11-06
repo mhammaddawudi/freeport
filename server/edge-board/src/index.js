@@ -35,12 +35,18 @@ async function list(request, env, url) {
   const fam = url.searchParams.get("ip") || "";
   if (!PROTOCOLS.has(proto) || !FAMILIES.has(fam)) return json({ error: "bad query" }, 400);
   const net = networkOf(request, url.searchParams.get("net"));
+  // One pool for every operator: an edge measured fast anywhere is offered
+  // to everyone, at its best measurement. Reports still keep the operator,
+  // so the pool can be split again later without losing data.
   const { results } = await env.DB.prepare(
-    `SELECT addr, port, rtt, kbps, up, n FROM edges
-     WHERE net = ? AND proto = ? AND fam = ? AND updated > ?
-     ORDER BY rtt + 976562.0 / MAX(kbps, 1) + (CASE WHEN up > 0 THEN 244140.0 / up ELSE 500 END) ASC
+    `SELECT addr, port, rtt, kbps, up, n, MIN(score) AS score FROM (
+       SELECT addr, port, rtt, kbps, up, n,
+              rtt + 976562.0 / MAX(kbps, 1) + (CASE WHEN up > 0 THEN 244140.0 / up ELSE 500 END) AS score
+       FROM edges WHERE proto = ? AND fam = ? AND updated > ?)
+     GROUP BY addr, port
+     ORDER BY score ASC
      LIMIT ?`,
-  ).bind(net, proto, fam, Date.now() - MAX_AGE_MS, MAX_EDGES).all();
+  ).bind(proto, fam, Date.now() - MAX_AGE_MS, MAX_EDGES).all();
   return json({ net, edges: results }, 200, { "Cache-Control": "public, max-age=60" });
 }
 
