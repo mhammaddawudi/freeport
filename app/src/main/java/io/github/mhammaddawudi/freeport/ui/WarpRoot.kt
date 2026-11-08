@@ -118,14 +118,8 @@ fun WarpRoot(viewModel: WarpViewModel = viewModel()) {
 
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().then(if (asking) Modifier.blur(18.dp) else Modifier)) {
-            AuroraBackground(
-                glow = when (state) {
-                    is ConnectionState.Connected -> WarpColors.Mint
-                    is ConnectionState.Failed -> WarpColors.Rose
-                    ConnectionState.Idle, ConnectionState.Disconnecting -> WarpColors.Ink
-                    else -> WarpColors.Amber
-                },
-            )
+            // A neutral backdrop in every state: the connect button carries the state.
+            AuroraBackground()
 
             AnimatedContent(
                 targetState = tab,

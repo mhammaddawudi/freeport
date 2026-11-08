@@ -122,6 +122,8 @@ fun HomeScreen(
             exitCountry = settings.exitCountry,
             onToggle = onRegionUnlock,
             onSelectCountry = onSelectExitCountry,
+            // Psiphon and Tor already leave from abroad; region unlock is for Cloudflare's exits.
+            enabled = !settings.protocol.isDirect,
         )
         AnimatedVisibility(
             visible = state is ConnectionState.Connected,

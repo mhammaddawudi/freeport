@@ -178,6 +178,8 @@ fun SettingsScreen(
         }
 
         // ---- how the tunnel behaves -----------------------------------------
+        // Psiphon and Tor pick and disguise their own servers; none of this applies to them.
+        if (!protocol.isDirect) {
         SectionLabel(stringResource(R.string.section_tunnel), trailing = if (auto) stringResource(R.string.protocol_auto) else protocol.displayName)
         GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
             InfoRow(
@@ -200,6 +202,7 @@ fun SettingsScreen(
                 glyph = GlyphKind.Globe,
                 onClick = { sheet = TuningSheet.Ip },
             )
+        }
         }
 
         // ---- language and theme ----------------------------------------------

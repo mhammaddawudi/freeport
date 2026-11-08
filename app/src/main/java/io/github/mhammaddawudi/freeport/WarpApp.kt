@@ -11,7 +11,10 @@ import io.github.mhammaddawudi.freeport.core.NetworkKey
 import io.github.mhammaddawudi.freeport.core.NoEdgeBoard
 import io.github.mhammaddawudi.freeport.core.NoEndpointCache
 import io.github.mhammaddawudi.freeport.core.PrefsEndpointCache
+import io.github.mhammaddawudi.freeport.core.PsiphonDirect
 import io.github.mhammaddawudi.freeport.core.PsiphonRelay
+import io.github.mhammaddawudi.freeport.core.TorTunnel
+import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.core.SimulatedTrafficMeter
 import io.github.mhammaddawudi.freeport.core.TrafficMeter
 import io.github.mhammaddawudi.freeport.core.TunnelTraffic
@@ -76,6 +79,11 @@ class WarpApp : Application() {
             this, settings, CoreProvider.core, cache, relay, board,
             networkOf = { NetworkKey.current(this) },
             traffic = TunnelTraffic(if (CoreProvider.isNative) UidTrafficMeter() else null),
+            direct = if (CoreProvider.isNative) {
+                mapOf(Protocol.Psiphon to PsiphonDirect(this), Protocol.Tor to TorTunnel(this))
+            } else {
+                emptyMap()
+            },
             scout = if (CoreProvider.isNative) {
                 BackgroundScout(CoreProvider.core, board, UidTrafficMeter(), java.io.File(filesDir, "identity/probe"))
             } else {

@@ -62,6 +62,8 @@ fun RegionCard(
     onToggle: (Boolean) -> Unit,
     onSelectCountry: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** False for Psiphon and Tor, which already leave from abroad. */
+    enabled: Boolean = true,
 ) {
     val connected = state as? ConnectionState.Connected
     val exit = connected?.exitCountry
@@ -90,8 +92,9 @@ fun RegionCard(
             // The flag says where the session leaves from; the switch moves it.
             SwitchRow(
                 title = stringResource(R.string.region_unlock),
-                subtitle = exit?.let { countryName(it) },
-                checked = regionUnlock,
+                subtitle = if (enabled) exit?.let { countryName(it) } else stringResource(R.string.region_unlock_not_needed),
+                checked = regionUnlock && enabled,
+                enabled = enabled,
                 onCheckedChange = onToggle,
                 accent = WarpColors.Mint,
                 modifier = Modifier.weight(1f),
@@ -99,7 +102,7 @@ fun RegionCard(
         }
 
         AnimatedVisibility(
-            visible = regionUnlock,
+            visible = regionUnlock && enabled,
             enter = fadeIn(tween(220)) + expandVertically(tween(220)),
             exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
         ) {
@@ -162,6 +165,11 @@ private fun countryName(code: String): String {
  */
 @Composable
 private fun CountryFlag(code: String, emojiSize: TextUnit, width: Dp) {
+    if (code.length != 2) {
+        // No country yet, or "any": a plain globe rather than the colour emoji.
+        Glyph(GlyphKind.Globe, WarpColors.InkMuted, Modifier.size(width), strokeWidth = 1.6.dp)
+        return
+    }
     if (code != IRAN) {
         Text(ExitCountries.flag(code), fontSize = emojiSize)
         return

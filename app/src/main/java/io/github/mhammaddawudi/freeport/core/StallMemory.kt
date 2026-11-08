@@ -21,9 +21,14 @@ object StallMemory {
 
     fun isRecent(stalledAt: Long, now: Long): Boolean = stalledAt > 0 && now - stalledAt in 0 until MEMORY_MS
 
-    /** [items] with those of [stalled] protocols moved to the end, order otherwise kept. */
-    fun <T> stalledLast(items: List<T>, stalled: Set<Protocol>, protocolOf: (T) -> Protocol): List<T> {
-        val (bad, good) = items.partition { protocolOf(it) in stalled }
-        return good + bad
+    /**
+     * [items] with those of stalled protocols moved to the end, the one that
+     * stalled longest ago first among them: when two have stalled here, the
+     * one that keeps stalling goes last. [stalledAt] maps each stalled
+     * protocol to when it last stalled. Order is otherwise kept.
+     */
+    fun <T> stalledLast(items: List<T>, stalledAt: Map<Protocol, Long>, protocolOf: (T) -> Protocol): List<T> {
+        val (bad, good) = items.partition { protocolOf(it) in stalledAt }
+        return good + bad.sortedBy { stalledAt.getValue(protocolOf(it)) }
     }
 }

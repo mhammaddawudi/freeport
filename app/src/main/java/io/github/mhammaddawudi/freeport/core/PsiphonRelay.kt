@@ -24,10 +24,18 @@ import java.util.concurrent.TimeUnit
  * `libpsiphon.so` so Android extracts it executable into the library folder.
  * It runs as a child process; its notices arrive as JSON lines on stderr.
  */
-class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : UnlockRelay {
+class PsiphonRelay(
+    context: Context,
+    private val log: CoreLog = CoreLog,
+    /** Its own data folder, so the unlock exit and the Psiphon protocol never share state. */
+    folder: String = "psiphon",
+    /** How its log lines start. */
+    private val label: String = "region unlock",
+) : UnlockRelay {
 
     private val binary = File(context.applicationInfo.nativeLibraryDir, "libpsiphon.so")
-    private val dataDir = File(context.filesDir, "psiphon")
+    private val dataDir = File(context.filesDir, folder)
+    private val assets = context.assets
 
     @Volatile private var process: Process? = null
     @Volatile private var tunnel: Tunnel = Tunnel.Waiting
@@ -59,11 +67,12 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : Unloc
     internal enum class Tunnel { Waiting, Up, Lost }
 
     /**
-     * Starts the client, dialling out through [upstreamSocksPort] and serving
-     * SOCKS5 on [localPort]. Returns null once a tunnel is up, or why not.
+     * Starts the client, dialling out through [upstreamSocksPort] (straight
+     * over the line when null) and serving SOCKS5 on [localPort]. Returns
+     * null once a tunnel is up, or why not.
      */
     suspend fun start(
-        upstreamSocksPort: Int,
+        upstreamSocksPort: Int?,
         localPort: Int,
         country: String,
         timeoutMs: Long,
@@ -76,7 +85,7 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : Unloc
         }
     }
 
-    private suspend fun launch(upstreamSocksPort: Int, localPort: Int, country: String, timeoutMs: Long): String? {
+    private suspend fun launch(upstreamSocksPort: Int?, localPort: Int, country: String, timeoutMs: Long): String? {
         stop()
         if (!isAvailable) return "the psiphon client is not in this build"
         dataDir.mkdirs()
@@ -85,8 +94,10 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : Unloc
         configFile.writeText(config(upstreamSocksPort, localPort, country).toString())
 
         val ready = CompletableDeferred<String?>()
+        val command = listOf(binary.absolutePath, "-config", configFile.absolutePath) +
+            (shippedServers()?.let { listOf("-serverList", it.absolutePath) } ?: emptyList())
         val started = runCatching {
-            ProcessBuilder(binary.absolutePath, "-config", configFile.absolutePath)
+            ProcessBuilder(command)
                 .directory(dataDir)
                 .redirectErrorStream(true)
                 .start()
@@ -95,7 +106,7 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : Unloc
         tunnel = Tunnel.Waiting
         this.country = country
         pidOf(started)?.let { pid -> runCatching { File(dataDir, PID_FILE).writeText(pid.toString()) } }
-        log.info("[*] region unlock: starting psiphon${if (country.isEmpty()) "" else " towards $country"}")
+        log.info("[*] $label: starting psiphon${if (country.isEmpty()) "" else " towards $country"}")
 
         // Drained on its own thread for the life of the process: a full pipe
         // would stall the client.
@@ -106,6 +117,21 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : Unloc
         if (outcome.isNotEmpty()) stop()
         return outcome.takeIf { it.isNotEmpty() }
     }
+
+    /**
+     * Psiphon's signed server list as it was when the app was built. A fresh
+     * client otherwise has to fetch one from Amazon S3, which is filtered in
+     * Iran, and finds no server at all; once connected it keeps the list up
+     * to date by itself. Copied out once per list.
+     */
+    private fun shippedServers(): File? = runCatching {
+        val file = File(dataDir, SERVER_LIST_FILE)
+        if (!file.isFile) {
+            dataDir.listFiles { old -> old.name.startsWith("servers-") }?.forEach { it.delete() }
+            assets.open(SERVER_LIST_ASSET).use { input -> file.outputStream().use { input.copyTo(it) } }
+        }
+        file
+    }.getOrNull()
 
     fun stop() {
         val running = process ?: return
@@ -162,11 +188,11 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : Unloc
                         tunnel = nextTunnel(was, data.optInt("count"))
                         when {
                             was == Tunnel.Waiting && tunnel == Tunnel.Up ->
-                                if (ready.complete("")) log.good("[+] region unlock: psiphon tunnel is up")
+                                if (ready.complete("")) log.good("[+] $label: psiphon tunnel is up")
                             was == Tunnel.Lost && tunnel == Tunnel.Up ->
-                                log.good("[+] region unlock: psiphon found another tunnel")
+                                log.good("[+] $label: psiphon found another tunnel")
                             was == Tunnel.Up && tunnel == Tunnel.Lost ->
-                                log.warn("[-] region unlock: psiphon lost its tunnel, it is looking for another")
+                                log.warn("[-] $label: psiphon lost its tunnel, it is looking for another")
                         }
                     }
                     "ActiveTunnel" -> log.info(
@@ -180,25 +206,35 @@ class PsiphonRelay(context: Context, private val log: CoreLog = CoreLog) : Unloc
         ready.complete("psiphon exited")
     }
 
-    private fun config(upstreamPort: Int, localPort: Int, country: String) = JSONObject()
+    private fun config(upstreamPort: Int?, localPort: Int, country: String) = JSONObject()
         .put("PropagationChannelId", "FFFFFFFFFFFFFFFF")
         .put("SponsorId", "FFFFFFFFFFFFFFFF")
         .put("ClientPlatform", "Android_freeport")
         .put("ClientVersion", "1")
         .put("RemoteServerListURLs", JSONArray().put(JSONObject().put("URL", SERVER_LIST_URL_B64)))
         .put("RemoteServerListSignaturePublicKey", SERVER_LIST_KEY)
-        // Through a SOCKS proxy only TCP protocols can be dialled.
-        .put("LimitTunnelProtocols", JSONArray(TCP_PROTOCOLS))
-        .put("InproxyTunnelProtocolSelectionProbability", 0.0)
         .put("DataRootDirectory", dataDir.absolutePath)
         .put("LocalSocksProxyPort", localPort)
         .put("DisableLocalHTTPProxy", true)
-        .put("UpstreamProxyURL", "socks5://127.0.0.1:$upstreamPort")
+        .apply {
+            // Through a SOCKS proxy only TCP protocols can be dialled. Straight
+            // over the line every protocol is open, the volunteer in-proxies
+            // included, which is what kept Iran connected through shutdowns.
+            if (upstreamPort != null) {
+                put("LimitTunnelProtocols", JSONArray(TCP_PROTOCOLS))
+                put("InproxyTunnelProtocolSelectionProbability", 0.0)
+                put("UpstreamProxyURL", "socks5://127.0.0.1:$upstreamPort")
+            }
+        }
         .put("EmitBytesTransferred", false)
         .apply { if (country.isNotEmpty()) put("EgressRegion", country) }
 
     internal companion object {
         const val PID_FILE = "psiphon.pid"
+        const val SERVER_LIST_ASSET = "psiphon-servers.txt"
+
+        /** Named after the list, so a newer app build copies its newer list. */
+        val SERVER_LIST_FILE = "servers-${io.github.mhammaddawudi.freeport.BuildConfig.VERSION_CODE}.txt"
         const val SIGKILL = 9
 
         /** The tunnel state after a `Tunnels` notice with [count] tunnels. */

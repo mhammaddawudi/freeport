@@ -79,7 +79,30 @@ enum class Protocol(
         coreArguments = listOf("--wg"),
         defaultPort = 2408,
         defaultNoize = "balanced",
+    ),
+
+    /** Psiphon's own network, outside Cloudflare: free, no cap, picks its own servers. */
+    Psiphon(
+        id = "psiphon",
+        displayName = "Psiphon",
+        transport = "psiphon",
+        coreArguments = emptyList(),
+        defaultPort = 0,
+        defaultNoize = "",
+    ),
+
+    /** Tor through Snowflake: slow, but gets out when little else does. */
+    Tor(
+        id = "tor",
+        displayName = "Tor",
+        transport = "tor",
+        coreArguments = emptyList(),
+        defaultPort = 0,
+        defaultNoize = "",
     );
+
+    /** A whole tunnel of its own, outside Cloudflare, with no edge to scan or tune. */
+    val isDirect: Boolean get() = this == Psiphon || this == Tor
 
     /** True when the transport rides TCP, which is what the fragment options need. */
     val isTcp: Boolean get() = this == MasqueH2
@@ -89,6 +112,7 @@ enum class Protocol(
         get() = when (this) {
             Auto, MasqueH3, MasqueH2 -> NoizeProfile.masqueProfiles
             WireGuard, Gool -> NoizeProfile.wireguardProfiles
+            Psiphon, Tor -> emptyList()
         }
 
     companion object {

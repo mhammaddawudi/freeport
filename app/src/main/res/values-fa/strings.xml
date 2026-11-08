@@ -168,6 +168,8 @@
     <string name="protocol_trait_masque_h2">TCP · سخت‌ترین برای مسدود شدن</string>
     <string name="protocol_trait_wireguard">UDP · کمترین تأخیر</string>
     <string name="protocol_trait_gool">دو لایه · بیشترین حریم خصوصی</string>
+    <string name="protocol_trait_psiphon">بیرون از کلودفلر · بدون سقف</string>
+    <string name="protocol_trait_tor">اسنوفلیک · آخرین راه، کند</string>
     <string name="protocol_best_for">مناسب برای %1$s</string>
     <string name="protocol_live">فعال</string>
     <string name="auto_via">اتوماتیک %1$s را انتخاب کرد</string>
@@ -175,6 +177,7 @@
 
     <!-- Region unlock -->
     <string name="region_unlock">رفع محدودیت منطقه</string>
+    <string name="region_unlock_not_needed">خروجی‌اش خودش خارج از کشور است</string>
     <string name="region_any">سریع‌ترین</string>
     <string name="state_relaying">در حال انتقال خروجی به خارج</string>
 

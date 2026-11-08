@@ -170,6 +170,8 @@
     <string name="protocol_trait_masque_h2">TCP · قورسترین بۆ بلۆککردن</string>
     <string name="protocol_trait_wireguard">UDP · کەمترین دواکەوتن</string>
     <string name="protocol_trait_gool">دوو چین · زۆرترین تایبەتمەندی</string>
+    <string name="protocol_trait_psiphon">دەرەوەی کلاودفلێر · بێ سنوور</string>
+    <string name="protocol_trait_tor">سنۆفلەیک · دوایین ڕێگە، خاو</string>
     <string name="protocol_best_for">گونجاو بۆ %1$s</string>
     <string name="protocol_live">چالاک</string>
     <string name="auto_via">ئۆتۆماتیک %1$s ی هەڵبژارد</string>
@@ -177,6 +179,7 @@
 
     <!-- Region unlock -->
     <string name="region_unlock">لابردنی سنووری ناوچە</string>
+    <string name="region_unlock_not_needed">دەرچوونی خۆی لە دەرەوەی وڵاتە</string>
     <string name="region_any">خێراترین</string>
     <string name="state_relaying">گواستنەوەی دەرچوون بۆ دەرەوە</string>
 

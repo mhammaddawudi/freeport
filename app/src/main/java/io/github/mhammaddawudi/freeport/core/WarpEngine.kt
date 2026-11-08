@@ -97,6 +97,8 @@ class WarpEngine(
     private val networkOf: () -> String = { NetworkKey.UNKNOWN },
     private val scout: BackgroundScout? = null,
     private val traffic: TunnelTraffic = TunnelTraffic(null),
+    /** Psiphon and Tor: tunnels of their own, outside Cloudflare. See [DirectTunnel]. */
+    private val direct: Map<Protocol, DirectTunnel> = emptyMap(),
     private val log: CoreLog = CoreLog,
 ) {
 
@@ -284,6 +286,7 @@ class WarpEngine(
         // hand the user a tunnel with nothing behind it — this session takes
         // the next free one and tells tun2socks to use that.
         val settings = withFreePort(requested)
+        if (protocol.isDirect) return runDirect(settings, host)
 
         show(ConnectionState.Preparing(protocol))
         log.info(
@@ -338,11 +341,12 @@ class WarpEngine(
         }
         val shared = candidates.mapValues { (_, settings) -> sharedEdgesAsync(settings) }
         val now = System.currentTimeMillis()
-        val stalled = candidates.filter { (_, settings) ->
-            StallMemory.isRecent(cache.stalledAt(cacheKey(settings)), now)
-        }.keys
+        val stalledAt = candidates.mapValues { (_, settings) -> cache.stalledAt(cacheKey(settings)) }
+            .filterValues { StallMemory.isRecent(it, now) }
+        val stalled = stalledAt.keys
         if (stalled.isNotEmpty()) {
-            log.info("[*] automatic: ${stalled.joinToString { it.displayName }} stalled on this network lately, trying it last")
+            val names = stalledAt.entries.sortedBy { it.value }.joinToString { it.key.displayName }
+            log.info("[*] automatic: $names stalled on this network lately, trying ${if (stalled.size > 1) "them" else "it"} last")
         }
 
         // Identities are opened one at a time: MASQUE and WireGuard keep
@@ -360,7 +364,7 @@ class WarpEngine(
             val known = StallMemory.stalledLast(
                 fastestKnown(candidates, shared.mapValues { it.value.await() })
                     .filter { (protocol, _) -> protocol in identities },
-                stalled,
+                stalledAt,
             ) { it.first }
             if (known.isNotEmpty()) log.info("[*] automatic: ${known.size} edge(s) known to be fast here, fastest first")
             for ((protocol, edge) in known.take(MAX_KNOWN_TRIES)) {
@@ -417,11 +421,19 @@ class WarpEngine(
         }
 
         val best = (found.entries.filter { it.key !in stalled }.minByOrNull { it.value.rttMs }
-            ?: found.entries.minByOrNull { it.value.rttMs })?.let { it.key to it.value }
+            ?: found.entries.minByOrNull { stalledAt[it.key] ?: 0L })?.let { it.key to it.value }
         if (best == null) {
-            // Warp in warp is left to whoever picks it by hand; automatic
-            // stays with the protocols it can measure and retries them.
-            return Outcome("automatic: nothing answered on MASQUE or WireGuard")
+            // Cloudflare is out of reach on this network: try the tunnels
+            // that do not go through it. Warp in warp is left to whoever
+            // picks it by hand.
+            for (protocol in AUTO_FALLBACK) {
+                if (direct[protocol]?.isAvailable != true) continue
+                log.info("[*] automatic: nothing answered on MASQUE or WireGuard, trying ${protocol.displayName}")
+                val outcome = runDirect(base.copy(protocol = protocol), host, viaAuto = true)
+                if (outcome.connected) return outcome
+                log.warn("[-] ${outcome.reason}")
+            }
+            return Outcome("automatic: nothing answered on MASQUE, WireGuard, Psiphon or Tor")
         }
 
         val (protocol, endpoint) = best
@@ -570,6 +582,78 @@ class WarpEngine(
             withContext(NonCancellable) {
                 core.stopTunnel(job)
                 core.awaitProxyClosed(settings, PORT_RELEASE_MS)
+            }
+        }
+    }
+
+    /**
+     * Runs Psiphon or Tor: starts its client on the session's port, hands the
+     * device to it, and watches it. Names are resolved at the far end
+     * (neither carries UDP), and there is no edge to judge or remember.
+     */
+    private suspend fun runDirect(settings: WarpSettings, host: TunnelHost, viaAuto: Boolean = false): Outcome {
+        val protocol = settings.protocol
+        val tunnel = direct[protocol]?.takeIf { it.isAvailable }
+            ?: return Outcome("${protocol.displayName} is not in this build")
+        show(ConnectionState.Connecting(protocol, null, viaAuto))
+        val startup = if (protocol == Protocol.Tor) TOR_STARTUP_MS else PSIPHON_STARTUP_MS
+        // Closed however this ends, a disconnect while it is still starting
+        // included: a client left running would hold the port and the line.
+        return try {
+            tunnel.open(settings.socksPort, startup)?.let { reason ->
+                return Outcome("${tunnel.name}: $reason")
+            }
+            holdDirect(tunnel, settings, host, viaAuto)
+        } finally {
+            withContext(NonCancellable) { tunnel.close() }
+        }
+    }
+
+    private suspend fun holdDirect(
+        tunnel: DirectTunnel,
+        settings: WarpSettings,
+        host: TunnelHost,
+        viaAuto: Boolean,
+    ): Outcome = coroutineScope {
+        val carry = carryOver
+        carryOver = null
+        val mode = carry?.let { host.onTunnelSwapped(settings, mappedDns = true) }
+            ?: host.onTunnelUp(settings, mappedDns = true)
+        val since = carry?.sinceMillis ?: System.currentTimeMillis()
+        val connected = ConnectionState.Connected(settings.protocol, null, since, mode, viaAuto, settings.socksPort)
+        _state.value = connected
+        launch { reportExit(connected) }
+        log.good("[+] connected through ${tunnel.name}")
+        log.info("[*] SOCKS5 listening on 127.0.0.1:${settings.socksPort}")
+        watchDirect(tunnel, settings, since)
+    }
+
+    /** Watches a running Psiphon or Tor until it stops carrying traffic. */
+    private suspend fun watchDirect(tunnel: DirectTunnel, settings: WarpSettings, since: Long): Outcome {
+        var misses = 0
+        var nextProbe = SystemClock.elapsedRealtime() + DIRECT_PROBE_MS
+        while (true) {
+            delay(POLL_MS)
+            val heldMs = System.currentTimeMillis() - since
+            if (tunnel.health == PsiphonRelay.Health.Stopped) {
+                return Outcome("${tunnel.name} stopped", connectedForMs = heldMs, connected = true)
+            }
+            if (SystemClock.elapsedRealtime() < nextProbe) continue
+            nextProbe = SystemClock.elapsedRealtime() + DIRECT_PROBE_MS
+            // Traffic still arriving means it is alive; a test connection
+            // under load could only time out and blame it.
+            if (traffic.moved() || core.carries(settings.socksPort)) {
+                misses = 0
+                continue
+            }
+            misses++
+            log.warn("[-] ${tunnel.name} did not carry a test connection ($misses/$DIRECT_MISSES)")
+            if (misses >= DIRECT_MISSES) {
+                return Outcome(
+                    "${tunnel.name} stopped carrying traffic",
+                    connectedForMs = heldMs,
+                    connected = true,
+                )
             }
         }
     }
@@ -874,10 +958,13 @@ class WarpEngine(
     private fun alternatives(chosen: Protocol): List<Protocol> = when (chosen) {
         // Every automatic attempt already tries them all.
         Protocol.Auto -> emptyList()
-        Protocol.Gool -> listOf(Protocol.MasqueH3, Protocol.WireGuard, Protocol.MasqueH2)
-        Protocol.MasqueH3 -> listOf(Protocol.WireGuard, Protocol.MasqueH2, Protocol.Gool)
-        Protocol.MasqueH2 -> listOf(Protocol.MasqueH3, Protocol.WireGuard, Protocol.Gool)
-        Protocol.WireGuard -> listOf(Protocol.MasqueH3, Protocol.MasqueH2, Protocol.Gool)
+        Protocol.Gool -> listOf(Protocol.MasqueH3, Protocol.WireGuard, Protocol.MasqueH2, Protocol.Psiphon)
+        Protocol.MasqueH3 -> listOf(Protocol.WireGuard, Protocol.MasqueH2, Protocol.Gool, Protocol.Psiphon)
+        Protocol.MasqueH2 -> listOf(Protocol.MasqueH3, Protocol.WireGuard, Protocol.Gool, Protocol.Psiphon)
+        Protocol.WireGuard -> listOf(Protocol.MasqueH3, Protocol.MasqueH2, Protocol.Gool, Protocol.Psiphon)
+        // When the network outside Cloudflare will not answer, Cloudflare may.
+        Protocol.Psiphon -> listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard, Protocol.Tor)
+        Protocol.Tor -> listOf(Protocol.Psiphon, Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
     }
 
     /** Picks a local port nothing is sitting on, starting from the chosen one. */
@@ -993,6 +1080,15 @@ class WarpEngine(
 
         /** What automatic tries; none is preferred, speed decides. */
         val AUTO_CANDIDATES = listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
+
+        /** Tried in this order when no Cloudflare edge answers at all. */
+        val AUTO_FALLBACK = listOf(Protocol.Psiphon, Protocol.Tor)
+
+        /** Psiphon usually connects in 10–30 s; Tor through Snowflake can take two minutes. */
+        const val PSIPHON_STARTUP_MS = 60_000L
+        const val TOR_STARTUP_MS = 150_000L
+        const val DIRECT_PROBE_MS = 30_000L
+        const val DIRECT_MISSES = 3
 
         /** The whole automatic ping round. */
         const val AUTO_PING_MS = 20_000L

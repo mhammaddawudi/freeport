@@ -172,22 +172,8 @@ fun ConnectOrb(
                 val box = Offset(centre.x - ringRadius, centre.y - ringRadius)
                 val span = Size(ringRadius * 2, ringRadius * 2)
 
-                // Connected: a halo, and rings travelling outward from it.
+                // Connected: rings travelling outward from the button.
                 if (glow > 0.01f) {
-                    val halo = glow * (0.6f + 0.4f * pulse)
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(
-                                tone.primary.copy(alpha = 0.34f * halo),
-                                tone.primary.copy(alpha = 0.12f * halo),
-                                Color.Transparent,
-                            ),
-                            centre,
-                            radius,
-                        ),
-                        radius = radius,
-                        center = centre,
-                    )
                     for (i in 0 until 3) {
                         val t = (ripple + i / 3f) % 1f
                         drawCircle(
@@ -199,20 +185,6 @@ fun ConnectOrb(
                     }
                 }
 
-                // Connecting: a warm wash under the ring that breathes.
-                if (busyGlow > 0.01f) {
-                    val warm = busyGlow * (0.35f + 0.65f * pulse)
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(tone.secondary.copy(alpha = 0.20f * warm), Color.Transparent),
-                            centre,
-                            radius * 0.92f,
-                        ),
-                        radius = radius * 0.92f,
-                        center = centre,
-                    )
-                }
-
                 // The inside of the ring is lit while the session is coming up
                 // as well as once it is up, so the button reads as something
                 // switched on rather than an outline.
@@ -221,21 +193,6 @@ fun ConnectOrb(
                         brush = Brush.radialGradient(
                             listOf(
                                 rim.copy(alpha = 0.07f * busyGlow * (0.6f + 0.4f * pulse)),
-                                Color.Transparent,
-                            ),
-                            centre,
-                            ringRadius,
-                        ),
-                        radius = ringRadius,
-                        center = centre,
-                    )
-                }
-                if (glow > 0.01f) {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(
-                                tone.primary.copy(alpha = 0.10f * glow),
-                                tone.primary.copy(alpha = 0.03f * glow),
                                 Color.Transparent,
                             ),
                             centre,
@@ -284,15 +241,6 @@ fun ConnectOrb(
                         listOf(discTop, discBottom),
                         Offset(centre.x - discRadius * 0.35f, centre.y - discRadius * 0.45f),
                         discRadius * 1.5f,
-                    ),
-                    radius = discRadius,
-                    center = centre,
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(tone.primary.copy(alpha = 0.16f * glow + 0.06f * busyGlow), Color.Transparent),
-                        centre,
-                        discRadius,
                     ),
                     radius = discRadius,
                     center = centre,

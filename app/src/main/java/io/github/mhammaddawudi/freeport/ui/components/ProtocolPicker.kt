@@ -72,23 +72,30 @@ private val Protocol.traitRes: Int?
         Protocol.MasqueH2 -> R.string.protocol_trait_masque_h2
         Protocol.WireGuard -> R.string.protocol_trait_wireguard
         Protocol.Gool -> R.string.protocol_trait_gool
+        Protocol.Psiphon -> R.string.protocol_trait_psiphon
+        Protocol.Tor -> R.string.protocol_trait_tor
     }
 
 private val Protocol.glyph: GlyphKind
     get() = when (this) {
-        Protocol.Auto -> GlyphKind.Radar
-        Protocol.MasqueH3 -> GlyphKind.Bolt
-        Protocol.MasqueH2 -> GlyphKind.Stack
-        Protocol.WireGuard -> GlyphKind.Wave
-        Protocol.Gool -> GlyphKind.Nested
+        Protocol.Auto -> GlyphKind.Sparkle
+        Protocol.MasqueH3 -> GlyphKind.H3
+        Protocol.MasqueH2 -> GlyphKind.H2
+        Protocol.WireGuard -> GlyphKind.Serpent
+        Protocol.Gool -> GlyphKind.CloudNested
+        Protocol.Psiphon -> GlyphKind.LetterP
+        Protocol.Tor -> GlyphKind.Onion
     }
 
 @Composable
 private fun Protocol.label(): String =
     if (this == Protocol.Auto) stringResource(R.string.protocol_auto) else displayName
 
-/** Automatic first, then the two MASQUE carriers, warp in warp last. */
-private val ORDER = listOf(Protocol.Auto, Protocol.MasqueH3, Protocol.MasqueH2, Protocol.WireGuard, Protocol.Gool)
+/** Automatic first, then Cloudflare's carriers, then the two networks outside it, Tor last. */
+private val ORDER = listOf(
+    Protocol.Auto, Protocol.MasqueH3, Protocol.MasqueH2, Protocol.WireGuard, Protocol.Gool,
+    Protocol.Psiphon, Protocol.Tor,
+)
 
 /**
  * The protocol choice as one folding row.
@@ -235,7 +242,7 @@ private fun GlyphTile(glyph: GlyphKind, accent: Color, lit: Float) {
             .background(lerp(WarpColors.Ink.copy(alpha = 0.06f), accent.copy(alpha = 0.16f), lit)),
         contentAlignment = Alignment.Center,
     ) {
-        Glyph(glyph, lerp(WarpColors.InkMuted, accent, lit), Modifier.size(17.dp), strokeWidth = 2.dp)
+        Glyph(glyph, lerp(WarpColors.InkMuted, accent, lit), Modifier.size(18.dp), strokeWidth = 1.6.dp)
     }
 }
 

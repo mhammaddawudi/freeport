@@ -24,13 +24,23 @@ class StallMemoryTest {
             Protocol.WireGuard to "wg-slow",
             Protocol.MasqueH3 to "h3",
         )
-        val ordered = StallMemory.stalledLast(known, setOf(Protocol.WireGuard)) { it.first }
+        val ordered = StallMemory.stalledLast(known, mapOf(Protocol.WireGuard to 5L)) { it.first }
         assertEquals(listOf("h2", "h3", "wg-fast", "wg-slow"), ordered.map { it.second })
+    }
+
+    @Test
+    fun `of two stalled protocols the one that stalled longest ago goes first`() {
+        val known = listOf(Protocol.WireGuard to "wg", Protocol.MasqueH2 to "h2")
+        val ordered = StallMemory.stalledLast(
+            known,
+            mapOf(Protocol.WireGuard to 9_000L, Protocol.MasqueH2 to 1_000L),
+        ) { it.first }
+        assertEquals(listOf("h2", "wg"), ordered.map { it.second })
     }
 
     @Test
     fun `with nothing stalled the order is untouched`() {
         val known = listOf(Protocol.WireGuard, Protocol.MasqueH2)
-        assertEquals(known, StallMemory.stalledLast(known, emptySet()) { it })
+        assertEquals(known, StallMemory.stalledLast(known, emptyMap()) { it })
     }
 }

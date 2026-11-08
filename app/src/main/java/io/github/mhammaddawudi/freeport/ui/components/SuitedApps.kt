@@ -89,6 +89,8 @@ val Protocol.suitedApps: List<SuitedApp>
         Protocol.MasqueH2 -> listOf(Instagram, TikTok)
         Protocol.MasqueH3 -> listOf(WhatsApp, Chrome)
         Protocol.WireGuard -> listOf(Games, X)
+        Protocol.Psiphon -> listOf(Telegram, Chrome)
+        Protocol.Tor -> listOf(Chrome, X)
     }
 
 @Composable

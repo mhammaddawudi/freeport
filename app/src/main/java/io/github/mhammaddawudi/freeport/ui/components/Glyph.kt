@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -22,6 +23,7 @@ enum class GlyphKind {
     Signal, Stack, Wave, Nested,
     Check, Chevron, Down, Up, Pulse, Radar, Mask, Globe,
     Copy, Trash, Clock, Key, Close, Bolt, Plug, Code,
+    Sparkle, H3, H2, Serpent, CloudNested, LetterP, Onion,
 }
 
 /**
@@ -68,6 +70,23 @@ fun Glyph(
             tint, start, sweep, useCenter = false,
             topLeft = pt(cx - r, cy - r), size = Size(2 * r * u, 2 * r * u), style = stroke,
         )
+        fun circle(cx: Float, cy: Float, r: Float) = Rect(pt(cx - r, cy - r), Size(2 * r * u, 2 * r * u))
+        /** A four-pointed star with concave sides. */
+        fun star(cx: Float, cy: Float, r: Float) {
+            val p = Path().apply {
+                moveTo(ox + cx * u, oy + (cy - r) * u)
+                quadraticTo(ox + cx * u, oy + cy * u, ox + (cx + r) * u, oy + cy * u)
+                quadraticTo(ox + cx * u, oy + cy * u, ox + cx * u, oy + (cy + r) * u)
+                quadraticTo(ox + cx * u, oy + cy * u, ox + (cx - r) * u, oy + cy * u)
+                quadraticTo(ox + cx * u, oy + cy * u, ox + cx * u, oy + (cy - r) * u)
+                close()
+            }
+            drawPath(p, tint, style = stroke)
+        }
+        /** The H of an HTTP version monogram. */
+        fun letterH() {
+            line(3f, 6f, 3f, 18f); line(10f, 6f, 10f, 18f); line(3f, 12f, 10f, 12f)
+        }
 
         when (kind) {
             GlyphKind.Power -> {
@@ -192,6 +211,61 @@ fun Glyph(
                 poly(9.5f, 7.5f, 5f, 12f, 9.5f, 16.5f)
                 poly(14.5f, 7.5f, 19f, 12f, 14.5f, 16.5f)
                 line(13.2f, 6f, 10.8f, 18f)
+            }
+            GlyphKind.Sparkle -> {
+                star(10.5f, 13.5f, 7.5f)
+                star(18.5f, 5.5f, 3f)
+            }
+            GlyphKind.H3 -> {
+                letterH()
+                arc(17f, 9f, 3f, 200f, 250f)
+                arc(17f, 15f, 3f, 270f, 250f)
+            }
+            GlyphKind.H2 -> {
+                letterH()
+                arc(17f, 9f, 3f, 200f, 205f)
+                poly(19.12f, 11.12f, 14f, 18f, 20f, 18f)
+            }
+            GlyphKind.Serpent -> {
+                ring(12f, 12f, 9f)
+                val p = Path().apply {
+                    moveTo(ox + 8f * u, oy + 17f * u)
+                    cubicTo(ox + 13f * u, oy + 17.5f * u, ox + 15.5f * u, oy + 13f * u, ox + 12f * u, oy + 11.5f * u)
+                    cubicTo(ox + 8.5f * u, oy + 10f * u, ox + 10f * u, oy + 6f * u, ox + 15.5f * u, oy + 7f * u)
+                }
+                drawPath(p, tint, style = stroke)
+                dot(15.5f, 9.6f, 1.1f)
+            }
+            GlyphKind.CloudNested -> {
+                val p = Path().apply {
+                    moveTo(ox + 7f * u, oy + 18f * u)
+                    arcTo(circle(7f, 14.5f, 3.5f), 90f, 180f, false)
+                    arcTo(circle(12f, 11f, 5f), 180f, 180f, false)
+                    arcTo(circle(17f, 14.5f, 3.5f), 270f, 180f, false)
+                    close()
+                }
+                drawPath(p, tint, style = stroke)
+                ring(12f, 13.5f, 2.2f)
+            }
+            GlyphKind.LetterP -> {
+                line(7.5f, 4f, 7.5f, 20f)
+                val p = Path().apply {
+                    moveTo(ox + 7.5f * u, oy + 4f * u)
+                    lineTo(ox + 12.5f * u, oy + 4f * u)
+                    arcTo(circle(12.5f, 8.75f, 4.75f), 270f, 180f, false)
+                    lineTo(ox + 7.5f * u, oy + 13.5f * u)
+                }
+                drawPath(p, tint, style = stroke)
+            }
+            GlyphKind.Onion -> {
+                ring(12f, 14f, 7.5f)
+                ring(12f, 14f, 4.2f)
+                dot(12f, 14f, 1.4f)
+                val p = Path().apply {
+                    moveTo(ox + 12f * u, oy + 6.5f * u)
+                    cubicTo(ox + 12f * u, oy + 4.5f * u, ox + 13f * u, oy + 3f * u, ox + 15f * u, oy + 2.5f * u)
+                }
+                drawPath(p, tint, style = stroke)
             }
             GlyphKind.Close -> {
                 line(6f, 6f, 18f, 18f)
