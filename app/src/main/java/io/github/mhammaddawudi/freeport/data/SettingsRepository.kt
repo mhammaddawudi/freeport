@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 data class WarpSettings(
     val protocol: Protocol = Protocol.Auto,
     val language: AppLanguage = AppLanguage.English,
+    val theme: ThemeMode = ThemeMode.Dark,
     /** Whole device, or only the apps in [tunneledApps]. */
     val tunnelMode: TunnelMode = TunnelMode.WholeDevice,
     /** Package names to route, used only in [TunnelMode.SelectedApps]. */
@@ -78,6 +79,7 @@ class SettingsRepository(context: Context) {
         return WarpSettings(
             protocol = protocol,
             language = AppLanguage.fromTag(prefs.getString(KEY_LANGUAGE, null)),
+            theme = ThemeMode.fromWire(prefs.getString(KEY_THEME, null)),
             tunnelMode = TunnelMode.fromWire(prefs.getString(KEY_TUNNEL_MODE, null)),
             // getStringSet hands back a live instance the docs forbid mutating.
             tunneledApps = prefs.getStringSet(KEY_TUNNELED_APPS, null)?.toSet() ?: emptySet(),
@@ -122,6 +124,7 @@ class SettingsRepository(context: Context) {
         prefs.edit()
             .putString(KEY_PROTOCOL, value.protocol.id)
             .putString(KEY_LANGUAGE, value.language.tag)
+            .putString(KEY_THEME, value.theme.wire)
             .putString(KEY_TUNNEL_MODE, value.tunnelMode.wire)
             .putStringSet(KEY_TUNNELED_APPS, value.tunneledApps)
             .putString(KEY_SCAN, value.scanMode.wire)
@@ -155,6 +158,7 @@ class SettingsRepository(context: Context) {
         const val KEY_VERSION = "schema_version"
         const val SCHEMA_VERSION = 3
         const val KEY_LANGUAGE = "language"
+        const val KEY_THEME = "theme"
         const val KEY_PROTOCOL = "protocol"
         const val KEY_TUNNEL_MODE = "tunnel_mode"
         const val KEY_TUNNELED_APPS = "tunneled_apps"

@@ -48,6 +48,7 @@ class MockWarpCore(
         identity: Identity,
         settings: WarpSettings,
         excluded: Set<String>,
+        onRunnersUp: (List<Endpoint>) -> Unit,
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint> {
         CorePayloads.parsePeer(settings.pinnedPeer)?.let { (host, port) ->

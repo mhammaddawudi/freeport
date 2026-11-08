@@ -9,7 +9,8 @@ const PROTOCOLS = new Set(["masque-h2", "masque-h3", "wireguard"]);
 const FAMILIES = new Set(["4", "6", "dual"]);
 const CLOUDFLARE_ASNS = new Set([13335, 209242]);
 const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
-const MAX_EDGES = 6;
+// Enough for a big pool: the app tries the best few and its scout measures the rest.
+const MAX_EDGES = 40;
 // Ranked by roughly how long a reel takes to start: the time a new connection
 // took to its first byte (rtt), one megabyte down and a quarter megabyte up at
 // the measured rates (an unmeasured upload counts as half a second).

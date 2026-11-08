@@ -45,6 +45,7 @@ import io.github.mhammaddawudi.freeport.core.Identity
 import io.github.mhammaddawudi.freeport.core.isEngaged
 import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.AppLanguage
+import io.github.mhammaddawudi.freeport.data.ThemeMode
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.data.TunnelMode
 import io.github.mhammaddawudi.freeport.ui.components.FieldRow
@@ -201,10 +202,19 @@ fun SettingsScreen(
             )
         }
 
-        // ---- language --------------------------------------------------------
+        // ---- language and theme ----------------------------------------------
         SectionLabel(stringResource(R.string.section_appearance))
         GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
-            Spacer(Modifier.height(6.dp))
+            PickerCaption(stringResource(R.string.label_theme))
+            SegmentedPicker(
+                options = ThemeMode.entries,
+                selected = settings.theme,
+                label = { stringResource(it.labelRes) },
+                onSelect = { theme -> onUpdateSettings { it.copy(theme = theme) } },
+                accent = WarpColors.Control,
+            )
+            Spacer(Modifier.height(14.dp))
+            PickerCaption(stringResource(R.string.label_language))
             SegmentedPicker(
                 options = AppLanguage.entries,
                 selected = settings.language,
@@ -462,4 +472,15 @@ internal fun ScreenHeader(
         }
         trailing?.invoke(this)
     }
+}
+
+/** A small caption over a picker, for cards that hold more than one. */
+@Composable
+private fun PickerCaption(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = WarpColors.InkMuted,
+        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
+    )
 }

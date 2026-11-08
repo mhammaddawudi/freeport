@@ -111,6 +111,14 @@ class WarpEngine(
 
         /** The tunnel is gone. Must be safe to call when nothing is up. */
         fun onTunnelDown()
+
+        /**
+         * A fresh tunnel replaced the old one under a capture that is still
+         * up: point the bridge at its proxy without rebuilding the interface,
+         * so the phone never sees the VPN go down. Null when there is no
+         * capture to keep, and the caller sets one up from scratch.
+         */
+        fun onTunnelSwapped(settings: WarpSettings, mappedDns: Boolean = false): TunMode? = null
     }
 
     private val identityDir = File(context.filesDir, "identity").apply { mkdirs() }
@@ -136,6 +144,26 @@ class WarpEngine(
 
     /** How many times this session has dropped a slow edge for another. */
     @Volatile private var rotations = 0
+
+    /** What the current edge delivered when it was chosen, in KB/s; 0 when unmeasured. */
+    @Volatile private var baseline = 0L
+
+    /**
+     * Set while a slowed-down session is being replaced under a capture that
+     * stays up: the person keeps seeing the session they had, timer and all.
+     */
+    @Volatile private var carryOver: CarryOver? = null
+
+    /** When this session refreshed its tunnel, to keep that to a few times an hour. */
+    private val refreshes = ArrayDeque<Long>()
+
+    private data class CarryOver(val sinceMillis: Long)
+
+    /** Publishes [next], unless it is a step of a refresh the person should not see. */
+    private fun show(next: ConnectionState) {
+        if (carryOver != null && next.isTransitioning) return
+        _state.value = next
+    }
 
 
     fun connect(host: TunnelHost) {
@@ -185,6 +213,8 @@ class WarpEngine(
         var fallback = 0
         slowEdges.clear()
         rotations = 0
+        carryOver = null
+        refreshes.clear()
         try {
             while (true) {
                 network = networkOf()
@@ -197,6 +227,12 @@ class WarpEngine(
                     log.info("[*] ${chosen.protocol.displayName} is not getting through, trying ${current.protocol.displayName}")
                 }
                 val outcome = attemptOnce(current, host)
+                if (outcome.refresh) {
+                    log.info("[*] ${outcome.reason}")
+                    rotations = 0
+                    continue
+                }
+                carryOver = null
                 host.onTunnelDown()
                 if (outcome.rotate) {
                     log.warn("[-] ${outcome.reason}")
@@ -233,6 +269,8 @@ class WarpEngine(
         val connected: Boolean = false,
         /** The edge worked but was too slow; move to another at once, no backoff. */
         val rotate: Boolean = false,
+        /** The session slowed down; a fresh tunnel replaces it under the same capture. */
+        val refresh: Boolean = false,
     )
 
     private suspend fun attemptOnce(requested: WarpSettings, host: TunnelHost): Outcome {
@@ -247,7 +285,7 @@ class WarpEngine(
         // the next free one and tells tun2socks to use that.
         val settings = withFreePort(requested)
 
-        _state.value = ConnectionState.Preparing(protocol)
+        show(ConnectionState.Preparing(protocol))
         log.info(
             "[*] ${protocol.displayName} · scan ${settings.scanMode.wire} · " +
                 "noize ${settings.effectiveNoize.wire} · ipv${settings.ipVersion.wire}",
@@ -265,11 +303,13 @@ class WarpEngine(
             tryKnown(identity, settings, shared.await(), host, viaAuto = false)?.let { return it }
         }
 
-        _state.value = ConnectionState.Scanning(protocol, ScanProgress(ScanProgress.Phase.Provisioning))
+        // A refresh that has to scan takes long enough for the person to notice; say so.
+        carryOver = null
+        show(ConnectionState.Scanning(protocol, ScanProgress(ScanProgress.Phase.Provisioning)))
         log.info("[*] scanning for a reachable edge")
         val endpoint = when (
-            val scanned = core.scan(identity, settings, slowEdges.toSet()) { progress ->
-                _state.value = ConnectionState.Scanning(protocol, progress)
+            val scanned = core.scan(identity, settings, slowEdges.toSet(), onRunnersUp = { pool(settings, it) }) { progress ->
+                show(ConnectionState.Scanning(protocol, progress))
             }
         ) {
             is CoreResult.Ok -> scanned.value
@@ -292,11 +332,18 @@ class WarpEngine(
     private suspend fun attemptAuto(requested: WarpSettings, host: TunnelHost): Outcome {
         clearGatewayCache()
         val base = withFreePort(requested)
-        _state.value = ConnectionState.Preparing(Protocol.Auto)
+        show(ConnectionState.Preparing(Protocol.Auto))
         val candidates = AUTO_CANDIDATES.associateWith { protocol ->
             base.copy(protocol = protocol)
         }
         val shared = candidates.mapValues { (_, settings) -> sharedEdgesAsync(settings) }
+        val now = System.currentTimeMillis()
+        val stalled = candidates.filter { (_, settings) ->
+            StallMemory.isRecent(cache.stalledAt(cacheKey(settings)), now)
+        }.keys
+        if (stalled.isNotEmpty()) {
+            log.info("[*] automatic: ${stalled.joinToString { it.displayName }} stalled on this network lately, trying it last")
+        }
 
         // Identities are opened one at a time: MASQUE and WireGuard keep
         // theirs in sibling files the core writes on first use.
@@ -310,8 +357,11 @@ class WarpEngine(
         }
 
         if (base.pinnedPeer.isBlank()) {
-            val known = fastestKnown(candidates, shared.mapValues { it.value.await() })
-                .filter { (protocol, _) -> protocol in identities }
+            val known = StallMemory.stalledLast(
+                fastestKnown(candidates, shared.mapValues { it.value.await() })
+                    .filter { (protocol, _) -> protocol in identities },
+                stalled,
+            ) { it.first }
             if (known.isNotEmpty()) log.info("[*] automatic: ${known.size} edge(s) known to be fast here, fastest first")
             for ((protocol, edge) in known.take(MAX_KNOWN_TRIES)) {
                 val settings = candidates.getValue(protocol)
@@ -323,14 +373,15 @@ class WarpEngine(
         }
 
         log.info("[*] automatic: scanning every protocol")
+        carryOver = null
         val found = ConcurrentHashMap<Protocol, Endpoint>()
-        _state.value = ConnectionState.Scanning(Protocol.Auto, ScanProgress(ScanProgress.Phase.Probing))
+        show(ConnectionState.Scanning(Protocol.Auto, ScanProgress(ScanProgress.Phase.Probing)))
 
         suspend fun ping(protocol: Protocol) {
             val identity = identities[protocol] ?: return
             val settings = candidates.getValue(protocol)
             if (protocol.transport == "masque") core.applyEnvironment(settings)
-            when (val scanned = core.scan(identity, settings, slowEdges.toSet()) {}) {
+            when (val scanned = core.scan(identity, settings, slowEdges.toSet(), onRunnersUp = { pool(settings, it) }) {}) {
                 is CoreResult.Ok -> {
                     found[protocol] = scanned.value
                     log.info("[+] ${protocol.displayName} answered in ${scanned.value.rttMs}ms")
@@ -365,7 +416,8 @@ class WarpEngine(
             lanes.forEach { it.cancel() }
         }
 
-        val best = found.entries.minByOrNull { it.value.rttMs }?.let { it.key to it.value }
+        val best = (found.entries.filter { it.key !in stalled }.minByOrNull { it.value.rttMs }
+            ?: found.entries.minByOrNull { it.value.rttMs })?.let { it.key to it.value }
         if (best == null) {
             // Warp in warp is left to whoever picks it by hand; automatic
             // stays with the protocols it can measure and retries them.
@@ -388,9 +440,9 @@ class WarpEngine(
         candidates: Map<Protocol, WarpSettings>,
         shared: Map<Protocol, List<SharedEdge>>,
     ): List<Pair<Protocol, SharedEdge>> {
-        val measured = shared.flatMap { (protocol, edges) -> edges.map { protocol to it } }
-            .filter { (_, edge) -> edge.kbps >= SLOW_KBPS }
-            .sortedBy { (_, edge) -> edge.reelMs }
+        val measured = candidates.flatMap { (protocol, settings) ->
+            ranked(settings, shared[protocol].orEmpty()).map { protocol to it }
+        }.sortedByDescending { (_, edge) -> edge.kbps }
         val remembered = candidates.mapNotNull { (protocol, settings) ->
             cache.recall(cacheKey(settings))?.let { protocol to SharedEdge(it, 0) }
         }
@@ -424,12 +476,12 @@ class WarpEngine(
         viaAuto: Boolean,
     ): Outcome? {
         val key = cacheKey(settings)
-        val known = (shared.filter { it.kbps >= SLOW_KBPS }.sortedBy { it.reelMs }.map { it.endpoint } +
-            listOfNotNull(cache.recall(key)))
+        val pooled = cache.pool(key).count { it.measured }
+        val known = (ranked(settings, shared).map { it.endpoint } + listOfNotNull(cache.recall(key)))
             .distinctBy { it.socket }
             .filter { it.socket !in slowEdges }
         if (known.isEmpty()) return null
-        if (shared.isNotEmpty()) log.info("[*] ${shared.size} edge(s) shared by others on this network")
+        log.info("[*] ${known.size} known edge(s): $pooled measured on this phone, ${shared.size} shared by others")
         val reachable = if (settings.protocol.isTcp) EdgeReach.reachable(known) else known
         for (edge in reachable.take(MAX_KNOWN_TRIES)) {
             val outcome = tryRemembered(identity, edge, settings, host, viaAuto)
@@ -454,7 +506,8 @@ class WarpEngine(
         log.info("[*] trying the last good ${settings.protocol.displayName} edge ${endpoint.socket} first")
         val outcome = runTunnel(identity, endpoint, settings, host, REMEMBERED_STARTUP_MS, viaAuto)
         if (!outcome.connected && !outcome.rotate) {
-            log.warn("[-] ${endpoint.socket} did not come back (${outcome.reason}), scanning instead")
+            log.warn("[-] ${endpoint.socket} did not come back (${outcome.reason}), trying the next")
+            cache.dropFromPool(cacheKey(settings), endpoint.socket)
         }
         return outcome
     }
@@ -467,7 +520,7 @@ class WarpEngine(
         startupMs: Long = TUNNEL_STARTUP_MS,
         viaAuto: Boolean = false,
     ): Outcome {
-        _state.value = ConnectionState.Connecting(settings.protocol, endpoint, viaAuto)
+        show(ConnectionState.Connecting(settings.protocol, endpoint, viaAuto))
         log.info("[*] opening ${settings.protocol.displayName} tunnel to ${endpoint.socket}")
 
         val job = when (val started = core.startTunnel(identity, endpoint, settings)) {
@@ -493,7 +546,7 @@ class WarpEngine(
     }
 
     private suspend fun runManaged(settings: WarpSettings, host: TunnelHost): Outcome {
-        _state.value = ConnectionState.Connecting(settings.protocol, null)
+        show(ConnectionState.Connecting(settings.protocol, null))
         log.info("[*] handing the double hop to the core")
 
         if (!core.awaitProxyClosed(settings, PORT_RELEASE_MS)) {
@@ -547,8 +600,11 @@ class WarpEngine(
         }
         try {
             val carried = if (relayPort != null) settings.copy(socksPort = relayPort) else settings
-            val mode = host.onTunnelUp(carried, mappedDns = relayPort != null)
-            val since = System.currentTimeMillis()
+            val carry = carryOver
+            carryOver = null
+            val mode = carry?.let { host.onTunnelSwapped(carried, mappedDns = relayPort != null) }
+                ?: host.onTunnelUp(carried, mappedDns = relayPort != null)
+            val since = carry?.sinceMillis ?: System.currentTimeMillis()
             val connected = ConnectionState.Connected(
                 settings.protocol, endpoint, since, mode, viaAuto, carried.socksPort, relayed = relayPort != null,
             )
@@ -559,10 +615,20 @@ class WarpEngine(
                     scout.watch(
                         settings, endpoint, network,
                         avoid = { slowEdges.toSet() },
-                        onGood = { tested, good, kbps ->
-                            log.good("[+] scout: ${tested.protocol.displayName} ${good.socket} added to the pool ($kbps KB/s)")
-                            cache.remember(cacheKey(tested), good)
+                        pool = { tested -> cache.pool(cacheKey(tested)) },
+                        onMeasured = { tested, edge ->
+                            val key = cacheKey(tested)
+                            if (edge.kbps >= SLOW_KBPS) {
+                                cache.addToPool(key, listOf(edge))
+                                log.good(
+                                    "[+] scout: ${tested.protocol.displayName} ${edge.endpoint.socket} joins the pool " +
+                                        "(${edge.kbps} KB/s, ${cache.pool(key).count { it.measured }} measured)",
+                                )
+                            } else {
+                                cache.dropFromPool(key, edge.endpoint.socket)
+                            }
                         },
+                        onFound = { tested, found -> pool(tested, found) },
                     )
                 }
             }
@@ -594,9 +660,37 @@ class WarpEngine(
                 },
                 log = log,
             )
+            // Only a measured edge on the tunnel's own exit can be judged; an
+            // unlocked session would have to bring Psiphon up again as well.
+            val guard = if (endpoint != null && relayPort == null && baseline > 0 && settings.pinnedPeer.isBlank()) {
+                SpeedGuard(baseline, now = SystemClock::elapsedRealtime)
+            } else {
+                null
+            }
+            var polls = 0L
             while (true) {
                 delay(POLL_MS)
                 val polled = core.pollJob(job)
+                if (guard != null && polled !is JobState.Done) {
+                    traffic.rxBytes()?.let(guard::feed)
+                    // A line a minute while in use, so a copied log shows how
+                    // the session ran when someone says it stalled.
+                    if (++polls % SPEED_LOG_POLLS == 0L) {
+                        guard.averageKbps()?.takeIf { it >= SpeedGuard.IN_USE_KBPS }?.let { average ->
+                            log.info("[*] session: $average KB/s on average, bursts up to ${guard.bestBurstKbps()} KB/s")
+                        }
+                    }
+                    slowedDown(guard, settings, endpoint)?.let { reason ->
+                        carryOver = CarryOver(since)
+                        coroutineContext.cancelChildren()
+                        return@coroutineScope Outcome(
+                            reason,
+                            connectedForMs = System.currentTimeMillis() - since,
+                            connected = true,
+                            refresh = true,
+                        )
+                    }
+                }
                 val unhealthy = if (polled is JobState.Done) null else health.check()
                 if (polled is JobState.Done || unhealthy != null) {
                     val reason = when {
@@ -607,7 +701,10 @@ class WarpEngine(
                     val heldMs = System.currentTimeMillis() - since
                     // An edge that drops a session within seconds is not one to
                     // hurry back to.
-                    if (endpoint != null && heldMs < STABLE_MS && polled is JobState.Done) forget(settings, viaAuto)
+                    if (endpoint != null && heldMs < STABLE_MS && polled is JobState.Done) {
+                        forget(settings, viaAuto)
+                        cache.dropFromPool(cacheKey(settings), endpoint.socket)
+                    }
                     coroutineContext.cancelChildren()
                     return@coroutineScope Outcome(reason, connectedForMs = heldMs, connected = true)
                 }
@@ -626,6 +723,7 @@ class WarpEngine(
      * is slow everywhere still ends up connected.
      */
     private suspend fun judge(settings: WarpSettings, endpoint: Endpoint, viaAuto: Boolean): String? {
+        baseline = 0
         val measured = ThroughputProbe.measure(settings.socksPort, JUDGE_BYTES, JUDGE_WINDOW_MS) ?: return null
         val kbps = measured.kbps
         log.info("[*] ${endpoint.socket} delivers $kbps KB/s, first byte in ${measured.firstByteMs}ms")
@@ -634,21 +732,85 @@ class WarpEngine(
         // Fetching here also keeps this operator's list on the phone for next time.
         // In the background, so the connection does not wait for it.
         val shared = network
+        val key = cacheKey(settings)
+        if (kbps >= SLOW_KBPS) cache.addToPool(key, listOf(SharedEdge(tested, kbps)))
         scope.launch {
             val up = ThroughputProbe.upload(settings.socksPort, UPLOAD_BYTES) ?: 0
             if (up > 0) log.info("[*] ${endpoint.socket} uploads $up KB/s")
-            board.report(settings.protocol, settings.ipVersion.wire, shared, SharedEdge(tested, kbps, up), settings.socksPort)
+            val edge = SharedEdge(tested, kbps, up)
+            if (kbps >= SLOW_KBPS) cache.addToPool(key, listOf(edge))
+            board.report(settings.protocol, settings.ipVersion.wire, shared, edge, settings.socksPort)
             board.fetch(settings.protocol, settings.ipVersion.wire, shared, settings.socksPort)
         }
+        baseline = kbps
         if (kbps >= SLOW_KBPS || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
         rotations++
         slowEdges += endpoint.socket
         forget(settings, viaAuto)
+        cache.dropFromPool(key, endpoint.socket)
         return "${endpoint.socket} carries only $kbps KB/s, moving to a faster edge"
+    }
+
+    /**
+     * Asks the guard whether the session looks slow and, if so, confirms it
+     * with a short download. The tunnel's own receive counter is read across
+     * the download, so the person's traffic running beside it counts towards
+     * the speed rather than against it. Returns why to refresh, or null.
+     */
+    private suspend fun slowedDown(guard: SpeedGuard, settings: WarpSettings, endpoint: Endpoint?): String? {
+        if (!guard.suspicious()) return null
+        val now = SystemClock.elapsedRealtime()
+        while (refreshes.isNotEmpty() && now - refreshes.first() > REFRESH_WINDOW_MS) refreshes.removeFirst()
+        if (refreshes.size >= MAX_REFRESHES) return null
+        val before = traffic.rxBytes() ?: return null
+        val started = SystemClock.elapsedRealtime()
+        ThroughputProbe.measure(settings.socksPort, GUARD_BYTES, GUARD_WINDOW_MS)
+        val elapsed = (SystemClock.elapsedRealtime() - started).coerceAtLeast(1)
+        val after = traffic.rxBytes() ?: return null
+        val kbps = (after - before) * 1000 / elapsed / 1024
+        if (!guard.confirms(kbps)) {
+            log.info("[*] speed check: $kbps KB/s, still fine")
+            return null
+        }
+        refreshes.addLast(SystemClock.elapsedRealtime())
+        if (kbps < StallMemory.STALL_KBPS) {
+            cache.markStalled(cacheKey(settings), System.currentTimeMillis())
+            // Its connect-time speed was not what it delivers under video;
+            // left in the pool, that figure would put it back on top.
+            endpoint?.let {
+                cache.dropFromPool(cacheKey(settings), it.socket)
+                slowEdges += it.socket
+            }
+            log.warn("[-] ${settings.protocol.displayName} stalled on this network; automatic prefers another protocol here for a while")
+        }
+        return "the session slowed to $kbps KB/s (it started at $baseline KB/s); refreshing the tunnel"
     }
 
     private fun cacheKey(settings: WarpSettings): String =
         "$network.${PrefsEndpointCache.keyOf(settings.protocol, settings.ipVersion.wire)}"
+
+    /** Keeps a scan's runners-up as candidates for the scout to measure. */
+    private fun pool(settings: WarpSettings, found: List<Endpoint>) {
+        if (settings.pinnedPeer.isNotBlank() || found.isEmpty()) return
+        val key = cacheKey(settings)
+        cache.addToPool(key, found.map { SharedEdge(it, 0) })
+        log.info("[*] ${found.size} more ${settings.protocol.displayName} edge(s) kept for later (${cache.pool(key).size} in the pool)")
+    }
+
+    /**
+     * Every edge known to carry video for [settings]: this phone's own
+     * measurements and the shared board, fastest download first. An edge
+     * measured here, on this operator, is worth more than one measured
+     * anywhere, so the board's figures are discounted by [BOARD_HANDICAP].
+     */
+    private fun ranked(settings: WarpSettings, shared: List<SharedEdge>): List<SharedEdge> {
+        val own = cache.pool(cacheKey(settings)).filter { it.measured && it.edge.kbps >= SLOW_KBPS }.map { it.edge }
+        val ownSockets = own.map { it.endpoint.socket }.toSet()
+        val board = shared.filter { it.kbps >= SLOW_KBPS && it.endpoint.socket !in ownSockets }
+        return (own.map { it to it.kbps } + board.map { it to it.kbps * 100 / BOARD_HANDICAP })
+            .sortedByDescending { it.second }
+            .map { it.first }
+    }
 
     private sealed interface RelayStart {
         data object Off : RelayStart
@@ -666,7 +828,7 @@ class WarpEngine(
         if (!settings.regionUnlock) return RelayStart.Off
         val relay = relay ?: return RelayStart.Failed("region unlock is on, but this build has no psiphon client")
         if (!relay.isAvailable) return RelayStart.Failed("region unlock is on, but this build has no psiphon client")
-        _state.value = ConnectionState.Connecting(settings.protocol, endpoint, viaAuto, relaying = true)
+        show(ConnectionState.Connecting(settings.protocol, endpoint, viaAuto, relaying = true))
         val port = freePortFrom(settings.socksPort + RELAY_PORT_OFFSET)
         val failure = relay.start(settings.socksPort, port, settings.exitCountry, RELAY_STARTUP_MS)
             ?: return RelayStart.Up(port)
@@ -805,9 +967,21 @@ class WarpEngine(
         /** Below this (about 2.4 Mbit/s) Instagram video stalls; such an edge is swapped. */
         const val SLOW_KBPS = 300L
 
+        /** A shared edge's score is worth this much (percent) of one measured on this phone. */
+        const val BOARD_HANDICAP = 130L
+
+        /** The confirming download: small, and short even on a crawling line. */
+        const val GUARD_BYTES = 1_000_000
+        const val GUARD_WINDOW_MS = 2_000L
+
+        /** Refreshes allowed per [REFRESH_WINDOW_MS]; past that the line is just slow today. */
+        const val MAX_REFRESHES = 4
+        const val REFRESH_WINDOW_MS = 60 * 60_000L
+
         /** Slow edges dropped per session before the engine settles for what it has. */
         const val MAX_ROTATIONS = 2
         const val POLL_MS = 1_000L
+        const val SPEED_LOG_POLLS = 60L
         const val STABLE_MS = 30_000L
         const val MANAGED_STARTUP_MS = 90_000L
 

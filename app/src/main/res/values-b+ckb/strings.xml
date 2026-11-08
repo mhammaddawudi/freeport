@@ -43,7 +43,13 @@
     <string name="routing_selected">ئەپی هەڵبژێردراو</string>
     <string name="routing_selected_desc">تەنها ئەو ئەپانەی هەڵدەبژێریت بە تونێلدا دەڕۆن.</string>
 
-    <string name="section_appearance">زمان</string>
+    <string name="section_appearance">ڕووکار</string>
+    <string name="label_language">زمان</string>
+    <string name="label_theme">تێم</string>
+    <string name="theme_dark">تاریک</string>
+    <string name="theme_light">ڕووناک</string>
+    <string name="theme_system">سیستەم</string>
+    <string name="telegram_channel">کەناڵی تێلێگرام</string>
     <string name="language_title">زمانی ئەپ</string>
     <string name="language_kurdish">کوردی</string>
     <string name="language_kurmanji">Kurdî</string>
@@ -183,7 +189,7 @@
     <string name="update_size">قەبارە: %1$s</string>
     <string name="update_downloading">داگرتن… %1$d%%</string>
     <string name="update_ready">دامەزراندن</string>
-    <string name="update_ready_subtitle">داگیرا. بۆ تەواوکردن «دامەزراندن» دابگرە</string>
+    <string name="update_ready_subtitle">لە داگرتنەکان پاشەکەوت کرا. «دامەزراندن» دابگرە، پاشان فایلی فریپۆرت دابگرە</string>
     <string name="update_failed">داگرتن وەستا: %1$s</string>
     <string name="update_retry">دووبارە</string>
     <string name="update_notes">چی نوێیە</string>

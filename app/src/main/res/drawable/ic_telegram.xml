@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Telegram's paper plane, as a single monochrome path; tinted where it is used. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M21.94,4.66L18.72,19.85C18.48,20.92 17.84,21.19 16.94,20.68L12.03,17.06L9.66,19.34C9.4,19.6 9.18,19.82 8.67,19.82L9.02,14.82L18.11,6.61C18.51,6.26 18.02,6.06 17.49,6.41L6.25,13.49L1.41,11.98C0.36,11.65 0.34,10.93 1.63,10.42L20.55,3.13C21.43,2.8 22.2,3.33 21.94,4.66Z" />
+</vector>

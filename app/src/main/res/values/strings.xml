@@ -42,7 +42,13 @@
     <string name="tunnel_noize">Obfuscation</string>
     <string name="tunnel_ip">IP</string>
 
-    <string name="section_appearance">Language</string>
+    <string name="section_appearance">Appearance</string>
+    <string name="label_language">Language</string>
+    <string name="label_theme">Theme</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_system">System</string>
+    <string name="telegram_channel">Telegram channel</string>
     <string name="language_title">App language</string>
     <string name="language_kurdish">کوردی</string>
     <string name="language_kurmanji">Kurdî</string>
@@ -181,7 +187,7 @@
     <string name="update_size">Size: %1$s</string>
     <string name="update_downloading">Downloading… %1$d%%</string>
     <string name="update_ready">Install</string>
-    <string name="update_ready_subtitle">Downloaded. Tap Install to finish</string>
+    <string name="update_ready_subtitle">Saved to Downloads. Tap Install, then tap the Freeport file</string>
     <string name="update_failed">The download stopped: %1$s</string>
     <string name="update_retry">Try again</string>
     <string name="update_notes">What\'s new</string>

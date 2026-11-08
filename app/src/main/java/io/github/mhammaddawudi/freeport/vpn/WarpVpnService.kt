@@ -219,6 +219,25 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
      * captured after a disconnect, and the next connect was refused because
      * the library was still marked as running.
      */
+    /**
+     * Keeps the interface and moves tun2socks to the fresh tunnel's proxy.
+     * The library does not own the descriptor it was given, so stopping it
+     * leaves the interface open, and Android never sees the VPN drop. Open
+     * connections end and the apps open new ones, which is the whole point:
+     * the new ones are not throttled.
+     */
+    override fun onTunnelSwapped(settings: WarpSettings, mappedDns: Boolean): TunMode? {
+        val bridge = app.tunBridge
+        if (!bridge.isAvailable) return null
+        synchronized(tunLock) {
+            val current = tun ?: return null
+            runCatching { bridge.stop() }
+            bridge.start(current.fd, TUN_MTU, settings.socksPort, mappedDns)
+        }
+        CoreLog.good("[+] tunnel refreshed under the same capture")
+        return TunMode.FullDevice
+    }
+
     override fun onTunnelDown() {
         synchronized(tunLock) {
             runCatching { app.tunBridge.stop() }

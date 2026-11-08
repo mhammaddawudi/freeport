@@ -42,7 +42,13 @@
     <string name="tunnel_noize">پنهان‌سازی</string>
     <string name="tunnel_ip">آی‌پی</string>
 
-    <string name="section_appearance">زبان</string>
+    <string name="section_appearance">ظاهر</string>
+    <string name="label_language">زبان</string>
+    <string name="label_theme">تم</string>
+    <string name="theme_dark">تیره</string>
+    <string name="theme_light">روشن</string>
+    <string name="theme_system">سیستم</string>
+    <string name="telegram_channel">کانال تلگرام</string>
     <string name="language_title">زبان برنامه</string>
     <string name="language_kurdish">کوردی</string>
     <string name="language_kurmanji">Kurdî</string>
@@ -181,7 +187,7 @@
     <string name="update_size">حجم: %1$s</string>
     <string name="update_downloading">در حال دانلود… %1$d%%</string>
     <string name="update_ready">نصب</string>
-    <string name="update_ready_subtitle">دانلود شد. برای پایان «نصب» را بزنید</string>
+    <string name="update_ready_subtitle">در پوشهٔ دانلودها ذخیره شد. «نصب» را بزنید و بعد روی فایل فری‌پورت بزنید</string>
     <string name="update_failed">دانلود متوقف شد: %1$s</string>
     <string name="update_retry">دوباره</string>
     <string name="update_notes">چه چیزی جدید است</string>

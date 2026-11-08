@@ -21,8 +21,11 @@ import java.net.ServerSocket
  * The core's sockets belong to this app, which is outside its own VPN, so the trial goes straight over the real line
  * and its speed is the real one, not a figure seen through the running
  * tunnel. It uses its own probe identity, so the person's session is never
- * touched, and only runs while their traffic is quiet: the line is not
- * shared with a download of theirs.
+ * touched, and only runs once their traffic has been quiet for a while: a
+ * pause between two reels is not quiet, and a trial there would take the line
+ * from the next one. Scanning the line for new edges, a burst of hundreds of
+ * probes, waits for a much longer silence, when the phone is most likely
+ * not in use at all.
  */
 class BackgroundScout(
     private val core: WarpCore,
@@ -37,15 +40,18 @@ class BackgroundScout(
     /**
      * Runs a few rounds for the life of the session; cancelled with it.
      * [session] is what the person is connected with; reports go through its
-     * proxy. [onGood] receives every edge, on any protocol, fast enough for
-     * video ([MIN_KBPS]), whatever the current edge does.
+     * proxy. [pool] is what this phone already keeps per protocol;
+     * [onMeasured] receives every edge it measured, fast or slow, and
+     * [onFound] the runners-up of its scans, to be measured in later rounds.
      */
     suspend fun watch(
         session: WarpSettings,
         current: Endpoint,
         network: String,
         avoid: () -> Set<String>,
-        onGood: (WarpSettings, Endpoint, Long) -> Unit,
+        pool: (WarpSettings) -> List<PooledEdge>,
+        onMeasured: (WarpSettings, SharedEdge) -> Unit,
+        onFound: (WarpSettings, List<Endpoint>) -> Unit,
     ) {
         if (meter == null) return
         delay(FIRST_ROUND_MS)
@@ -55,13 +61,13 @@ class BackgroundScout(
             // others shared; odd ones scan the line for edges nobody has yet.
             val fresh = round % 2 == 1
             for (protocol in PROTOCOLS) {
-                if (!awaitQuiet()) return@repeat
+                if (!awaitQuiet(QUIET_HOLD_MS)) return@repeat
                 val settings = session.copy(protocol = protocol)
                 try {
                     // MASQUE reads HTTP/2 or HTTP/3 from the environment when a
                     // tunnel or scan starts; the person's tunnel already read it.
                     if (protocol.transport == "masque") core.applyEnvironment(settings)
-                    test(settings, session, network, tried, avoid(), fresh, onGood)
+                    test(settings, session, network, tried, avoid(), fresh, pool(settings), onMeasured, onFound)
                 } finally {
                     withContext(NonCancellable) {
                         if (protocol.transport == "masque") core.applyEnvironment(session)
@@ -79,16 +85,21 @@ class BackgroundScout(
         tried: MutableSet<String>,
         avoid: Set<String>,
         fresh: Boolean,
-        onGood: (WarpSettings, Endpoint, Long) -> Unit,
+        pooled: List<PooledEdge>,
+        onMeasured: (WarpSettings, SharedEdge) -> Unit,
+        onFound: (WarpSettings, List<Endpoint>) -> Unit,
     ) {
         val protocol = settings.protocol
         val identity = probeIdentity(settings) ?: return
         val skip = tried.filter { it.startsWith("${protocol.id}/") }.map { it.substringAfter('/') }.toSet() + avoid
-        val candidate = nextCandidate(identity, settings, session, network, skip, fresh) ?: return
+        val candidate = nextCandidate(identity, settings, session, network, skip, fresh, pooled) {
+            onFound(settings, it)
+        } ?: return
         tried += "${protocol.id}/${candidate.socket}"
         val measured = trial(identity, candidate, settings)
         if (measured == null) {
             log.info("[*] scout: ${protocol.displayName} ${candidate.socket} did not carry anything")
+            onMeasured(settings, SharedEdge(candidate, 0))
             return
         }
         val kbps = measured.kbps
@@ -97,14 +108,17 @@ class BackgroundScout(
                 "up ${measured.upKbps} KB/s · first byte ${measured.firstByteMs}ms",
         )
         val tested = candidate.copy(rttMs = measured.firstByteMs)
-        board.report(protocol, settings.ipVersion.wire, network, SharedEdge(tested, kbps, measured.upKbps), session.socksPort)
-        if (kbps >= MIN_KBPS) onGood(settings, tested, kbps)
+        val edge = SharedEdge(tested, kbps, measured.upKbps)
+        board.report(protocol, settings.ipVersion.wire, network, edge, session.socksPort)
+        onMeasured(settings, edge)
     }
 
     /**
-     * A shared edge not tried this session, or with [fresh] a scan of the
-     * line that skips everything already known, so new edges keep joining
-     * the pool. Either falls back to the other when it finds nothing.
+     * What to measure next. Fresh rounds grow the pool: first a scan
+     * runner-up still waiting to be measured, else a scan of the line that
+     * leaves out every edge already known, so it can only find new ones. The
+     * other rounds re-check the best known edges, this phone's and the
+     * board's. Each falls back to the other when it finds nothing.
      */
     private suspend fun nextCandidate(
         identity: Identity,
@@ -113,17 +127,25 @@ class BackgroundScout(
         network: String,
         skip: Set<String>,
         fresh: Boolean,
+        pooled: List<PooledEdge>,
+        onFound: (List<Endpoint>) -> Unit,
     ): Endpoint? {
         val shared = board.fetch(settings.protocol, settings.ipVersion.wire, network, session.socksPort)
-        if (fresh) {
-            val known = skip + shared.map { it.endpoint.socket }
-            core.scan(identity, settings, known) {}.valueOrNull()?.takeIf { it.socket !in known }?.let { return it }
-        }
-        shared
-            .sortedBy { it.reelMs }
+        val known = skip + shared.map { it.endpoint.socket } + pooled.map { it.socket }
+        val waiting = pooled.firstOrNull { !it.measured && it.socket !in skip }?.edge?.endpoint
+        val recheck = (pooled.filter { it.measured }.map { it.edge } + shared)
+            .sortedByDescending { it.kbps }
             .firstOrNull { it.endpoint.socket !in skip }
-            ?.let { return it.endpoint }
-        return core.scan(identity, settings, skip) {}.valueOrNull()?.takeIf { it.socket !in skip }
+            ?.endpoint
+        suspend fun discover(): Endpoint? =
+            if (!awaitQuiet(SCAN_QUIET_HOLD_MS)) null else core.scan(identity, settings, known, onRunnersUp = { found ->
+                found.filter { it.socket !in known }.takeIf { it.isNotEmpty() }?.let(onFound)
+            }) {}.valueOrNull()?.takeIf { it.socket !in known }
+        return if (fresh) {
+            waiting ?: discover() ?: recheck
+        } else {
+            recheck ?: waiting ?: discover()
+        }
     }
 
     /** Opens the candidate on a spare port, measures it, and always closes it. */
@@ -141,17 +163,26 @@ class BackgroundScout(
         }
     }
 
-    /** Waits for a quiet stretch; false when none came within [QUIET_WAIT_MS]. */
-    private suspend fun awaitQuiet(): Boolean {
+    /**
+     * Waits until the person's traffic has stayed under [QUIET_BYTES_PER_S]
+     * for [holdMs] without a break; false when that did not happen within
+     * [QUIET_WAIT_MS].
+     */
+    private suspend fun awaitQuiet(holdMs: Long): Boolean {
         val meter = meter ?: return false
         val until = System.currentTimeMillis() + QUIET_WAIT_MS
+        var quietSince = System.currentTimeMillis()
+        var last = meter.totals() ?: return false
         while (System.currentTimeMillis() < until) {
-            val before = meter.totals() ?: return false
             delay(QUIET_SAMPLE_MS)
-            val after = meter.totals() ?: return false
-            val bytes = (after.rxBytes - before.rxBytes) + (after.txBytes - before.txBytes)
-            if (bytes * 1000 / QUIET_SAMPLE_MS < QUIET_BYTES_PER_S) return true
-            delay(QUIET_RETRY_MS)
+            val now = meter.totals() ?: return false
+            val bytes = (now.rxBytes - last.rxBytes) + (now.txBytes - last.txBytes)
+            last = now
+            if (bytes * 1000 / QUIET_SAMPLE_MS >= QUIET_BYTES_PER_S) {
+                quietSince = System.currentTimeMillis()
+            } else if (System.currentTimeMillis() - quietSince >= holdMs) {
+                return true
+            }
         }
         return false
     }
@@ -184,16 +215,21 @@ class BackgroundScout(
     private companion object {
         val PROTOCOLS = listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
 
-        const val FIRST_ROUND_MS = 2 * 60_000L
-        const val ROUND_INTERVAL_MS = 10 * 60_000L
+        const val FIRST_ROUND_MS = 90_000L
+        const val ROUND_INTERVAL_MS = 6 * 60_000L
 
-        /** Each round tests one edge per protocol: up to 12 edges a session. */
-        const val ROUNDS = 4
+        /** Each round tests one edge per protocol: up to 24 edges a session, ~29 MB at most. */
+        const val ROUNDS = 8
 
-        /** Under ~40 KB/s on the tunnel the person is reading, not streaming. */
-        const val QUIET_BYTES_PER_S = 40 * 1024L
-        const val QUIET_SAMPLE_MS = 5_000L
-        const val QUIET_RETRY_MS = 30_000L
+        /** Under ~15 KB/s the person is reading, not watching. */
+        const val QUIET_BYTES_PER_S = 15 * 1024L
+        const val QUIET_SAMPLE_MS = 2_000L
+
+        /** Longer than any pause between reels. */
+        const val QUIET_HOLD_MS = 45_000L
+
+        /** A scan needs the line to itself: two minutes of near silence. */
+        const val SCAN_QUIET_HOLD_MS = 120_000L
         const val QUIET_WAIT_MS = 10 * 60_000L
 
         /** Trial ports sit above the region-unlock exit's. */
@@ -201,12 +237,10 @@ class BackgroundScout(
         const val STARTUP_MS = 8_000L
         const val CLOSE_MS = 1_500L
 
-        /** At most ~1.4 MB per edge: 1 MB down, a little under 0.4 MB up. */
+        /** At most ~1.2 MB per edge: 1 MB down, under 0.2 MB up. */
         const val TRIAL_BYTES = 1_000_000
         const val TRIAL_WINDOW_MS = 2_500L
-        const val TRIAL_UP_BYTES = 384 * 1024
+        const val TRIAL_UP_BYTES = 192 * 1024
 
-        /** Enough for Instagram video; anything at or above it joins the pool. */
-        const val MIN_KBPS = 300L
     }
 }

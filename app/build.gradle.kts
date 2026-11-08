@@ -27,8 +27,8 @@ android {
         applicationId = "io.github.mhammaddawudi.freeport"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "2.3.0"
+        versionCode = 13
+        versionName = "2.4.0"
         // Where edges measured by people on the same operator are shared
         // (server/edge-board). Empty turns sharing off; each phone still
         // learns its own fast edges per operator.

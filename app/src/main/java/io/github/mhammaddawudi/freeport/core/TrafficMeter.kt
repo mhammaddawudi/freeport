@@ -61,6 +61,9 @@ class SimulatedTrafficMeter(private val random: Random = Random.Default) : Traff
 class TunnelTraffic(private val meter: TrafficMeter?) {
     private var last: Long? = null
 
+    /** Everything received so far, or null when the platform will not say. */
+    fun rxBytes(): Long? = meter?.totals()?.rxBytes
+
     /** True when more than [BUSY_BYTES] came in since the previous call. */
     @Synchronized
     fun moved(): Boolean {

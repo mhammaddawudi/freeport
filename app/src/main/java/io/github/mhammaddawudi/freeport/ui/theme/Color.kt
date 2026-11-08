@@ -35,6 +35,11 @@ data class WarpPalette(
     val amber: Color,
     val coral: Color,
     val rose: Color,
+    /** What raised surfaces cast; a black shadow on a light ground reads as dirt. */
+    val shadow: Color,
+    /** The top of the update card's gradient, a shade off the raised surface. */
+    val sheetTop: Color,
+    val isDark: Boolean,
 )
 
 /**
@@ -78,6 +83,41 @@ val DarkPalette = WarpPalette(
     amber = Color(0xFFF2C46B),
     coral = Color(0xFFE39A7A),
     rose = Color(0xFFFF5F6D),
+    shadow = Color(0xFF000000),
+    sheetTop = Color(0xFF23232D),
+    isDark = true,
+)
+
+/**
+ * Day: paper white with the same ladder of greys, ink for text and for the
+ * chosen tab, and accents deep enough to hold their contrast on white.
+ */
+val LightPalette = WarpPalette(
+    void = Color(0xFFF2F2F6),
+    abyss = Color(0xFFEAEAF0),
+    surface = Color(0xFFF9F9FB),
+    surfaceRaised = Color(0xFFFFFFFF),
+    hairline = Color(0x1A10101A),
+    hairlineStrong = Color(0x3D10101A),
+    ink = Color(0xFF15151C),
+    inkMuted = Color(0xFF5A5A68),
+    inkFaint = Color(0xFF8C8C9A),
+
+    mint = Color(0xFF0B9A5B),
+    cyan = Color(0xFF22222B),
+    selected = Color(0xFF7446DB),
+    control = Color(0xFF1B1B23),
+    aqua = Color(0xFF0E9C7A),
+
+    violet = Color(0xFF6C6C7A),
+    indigo = Color(0xFF9C9CAA),
+
+    amber = Color(0xFFB7790A),
+    coral = Color(0xFFC9623C),
+    rose = Color(0xFFD9344A),
+    shadow = Color(0xFF3A3A55),
+    sheetTop = Color(0xFFFFFFFF),
+    isDark = false,
 )
 
 val LocalWarpPalette = staticCompositionLocalOf { DarkPalette }
@@ -109,4 +149,7 @@ object WarpColors {
     val Amber: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.amber
     val Coral: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.coral
     val Rose: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.rose
+    val Shadow: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.shadow
+    val SheetTop: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.sheetTop
+    val IsDark: Boolean @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.isDark
 }

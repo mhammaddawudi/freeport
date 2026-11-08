@@ -62,7 +62,7 @@ fun GlassCard(
     val wash = accent?.copy(alpha = 0.07f) ?: Color.Transparent
     Column(
         modifier = modifier
-            .shadow(18.dp, shape, ambientColor = Color.Black, spotColor = Color.Black.copy(alpha = 0.6f))
+            .shadow(18.dp, shape, ambientColor = WarpColors.Shadow, spotColor = WarpColors.Shadow.copy(alpha = if (WarpColors.IsDark) 0.6f else 0.22f))
             .clip(shape)
             .background(Brush.verticalGradient(listOf(WarpColors.SurfaceRaised, WarpColors.Surface)))
             .background(Brush.verticalGradient(listOf(wash, Color.Transparent)))

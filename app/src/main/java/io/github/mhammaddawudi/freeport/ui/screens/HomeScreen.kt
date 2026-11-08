@@ -13,7 +13,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Brush
-import io.github.mhammaddawudi.freeport.ui.components.StatusPill
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
@@ -69,8 +71,12 @@ import io.github.mhammaddawudi.freeport.ui.theme.NumericStyle
 import io.github.mhammaddawudi.freeport.ui.theme.Tone
 import io.github.mhammaddawudi.freeport.ui.theme.Tones
 
-/** The author's profile, reachable from the one screen everyone sees. */
+/** The author's profile and the channel, reachable from the one screen everyone sees. */
 private const val GITHUB_PROFILE = "https://github.com/mhammaddawudi"
+private const val TELEGRAM_CHANNEL = "https://t.me/Freeport_VPN"
+
+/** Telegram's own blue, so the channel button is recognised at a glance. */
+private val LogoTile = listOf(Color(0xFF1E1E27), Color(0xFF08080C))
 
 /**
  * Deliberately bare: the name, the state, the button, and the four routes.
@@ -102,7 +108,7 @@ fun HomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(8.dp))
-        BrandBar(state)
+        BrandBar()
 
         Spacer(Modifier.height(22.dp))
         StatusBlock(state)
@@ -135,16 +141,16 @@ fun HomeScreen(
     }
 }
 
-/** The logo, the name, how the connection stands, and the author's profile. */
+/** The logo, the name, the Telegram channel and the author's profile. */
 @Composable
-private fun BrandBar(state: ConnectionState) {
-    val context = LocalContext.current
+private fun BrandBar() {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(Brush.verticalGradient(listOf(WarpColors.SurfaceRaised, WarpColors.Void)))
+                // Dark in both themes: the mark is white, as on the app icon.
+                .background(Brush.verticalGradient(LogoTile))
                 .border(1.dp, WarpColors.Hairline, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
@@ -165,36 +171,50 @@ private fun BrandBar(state: ConnectionState) {
                 maxLines = 1,
             )
         }
-        val (label, tint) = when (state) {
-            is ConnectionState.Connected -> R.string.state_connected to WarpColors.Mint
-            is ConnectionState.Failed -> R.string.state_failed to WarpColors.Rose
-            ConnectionState.Idle, ConnectionState.Disconnecting -> R.string.state_idle to WarpColors.InkFaint
-            else -> R.string.state_connecting to WarpColors.Amber
-        }
-        StatusPill(stringResource(label), tint, pulsing = state is ConnectionState.Connected)
+        LinkButton(
+            icon = R.drawable.ic_telegram,
+            description = stringResource(R.string.telegram_channel),
+            url = TELEGRAM_CHANNEL,
+            tint = WarpColors.InkMuted,
+        )
         Spacer(Modifier.width(8.dp))
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(WarpColors.Ink.copy(alpha = 0.05f))
-                .border(1.dp, WarpColors.Hairline, CircleShape)
-                .clickable {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_PROFILE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_github),
-                contentDescription = GITHUB_PROFILE,
-                tint = WarpColors.InkMuted,
-                modifier = Modifier.size(18.dp),
-            )
-        }
+        LinkButton(
+            icon = R.drawable.ic_github,
+            description = GITHUB_PROFILE,
+            url = GITHUB_PROFILE,
+            tint = WarpColors.InkMuted,
+        )
+    }
+}
+
+/** A round button that opens [url] outside the app. */
+@Composable
+private fun LinkButton(
+    @DrawableRes icon: Int,
+    description: String,
+    url: String,
+    tint: Color,
+) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(WarpColors.Ink.copy(alpha = 0.05f))
+            .border(1.dp, WarpColors.Hairline, CircleShape)
+            .clickable(onClickLabel = description, role = Role.Button) {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = description,
+            tint = tint,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 

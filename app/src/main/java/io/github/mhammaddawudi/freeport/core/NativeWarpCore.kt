@@ -50,6 +50,7 @@ class NativeWarpCore : WarpCore {
         identity: Identity,
         settings: WarpSettings,
         excluded: Set<String>,
+        onRunnersUp: (List<Endpoint>) -> Unit,
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint> {
         // A pinned peer skips the scan entirely, the same way `--peer` does.
@@ -62,18 +63,26 @@ class NativeWarpCore : WarpCore {
         val result = runJob(
             nativeScanStart(identity.handle, CorePayloads.scan(settings, excluded)),
         ) { reply ->
-            val endpoint = reply.getJSONObject("endpoint")
-            Endpoint(
-                ip = endpoint.getString("ip"),
-                port = endpoint.getInt("port"),
-                rttMs = endpoint.optLong("rtt_ms"),
-            )
+            // Older cores send no `also`; the scan then simply has no runners-up.
+            reply.optJSONArray("also")?.let { also ->
+                val others = (0 until also.length()).mapNotNull { index ->
+                    also.optJSONObject(index)?.let(::endpointOf)
+                }
+                if (others.isNotEmpty()) onRunnersUp(others)
+            }
+            endpointOf(reply.getJSONObject("endpoint"))
         }
         if (result is CoreResult.Ok) {
             onProgress(ScanProgress(ScanProgress.Phase.Settled, bestRttMs = result.value.rttMs))
         }
         return result
     }
+
+    private fun endpointOf(json: JSONObject): Endpoint = Endpoint(
+        ip = json.getString("ip"),
+        port = json.getInt("port"),
+        rttMs = json.optLong("rtt_ms"),
+    )
 
     override suspend fun startTunnel(
         identity: Identity,

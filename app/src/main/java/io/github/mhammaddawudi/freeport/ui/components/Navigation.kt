@@ -51,7 +51,7 @@ fun FloatingTabBar(
     val shape = RoundedCornerShape(28.dp)
     Row(
         modifier = modifier
-            .shadow(24.dp, shape, spotColor = Color.Black)
+            .shadow(24.dp, shape, ambientColor = WarpColors.Shadow, spotColor = WarpColors.Shadow.copy(alpha = if (WarpColors.IsDark) 1f else 0.25f))
             .clip(shape)
             .background(
                 Brush.verticalGradient(

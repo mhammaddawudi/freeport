@@ -44,12 +44,14 @@ interface WarpCore {
      * has no progress channel, so the native implementation reports the
      * elapsed phases it can infer and the mock reports simulated ones.
      * [excluded] lists `ip:port` edges the scan must not return — ones that
-     * answered but turned out too slow to keep.
+     * answered but turned out too slow to keep, or ones already in the pool.
      */
     suspend fun scan(
         identity: Identity,
         settings: WarpSettings,
         excluded: Set<String> = emptySet(),
+        /** The other edges that answered, best first; the winner is the result. */
+        onRunnersUp: (List<Endpoint>) -> Unit = {},
         onProgress: (ScanProgress) -> Unit,
     ): CoreResult<Endpoint>
 

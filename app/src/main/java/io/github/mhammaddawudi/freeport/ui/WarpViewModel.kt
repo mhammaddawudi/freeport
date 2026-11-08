@@ -28,6 +28,8 @@ import io.github.mhammaddawudi.freeport.core.IphoneExporter
 import io.github.mhammaddawudi.freeport.core.LatencyProbe
 import io.github.mhammaddawudi.freeport.core.AppUpdate
 import io.github.mhammaddawudi.freeport.core.UpdateChecker
+import io.github.mhammaddawudi.freeport.core.UpdateDownloader
+import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -54,7 +56,8 @@ sealed interface UpdateUi {
     data object Hidden : UpdateUi
     data class Available(val update: AppUpdate) : UpdateUi
     data class Downloading(val update: AppUpdate, val progress: Float) : UpdateUi
-    data class Ready(val update: AppUpdate, val apk: File) : UpdateUi
+    /** The apk is in Downloads at [apk]; Android's Downloads screen installs it. */
+    data class Ready(val update: AppUpdate, val apk: Uri) : UpdateUi
     data class Failed(val update: AppUpdate, val message: String) : UpdateUi
 }
 
@@ -101,6 +104,7 @@ class WarpViewModel(application: Application) : AndroidViewModel(application) {
     val pingMs: StateFlow<Long?> = _pingMs.asStateFlow()
 
     private val updates = UpdateChecker(application)
+    private val downloader = UpdateDownloader(application)
     private val updatePrefs = application.getSharedPreferences("warp.updates", android.content.Context.MODE_PRIVATE)
     private val _update = MutableStateFlow<UpdateUi>(UpdateUi.Hidden)
     val update: StateFlow<UpdateUi> = _update.asStateFlow()
@@ -141,22 +145,59 @@ class WarpViewModel(application: Application) : AndroidViewModel(application) {
         _update.value = UpdateUi.Available(found)
     }
 
-    /** Downloads the update, or installs it once downloaded. */
     /**
-     * Opens the apk in the browser, which downloads it and hands it to
-     * Android's installer. The app does not download or install anything
-     * itself: an app that fetches apks and asks to install them is what Play
-     * Protect flags as harmful. Android still refuses an apk not signed with
-     * this app's key.
+     * Downloads the update inside the app, then hands it to Android's
+     * Downloads screen, which installs it on a tap. The app itself never
+     * installs anything: an app that holds REQUEST_INSTALL_PACKAGES and
+     * fetches apks is what Play Protect flags. Android still refuses an apk
+     * not signed with this app's key, and the download is checked for that
+     * before it is kept. Phones older than Android 10 get the browser.
      */
     fun installUpdate() {
-        val update = when (val current = _update.value) {
-            is UpdateUi.Available -> current.update
-            is UpdateUi.Downloading -> current.update
-            is UpdateUi.Ready -> current.update
-            is UpdateUi.Failed -> current.update
-            UpdateUi.Hidden -> return
+        when (val current = _update.value) {
+            is UpdateUi.Available -> startDownload(current.update)
+            is UpdateUi.Failed -> startDownload(current.update)
+            is UpdateUi.Ready -> openDownloads(current)
+            is UpdateUi.Downloading, UpdateUi.Hidden -> Unit
         }
+    }
+
+    private fun startDownload(update: AppUpdate) {
+        if (!downloader.supported) {
+            openInBrowser(update)
+            return
+        }
+        updateJob?.cancel()
+        _update.value = UpdateUi.Downloading(update, 0f)
+        updateJob = viewModelScope.launch {
+            runCatching {
+                downloader.fetch(update, tunnelProxyPort()) { progress ->
+                    _update.value = UpdateUi.Downloading(update, progress)
+                }
+            }
+                .onSuccess { uri ->
+                    CoreLog.info("[+] update ${update.version} saved to Downloads")
+                    val ready = UpdateUi.Ready(update, uri)
+                    _update.value = ready
+                    openDownloads(ready)
+                }
+                .onFailure { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    CoreLog.info("[!] update download failed: ${error.message}")
+                    _update.value = UpdateUi.Failed(update, error.message ?: "network error")
+                }
+        }
+    }
+
+    /** Android's Downloads screen, where a tap on the apk installs it. */
+    private fun openDownloads(ready: UpdateUi.Ready) {
+        val app = getApplication<Application>()
+        runCatching {
+            app.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { openInBrowser(ready.update) }
+    }
+
+    private fun openInBrowser(update: AppUpdate) {
         runCatching {
             getApplication<Application>().startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse(update.apkUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

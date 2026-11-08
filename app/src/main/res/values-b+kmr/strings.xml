@@ -42,7 +42,13 @@
     <string name="tunnel_noize">Veşartin</string>
     <string name="tunnel_ip">IP</string>
 
-    <string name="section_appearance">Ziman</string>
+    <string name="section_appearance">Xuyang</string>
+    <string name="label_language">Ziman</string>
+    <string name="label_theme">Tema</string>
+    <string name="theme_dark">Tarî</string>
+    <string name="theme_light">Ronî</string>
+    <string name="theme_system">Pergal</string>
+    <string name="telegram_channel">Kanala Telegramê</string>
     <string name="language_title">Zimanê sepanê</string>
     <string name="language_kurdish">کوردی</string>
     <string name="language_kurmanji">Kurdî</string>
@@ -181,7 +187,7 @@
     <string name="update_size">Mezinahî: %1$s</string>
     <string name="update_downloading">Tê daxistin… %1$d%%</string>
     <string name="update_ready">Saz bike</string>
-    <string name="update_ready_subtitle">Hate daxistin. Ji bo qedandinê Saz bike bitikîne</string>
+    <string name="update_ready_subtitle">Di Daxistinan de hat tomarkirin. Saz bike bitikîne, paşê pelê Freeport bitikîne</string>
     <string name="update_failed">Daxistin rawestiya: %1$s</string>
     <string name="update_retry">Dîsa</string>
     <string name="update_notes">Çi nû ye</string>

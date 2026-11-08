@@ -148,7 +148,7 @@ class HttpEdgeBoard(
 
         /** A kept list older than this says little about today's network. */
         private const val KEEP_MS = 3 * 24 * 60 * 60 * 1000L
-        private const val MAX_EDGES = 6
+        private const val MAX_EDGES = 40
 
         /** Anything off Cloudflare's edge ranges is dropped, whatever the board says. */
         internal fun parse(raw: String): List<SharedEdge> {

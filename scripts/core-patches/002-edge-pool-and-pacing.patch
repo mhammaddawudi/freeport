@@ -1,0 +1,289 @@
+diff --git a/warp/Cargo.toml b/warp/Cargo.toml
+index d152843..5352768 100644
+--- a/warp/Cargo.toml
++++ b/warp/Cargo.toml
+@@ -36,7 +36,7 @@ env_logger = "0.11"
+ thiserror = "2"
+ anyhow = "1"
+ futures = "0.3"
+-smoltcp = { version = "0.14", default-features = false, features = ["std", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp"] }
++smoltcp = { version = "0.14", default-features = false, features = ["std", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp", "socket-tcp-cubic", "socket-tcp-reno"] }
+ boringtun = "0.7"
+ x25519-dalek = "2.0.1"
+ blake2 = "0.10"
+diff --git a/warp/src/api.rs b/warp/src/api.rs
+index b62f681..6ac2465 100644
+--- a/warp/src/api.rs
++++ b/warp/src/api.rs
+@@ -399,6 +399,22 @@ impl ScanRequest {
+ }
+ 
+ pub async fn scan(identity: &Identity, request: &ScanRequest, cancel: &Cancel) -> Result<Endpoint> {
++    scan_ranked(identity, request, cancel, 1)
++        .await?
++        .into_iter()
++        .next()
++        .ok_or(WarpError::NoCleanEndpoint)
++}
++
++/// A scan that hands back up to `keep` edges that answered, on separate addresses and best
++/// first, rather than only the winner: the rest are edges a caller can try or measure later
++/// without scanning again. `request.excluded` is left out of the scan on either transport.
++pub async fn scan_ranked(
++    identity: &Identity,
++    request: &ScanRequest,
++    cancel: &Cancel,
++    keep: usize,
++) -> Result<Vec<Endpoint>> {
+     match request.transport {
+         Transport::Masque => {
+             let probe = prober::MasqueProbe {
+@@ -414,12 +430,19 @@ pub async fn scan(identity: &Identity, request: &ScanRequest, cancel: &Cancel) -
+                 local_ipv4: crate::parse_local_v4(&identity.ipv4),
+             };
+             let mode = prober::ScanMode::parse(&request.mode);
+-            let best = guard(cancel, prober::hunt_best_gateway(&probe, mode)).await?;
+-            Ok(Endpoint {
+-                ip: best.ip,
+-                port: best.port,
+-                rtt_ms: best.rtt.as_millis() as u64,
+-            })
++            let found = guard(
++                cancel,
++                prober::hunt_gateways_ranked(&probe, mode, &HashSet::new(), &request.excluded, keep),
++            )
++            .await?;
++            Ok(found
++                .into_iter()
++                .map(|pr| Endpoint {
++                    ip: pr.ip,
++                    port: pr.port,
++                    rtt_ms: pr.rtt.as_millis() as u64,
++                })
++                .collect())
+         }
+         Transport::WireGuard => {
+             let probe = wg_prober::WgProbe {
+@@ -433,12 +456,15 @@ pub async fn scan(identity: &Identity, request: &ScanRequest, cancel: &Cancel) -
+                 excluded: request.excluded.clone(),
+             };
+             let mode = wg_prober::WgScanMode::parse(&request.mode);
+-            let best = guard(cancel, wg_prober::hunt_best_wg_endpoint(&probe, mode)).await?;
+-            Ok(Endpoint {
+-                ip: best.ip,
+-                port: best.port,
+-                rtt_ms: best.rtt.as_millis() as u64,
+-            })
++            let found = guard(cancel, wg_prober::hunt_wg_endpoints_ranked(&probe, mode, keep)).await?;
++            Ok(found
++                .into_iter()
++                .map(|pr| Endpoint {
++                    ip: pr.ip,
++                    port: pr.port,
++                    rtt_ms: pr.rtt.as_millis() as u64,
++                })
++                .collect())
+         }
+     }
+ }
+diff --git a/warp/src/ffi.rs b/warp/src/ffi.rs
+index 362c7f2..0420503 100644
+--- a/warp/src/ffi.rs
++++ b/warp/src/ffi.rs
+@@ -384,6 +384,9 @@ pub extern "C" fn warp_identity_free(id: u64) -> *mut c_char {
+     })
+ }
+ 
++/// How many edges a scan hands back: the winner and up to this many less one runners-up.
++const SCAN_KEEP: usize = 9;
++
+ #[no_mangle]
+ pub unsafe extern "C" fn warp_scan_start(identity: u64, payload: *const c_char) -> *mut c_char {
+     respond(|| {
+@@ -419,10 +422,15 @@ pub unsafe extern "C" fn warp_scan_start(identity: u64, payload: *const c_char)
+         spawn_job(move |cancel| async move {
+             let mut request = request;
+             request.ech_config_list = job_ech(want_ech, request.transport).await?;
+-            let endpoint = api::scan(&identity, &request, &cancel)
++            let mut found = api::scan_ranked(&identity, &request, &cancel, SCAN_KEEP)
+                 .await
+                 .map_err(describe)?;
+-            Ok(json!({"endpoint": endpoint}))
++            if found.is_empty() {
++                return Err(describe(crate::error::WarpError::NoCleanEndpoint));
++            }
++            let endpoint = found.remove(0);
++            // `also` is the runners-up, best first; callers that only read `endpoint` are unchanged.
++            Ok(json!({"endpoint": endpoint, "also": found}))
+         })
+     })
+ }
+diff --git a/warp/src/netstack.rs b/warp/src/netstack.rs
+index c4ce946..02ae25f 100644
+--- a/warp/src/netstack.rs
++++ b/warp/src/netstack.rs
+@@ -67,6 +67,22 @@ fn tcp_connect_timeout() -> std::time::Duration {
+     std::time::Duration::from_secs(secs)
+ }
+ 
++/// How the netstack paces what it sends, from `WARP_TCP_CC` (`none`, `reno` or `cubic`).
++///
++/// `none` is the default. Measured over WireGuard on an Iranian line (round trip about 400 ms),
++/// smoltcp's cubic cut uploads from about 1.1 MB/s to about 250 KB/s and did nothing for downloads,
++/// whose pace the far end sets. The other choices stay for trying on other lines.
++fn tcp_congestion_control() -> tcp::CongestionControl {
++    static CHOICE: std::sync::OnceLock<tcp::CongestionControl> = std::sync::OnceLock::new();
++    *CHOICE.get_or_init(|| {
++        match std::env::var("WARP_TCP_CC").unwrap_or_default().trim().to_ascii_lowercase().as_str() {
++            "reno" => tcp::CongestionControl::Reno,
++            "cubic" => tcp::CongestionControl::Cubic,
++            _ => tcp::CongestionControl::None,
++        }
++    })
++}
++
+ fn smol_duration(duration: std::time::Duration) -> smoltcp::time::Duration {
+     smoltcp::time::Duration::from_millis(duration.as_millis().min(u64::MAX as u128) as u64)
+ }
+@@ -664,6 +680,7 @@ fn handle_cmd(s: &mut NetStack, cmd: Cmd) {
+             let tx_buf = tcp::SocketBuffer::new(vec![0u8; tcp_tx_buf()]);
+             let mut socket = tcp::Socket::new(rx_buf, tx_buf);
+             socket.set_nagle_enabled(false);
++            socket.set_congestion_control(tcp_congestion_control());
+             let keepalive = s.tcp_limits.keepalive;
+             socket.set_keep_alive(Some(smol_duration(keepalive)));
+             socket.set_timeout(Some(smol_duration(keepalive.saturating_mul(3))));
+diff --git a/warp/src/prober.rs b/warp/src/prober.rs
+index b70f773..45faa07 100644
+--- a/warp/src/prober.rs
++++ b/warp/src/prober.rs
+@@ -615,6 +615,23 @@ pub async fn hunt_best_gateway_avoiding(
+     mode: ScanMode,
+     avoid: &HashSet<IpAddr>,
+ ) -> Result<ProbeResult> {
++    hunt_gateways_ranked(probe, mode, avoid, &HashSet::new(), 1)
++        .await?
++        .into_iter()
++        .next()
++        .ok_or(WarpError::NoCleanEndpoint)
++}
++
++/// The same scan as `hunt_best_gateway_avoiding`, also leaving out the exact `ip:port` gateways
++/// in `excluded`, handing back up to `keep` of the gateways that answered, best first: the winner
++/// and its runners-up on separate addresses.
++pub async fn hunt_gateways_ranked(
++    probe: &MasqueProbe,
++    mode: ScanMode,
++    avoid: &HashSet<IpAddr>,
++    excluded: &HashSet<SocketAddr>,
++    keep: usize,
++) -> Result<Vec<ProbeResult>> {
+     let mut st = mode.strategy();
+     st.concurrency = crate::sysprofile::cap_concurrency(st.concurrency);
+     let timeout = st.per_probe_timeout;
+@@ -628,10 +645,16 @@ pub async fn hunt_best_gateway_avoiding(
+             return Err(WarpError::NoCleanEndpoint);
+         }
+     }
+-    let candidates = leave_out(
++    let candidates: Vec<(IpAddr, u16)> = leave_out(
+         build_candidates(&st, &probe.ports, effective_ip, zero_trust_mode()),
+         avoid,
+-    );
++    )
++    .into_iter()
++    .filter(|(ip, port)| !excluded.contains(&SocketAddr::new(*ip, *port)))
++    .collect();
++    if !excluded.is_empty() {
++        log::info!("[*] leaving {} known gateway(s) out of this scan", excluded.len());
++    }
+     if !avoid.is_empty() {
+         log::info!(
+             "[*] leaving {} gateway(s) out of this scan for now",
+@@ -662,6 +685,7 @@ pub async fn hunt_best_gateway_avoiding(
+ 
+     let deadline = Instant::now() + st.overall_deadline;
+     let mut best: Option<ProbeResult> = None;
++    let mut answered: Vec<ProbeResult> = Vec::new();
+     let mut found = 0usize;
+     let mut quiet_until: Option<Instant> = None;
+ 
+@@ -692,8 +716,9 @@ pub async fn hunt_best_gateway_avoiding(
+                     Some(Some(pr)) => {
+                         log::info!("[+] candidate ok {}:{} rtt={:?}", pr.ip, pr.port, pr.rtt);
+                         if st.early_exit_first {
+-                            return Ok(pr);
++                            return Ok(vec![pr]);
+                         }
++                        answered.push(pr.clone());
+                         best = Some(match best {
+                             Some(cur) if cur.rtt <= pr.rtt => cur,
+                             _ => pr,
+@@ -729,12 +754,23 @@ pub async fn hunt_best_gateway_avoiding(
+     match best {
+         Some(pr) => {
+             log::info!("[+] best gateway {}:{} rtt={:?}", pr.ip, pr.port, pr.rtt);
+-            Ok(pr)
++            Ok(ranked_by_address(answered, keep))
+         }
+         None => Err(WarpError::NoCleanEndpoint),
+     }
+ }
+ 
++/// Quickest first, one per address, at most `keep`.
++fn ranked_by_address(mut answered: Vec<ProbeResult>, keep: usize) -> Vec<ProbeResult> {
++    answered.sort_by_key(|pr| pr.rtt);
++    let mut seen = HashSet::new();
++    answered
++        .into_iter()
++        .filter(|pr| seen.insert(pr.ip))
++        .take(keep.max(1))
++        .collect()
++}
++
+ /// `candidates` without the addresses in `avoid`, whatever their port.
+ fn leave_out(candidates: Vec<(IpAddr, u16)>, avoid: &HashSet<IpAddr>) -> Vec<(IpAddr, u16)> {
+     candidates
+diff --git a/warp/src/wg_prober.rs b/warp/src/wg_prober.rs
+index 69f6d19..74366c1 100644
+--- a/warp/src/wg_prober.rs
++++ b/warp/src/wg_prober.rs
+@@ -163,8 +163,29 @@ pub async fn hunt_wg_endpoints(
+     probe: &WgProbe,
+     mode: WgScanMode,
+     want: usize,
++) -> Result<Vec<WgProbeResult>> {
++    hunt_wg_endpoints_keeping(probe, mode, want, want).await
++}
++
++/// A normal single-endpoint scan, timed like `hunt_best_wg_endpoint`, that hands back up to
++/// `keep` endpoints on separate addresses, best first: the winner and the runners-up it found on
++/// the way, which a caller can keep for later instead of scanning again.
++pub async fn hunt_wg_endpoints_ranked(
++    probe: &WgProbe,
++    mode: WgScanMode,
++    keep: usize,
++) -> Result<Vec<WgProbeResult>> {
++    hunt_wg_endpoints_keeping(probe, mode, 1, keep).await
++}
++
++async fn hunt_wg_endpoints_keeping(
++    probe: &WgProbe,
++    mode: WgScanMode,
++    want: usize,
++    keep: usize,
+ ) -> Result<Vec<WgProbeResult>> {
+     let want = want.max(1);
++    let keep = keep.max(want);
+     let mut st = mode.strategy();
+     st.concurrency = crate::sysprofile::cap_concurrency(st.concurrency);
+     let timeout = st.per_probe_timeout;
+@@ -284,7 +305,7 @@ pub async fn hunt_wg_endpoints(
+         log::info!("[+] wg endpoint {}:{} rtt={:?}", pr.ip, pr.port, pr.rtt);
+     }
+ 
+-    Ok(picked.into_iter().take(want).collect())
++    Ok(picked.into_iter().take(keep).collect())
+ }
+ 
+ fn distinct_by_ip(found: &[WgProbeResult]) -> Vec<WgProbeResult> {

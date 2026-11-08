@@ -22,6 +22,15 @@ interface EndpointCache {
     fun recallAuto(): Pair<Protocol, Endpoint>?
     fun rememberAuto(protocol: Protocol, endpoint: Endpoint)
     fun forgetAuto()
+
+    /** Every edge kept for [key], measured ones first and fastest first. See [EdgePool]. */
+    fun pool(key: String): List<PooledEdge>
+    fun addToPool(key: String, edges: List<SharedEdge>)
+    fun dropFromPool(key: String, socket: String)
+
+    /** When the protocol behind [key] last stalled mid-session; 0 when never. See [StallMemory]. */
+    fun stalledAt(key: String): Long = 0L
+    fun markStalled(key: String, at: Long) {}
 }
 
 class PrefsEndpointCache(
@@ -32,6 +41,12 @@ class PrefsEndpointCache(
 
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    override fun stalledAt(key: String): Long = prefs.getLong("$STALL_PREFIX$key", 0L)
+
+    override fun markStalled(key: String, at: Long) {
+        prefs.edit().putLong("$STALL_PREFIX$key", at).apply()
+    }
 
     override fun recall(key: String): Endpoint? {
         val raw = prefs.getString(key, null) ?: return null
@@ -70,12 +85,32 @@ class PrefsEndpointCache(
         prefs.edit().remove(KEY_AUTO_PROTOCOL).remove(KEY_AUTO_ENDPOINT).apply()
     }
 
+    @Synchronized
+    override fun pool(key: String): List<PooledEdge> =
+        EdgePool.tidy(EdgePool.decode(prefs.getString(POOL_PREFIX + key, null)), clock())
+
+    @Synchronized
+    override fun addToPool(key: String, edges: List<SharedEdge>) {
+        if (edges.isEmpty()) return
+        val now = clock()
+        val merged = EdgePool.mergeAll(pool(key), edges.map { PooledEdge(it, now) }, now)
+        prefs.edit().putString(POOL_PREFIX + key, EdgePool.encode(merged)).apply()
+    }
+
+    @Synchronized
+    override fun dropFromPool(key: String, socket: String) {
+        val kept = EdgePool.without(pool(key), socket)
+        prefs.edit().putString(POOL_PREFIX + key, EdgePool.encode(kept)).apply()
+    }
+
     private data class Entry(val endpoint: Endpoint, val savedAt: Long)
 
     companion object {
         private const val FILE = "warp.endpoints"
         private const val KEY_AUTO_PROTOCOL = "auto.protocol"
         private const val KEY_AUTO_ENDPOINT = "auto.endpoint"
+        private const val POOL_PREFIX = "pool."
+        private const val STALL_PREFIX = "stall."
 
         /** Long enough to cover a day of reconnects, short enough to rescan daily. */
         const val DEFAULT_TTL_MS = 6 * 60 * 60 * 1000L
@@ -107,4 +142,7 @@ object NoEndpointCache : EndpointCache {
     override fun recallAuto(): Pair<Protocol, Endpoint>? = null
     override fun rememberAuto(protocol: Protocol, endpoint: Endpoint) = Unit
     override fun forgetAuto() = Unit
+    override fun pool(key: String): List<PooledEdge> = emptyList()
+    override fun addToPool(key: String, edges: List<SharedEdge>) = Unit
+    override fun dropFromPool(key: String, socket: String) = Unit
 }

@@ -196,6 +196,17 @@ enum class AppLanguage(
     }
 }
 
+/** Day, night, or whatever the phone is set to. Dark is the default: it is the app's own look. */
+enum class ThemeMode(val wire: String, @StringRes val labelRes: Int) {
+    Dark("dark", R.string.theme_dark),
+    Light("light", R.string.theme_light),
+    System("system", R.string.theme_system);
+
+    companion object {
+        fun fromWire(wire: String?): ThemeMode = entries.firstOrNull { it.wire == wire } ?: Dark
+    }
+}
+
 /**
  * Countries Psiphon can leave from, offered for the region-unlock exit.
  *

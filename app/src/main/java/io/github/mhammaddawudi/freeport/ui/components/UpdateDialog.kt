@@ -2,6 +2,7 @@ package io.github.mhammaddawudi.freeport.ui.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -85,14 +86,14 @@ fun UpdateDialog(
                 enter = scaleIn(spring(dampingRatio = 0.75f, stiffness = 420f), initialScale = 0.9f),
                 exit = scaleOut(tween(160), targetScale = 0.95f),
             ) {
-                shown?.let { Card(it, onDownload, onLater) }
+                shown?.let { Card(it, update, onDownload, onLater) }
             }
         }
     }
 }
 
 /** Whether the dialog is up, so the caller can blur what is behind it. */
-fun isShown(update: UpdateUi): Boolean = update is UpdateUi.Available || update is UpdateUi.Failed
+fun isShown(update: UpdateUi): Boolean = update !is UpdateUi.Hidden
 
 private fun UpdateUi.info(): AppUpdate? = when (this) {
     is UpdateUi.Available -> update
@@ -103,7 +104,7 @@ private fun UpdateUi.info(): AppUpdate? = when (this) {
 }
 
 @Composable
-private fun Card(info: AppUpdate, onDownload: () -> Unit, onLater: () -> Unit) {
+private fun Card(info: AppUpdate, stage: UpdateUi, onDownload: () -> Unit, onLater: () -> Unit) {
     val shape = RoundedCornerShape(28.dp)
     val language = LocalConfiguration.current.locales[0].language
     val notes = remember(info.notes, language) { ReleaseNotes.summary(info.notes, language) }
@@ -114,9 +115,9 @@ private fun Card(info: AppUpdate, onDownload: () -> Unit, onLater: () -> Unit) {
             .padding(horizontal = 28.dp)
             .widthIn(max = 380.dp)
             .fillMaxWidth()
-            .shadow(32.dp, shape, spotColor = Color.Black)
+            .shadow(32.dp, shape, ambientColor = WarpColors.Shadow, spotColor = WarpColors.Shadow)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xFF23232D), WarpColors.SurfaceRaised)))
+            .background(Brush.verticalGradient(listOf(WarpColors.SheetTop, WarpColors.SurfaceRaised)))
             .border(1.dp, Brush.verticalGradient(listOf(WarpColors.Ink.copy(alpha = 0.22f), WarpColors.Ink.copy(alpha = 0.05f))), shape)
             .semantics {
                 paneTitle = title
@@ -147,14 +148,8 @@ private fun Card(info: AppUpdate, onDownload: () -> Unit, onLater: () -> Unit) {
                 maxLines = 5,
             )
         }
-        if (info.apkBytes > 0) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                stringResource(R.string.update_size, Formats.bytes(info.apkBytes)),
-                style = MaterialTheme.typography.labelMedium,
-                color = WarpColors.InkMuted.copy(alpha = 0.75f),
-            )
-        }
+        Spacer(Modifier.height(14.dp))
+        Status(info, stage)
         Spacer(Modifier.height(22.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PillButton(
@@ -163,12 +158,55 @@ private fun Card(info: AppUpdate, onDownload: () -> Unit, onLater: () -> Unit) {
                 onClick = onLater,
                 modifier = Modifier.weight(1f),
             )
+            val action = when (stage) {
+                is UpdateUi.Downloading -> stringResource(R.string.update_downloading, (stage.progress * 100).toInt())
+                is UpdateUi.Ready -> stringResource(R.string.update_ready)
+                is UpdateUi.Failed -> stringResource(R.string.update_retry)
+                else -> stringResource(R.string.update_download)
+            }
             PillButton(
-                text = stringResource(R.string.update_download),
-                emphasised = true,
+                text = action,
+                emphasised = stage !is UpdateUi.Downloading,
                 onClick = onDownload,
                 modifier = Modifier.weight(1f),
             )
         }
     }
+}
+
+/** The size before the download, a bar during it, then what to do next. */
+@Composable
+private fun Status(info: AppUpdate, stage: UpdateUi) {
+    when (stage) {
+        is UpdateUi.Downloading -> {
+            val progress by animateFloatAsState(stage.progress, tween(240), label = "updateProgress")
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(WarpColors.Ink.copy(alpha = 0.08f)),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(progress.coerceIn(0.02f, 1f))
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.horizontalGradient(listOf(WarpColors.Mint.copy(alpha = 0.7f), WarpColors.Mint))),
+                )
+            }
+            if (info.apkBytes > 0) {
+                Spacer(Modifier.height(8.dp))
+                Caption("${Formats.bytes((info.apkBytes * stage.progress).toLong())} / ${Formats.bytes(info.apkBytes)}")
+            }
+        }
+        is UpdateUi.Ready -> Caption(stringResource(R.string.update_ready_subtitle), WarpColors.Mint)
+        is UpdateUi.Failed -> Caption(stringResource(R.string.update_failed, stage.message), WarpColors.Rose)
+        else -> if (info.apkBytes > 0) Caption(stringResource(R.string.update_size, Formats.bytes(info.apkBytes)))
+    }
+}
+
+@Composable
+private fun Caption(text: String, color: Color = WarpColors.InkMuted.copy(alpha = 0.75f)) {
+    Text(text, style = MaterialTheme.typography.labelMedium, color = color, textAlign = TextAlign.Center)
 }
