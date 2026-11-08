@@ -161,6 +161,12 @@ class WarpEngine(
 
     private data class CarryOver(val sinceMillis: Long)
 
+    /** Set while Automatic leaves Psiphon or Tor to see whether WARP carries again. */
+    @Volatile private var returningToWarp = false
+
+    /** How long Automatic stays on Psiphon or Tor before looking at WARP again; doubles after each failed look. */
+    @Volatile private var warpReturnMs = WARP_RETURN_MS
+
     /** Publishes [next], unless it is a step of a refresh the person should not see. */
     private fun show(next: ConnectionState) {
         if (carryOver != null && next.isTransitioning) return
@@ -217,6 +223,8 @@ class WarpEngine(
         rotations = 0
         carryOver = null
         refreshes.clear()
+        returningToWarp = false
+        warpReturnMs = WARP_RETURN_MS
         try {
             while (true) {
                 network = networkOf()
@@ -360,6 +368,56 @@ class WarpEngine(
             }
         }
 
+        val returning = returningToWarp
+        returningToWarp = false
+        // A network that drops everything for a moment — a stall, a handover —
+        // should not send the session to Psiphon, which is far slower: look
+        // once more before leaving Cloudflare. Coming back from Psiphon, only
+        // the known edges are tried, so a failed look costs seconds, not a scan.
+        val rounds = if (returning) 1 else AUTO_ROUNDS
+        for (round in 1..rounds) {
+            if (round > 1) {
+                log.info("[*] automatic: nothing answered; looking once more before leaving Cloudflare")
+                delay(AUTO_RECHECK_MS)
+            }
+            findWarp(base, host, candidates, shared, identities, stalledAt, scan = !returning)?.let { outcome ->
+                if (outcome.connected) warpReturnMs = WARP_RETURN_MS
+                return outcome
+            }
+        }
+        if (returning) {
+            warpReturnMs = (warpReturnMs * 2).coerceAtMost(MAX_WARP_RETURN_MS)
+            log.info("[*] automatic: WARP still does not carry here, back to the fallback")
+        }
+
+        // Cloudflare is out of reach on this network: try the tunnels
+        // that do not go through it. Warp in warp is left to whoever
+        // picks it by hand.
+        for (protocol in AUTO_FALLBACK) {
+            if (direct[protocol]?.isAvailable != true) continue
+            log.info("[*] automatic: nothing answered on MASQUE or WireGuard, trying ${protocol.displayName}")
+            val outcome = runDirect(base.copy(protocol = protocol), host, viaAuto = true)
+            if (outcome.connected) return outcome
+            log.warn("[-] ${outcome.reason}")
+        }
+        return Outcome("automatic: nothing answered on MASQUE, WireGuard, Psiphon or Tor")
+    }
+
+    /**
+     * One look for a WARP edge: the known ones first, then, when [scan] is
+     * set, a scan of every protocol. Returns the session's outcome once a
+     * tunnel was opened, or null when nothing answered.
+     */
+    private suspend fun findWarp(
+        base: WarpSettings,
+        host: TunnelHost,
+        candidates: Map<Protocol, WarpSettings>,
+        shared: Map<Protocol, Deferred<List<SharedEdge>>>,
+        identities: Map<Protocol, Identity>,
+        stalledAt: Map<Protocol, Long>,
+        scan: Boolean,
+    ): Outcome? {
+        val stalled = stalledAt.keys
         if (base.pinnedPeer.isBlank()) {
             val known = StallMemory.stalledLast(
                 fastestKnown(candidates, shared.mapValues { it.value.await() })
@@ -373,8 +431,9 @@ class WarpEngine(
                 val outcome = tryRemembered(identities.getValue(protocol), edge.endpoint, settings, host, viaAuto = true)
                 if (outcome.connected) return outcome
             }
-            cache.forgetAuto()
+            if (scan) cache.forgetAuto()
         }
+        if (!scan) return null
 
         log.info("[*] automatic: scanning every protocol")
         carryOver = null
@@ -422,19 +481,7 @@ class WarpEngine(
 
         val best = (found.entries.filter { it.key !in stalled }.minByOrNull { it.value.rttMs }
             ?: found.entries.minByOrNull { stalledAt[it.key] ?: 0L })?.let { it.key to it.value }
-        if (best == null) {
-            // Cloudflare is out of reach on this network: try the tunnels
-            // that do not go through it. Warp in warp is left to whoever
-            // picks it by hand.
-            for (protocol in AUTO_FALLBACK) {
-                if (direct[protocol]?.isAvailable != true) continue
-                log.info("[*] automatic: nothing answered on MASQUE or WireGuard, trying ${protocol.displayName}")
-                val outcome = runDirect(base.copy(protocol = protocol), host, viaAuto = true)
-                if (outcome.connected) return outcome
-                log.warn("[-] ${outcome.reason}")
-            }
-            return Outcome("automatic: nothing answered on MASQUE, WireGuard, Psiphon or Tor")
-        }
+        if (best == null) return null
 
         val (protocol, endpoint) = best
         val chosen = candidates.getValue(protocol)
@@ -625,18 +672,36 @@ class WarpEngine(
         launch { reportExit(connected) }
         log.good("[+] connected through ${tunnel.name}")
         log.info("[*] SOCKS5 listening on 127.0.0.1:${settings.socksPort}")
-        watchDirect(tunnel, settings, since)
+        watchDirect(tunnel, settings, since, viaAuto)
     }
 
     /** Watches a running Psiphon or Tor until it stops carrying traffic. */
-    private suspend fun watchDirect(tunnel: DirectTunnel, settings: WarpSettings, since: Long): Outcome {
+    private suspend fun watchDirect(tunnel: DirectTunnel, settings: WarpSettings, since: Long, viaAuto: Boolean): Outcome {
         var misses = 0
         var nextProbe = SystemClock.elapsedRealtime() + DIRECT_PROBE_MS
+        var nextWarpLook = SystemClock.elapsedRealtime() + warpReturnMs
         while (true) {
             delay(POLL_MS)
             val heldMs = System.currentTimeMillis() - since
             if (tunnel.health == PsiphonRelay.Health.Stopped) {
                 return Outcome("${tunnel.name} stopped", connectedForMs = heldMs, connected = true)
+            }
+            // Psiphon and Tor are the fallback, not the goal: once a known
+            // WARP edge answers again, Automatic goes back to it.
+            if (viaAuto && SystemClock.elapsedRealtime() >= nextWarpLook) {
+                nextWarpLook = SystemClock.elapsedRealtime() + warpReturnMs
+                if (warpAnswers(settings)) {
+                    returningToWarp = true
+                    // Swapped under the same capture, like a refresh: apps keep
+                    // the VPN, and if WARP does not come up the fallback does.
+                    carryOver = CarryOver(since)
+                    return Outcome(
+                        "a WARP edge answers again; leaving ${tunnel.name} for it",
+                        connectedForMs = heldMs,
+                        connected = true,
+                        refresh = true,
+                    )
+                }
             }
             if (SystemClock.elapsedRealtime() < nextProbe) continue
             nextProbe = SystemClock.elapsedRealtime() + DIRECT_PROBE_MS
@@ -656,6 +721,21 @@ class WarpEngine(
                 )
             }
         }
+    }
+
+    /**
+     * Whether a known MASQUE edge accepts a connection again. The app's own
+     * sockets bypass the VPN, so this knocks on the edge over the bare line.
+     */
+    private suspend fun warpAnswers(settings: WarpSettings): Boolean {
+        val now = System.currentTimeMillis()
+        val edges = AUTO_CANDIDATES.filter { it.isTcp }.flatMap { protocol ->
+            val candidate = settings.copy(protocol = protocol)
+            if (StallMemory.isRecent(cache.stalledAt(cacheKey(candidate)), now)) return@flatMap emptyList()
+            ranked(candidate, emptyList()).map { it.endpoint } + listOfNotNull(cache.recall(cacheKey(candidate)))
+        }.distinctBy { it.socket }.filter { it.socket !in slowEdges }.take(WARP_LOOK_EDGES)
+        if (edges.isEmpty()) return false
+        return EdgeReach.reachable(edges).isNotEmpty()
     }
 
     /** Marks the session up, captures traffic, and watches the job until it ends. */
@@ -1092,6 +1172,15 @@ class WarpEngine(
 
         /** The whole automatic ping round. */
         const val AUTO_PING_MS = 20_000L
+
+        /** Looks for WARP before Automatic falls back to Psiphon or Tor. */
+        const val AUTO_ROUNDS = 2
+        const val AUTO_RECHECK_MS = 3_000L
+
+        /** On Psiphon or Tor through Automatic, how often to look for WARP again, and the most it backs off to. */
+        const val WARP_RETURN_MS = 3 * 60_000L
+        const val MAX_WARP_RETURN_MS = 30 * 60_000L
+        const val WARP_LOOK_EDGES = 4
 
         /** Each MASQUE carrier's scan slot; they cannot scan at the same time. */
         const val AUTO_LANE_MS = 10_000L

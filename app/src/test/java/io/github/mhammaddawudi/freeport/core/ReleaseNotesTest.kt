@@ -34,4 +34,23 @@ class ReleaseNotesTest {
         assertTrue(shown.length <= ReleaseNotes.MAX_CHARS + 1)
         assertTrue(shown.endsWith("…"))
     }
+
+    @Test
+    fun tagsHiddenInACommentStillReachTheDialog() {
+        // GitHub hides the tagged lines inside an HTML comment; the app reads the raw body.
+        val release = """
+            <!--
+            fa: سایفون و تور اضافه شدند.
+            en: Adds Psiphon and Tor.
+            -->
+
+            Freeport 2.5 is out
+
+            Psiphon and Tor: two new protocols outside Cloudflare
+            ---
+            فری‌پورت ۲.۵ منتشر شد
+        """.trimIndent()
+        assertEquals("سایفون و تور اضافه شدند.", ReleaseNotes.summary(release, "fa"))
+        assertEquals("Adds Psiphon and Tor.", ReleaseNotes.summary(release, "kmr"))
+    }
 }
