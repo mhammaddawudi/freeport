@@ -36,6 +36,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mhammaddawudi.freeport.R
@@ -81,7 +83,7 @@ fun RegionCard(
                 if (relaying) {
                     StatusDot(WarpColors.Amber, pulsing = true)
                 } else {
-                    Text(ExitCountries.flag(exit.orEmpty()), fontSize = 19.sp)
+                    CountryFlag(exit.orEmpty(), emojiSize = 19.sp, width = 22.dp)
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -111,7 +113,7 @@ fun RegionCard(
                 ExitCountries.offered.forEach { code ->
                     CountryChip(
                         label = if (code.isEmpty()) stringResource(R.string.region_any) else countryName(code),
-                        flag = ExitCountries.flag(code),
+                        code = code,
                         selected = code == exitCountry,
                         onClick = { onSelectCountry(code) },
                     )
@@ -122,7 +124,7 @@ fun RegionCard(
 }
 
 @Composable
-private fun CountryChip(label: String, flag: String, selected: Boolean, onClick: () -> Unit) {
+private fun CountryChip(label: String, code: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     val accent = WarpColors.Mint
     Row(
@@ -135,7 +137,7 @@ private fun CountryChip(label: String, flag: String, selected: Boolean, onClick:
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(flag, fontSize = 16.sp)
+        CountryFlag(code, emojiSize = 16.sp, width = 18.dp)
         Spacer(Modifier.width(6.dp))
         Text(
             label,
@@ -152,3 +154,28 @@ private fun countryName(code: String): String {
     val locale = LocalConfiguration.current.locales[0]
     return Locale("", code).getDisplayCountry(locale).ifBlank { code }
 }
+
+/**
+ * A country's flag. Iran is drawn as its three colours alone, green, white
+ * and red, without the emblem or the script the emoji carries; every other
+ * country is its emoji.
+ */
+@Composable
+private fun CountryFlag(code: String, emojiSize: TextUnit, width: Dp) {
+    if (code != IRAN) {
+        Text(ExitCountries.flag(code), fontSize = emojiSize)
+        return
+    }
+    val shape = RoundedCornerShape(3.dp)
+    Column(
+        Modifier
+            .size(width = width, height = width * 0.68f)
+            .clip(shape)
+            .border(0.5.dp, WarpColors.Hairline, shape),
+    ) {
+        IranStripes.forEach { stripe -> Box(Modifier.fillMaxWidth().weight(1f).background(stripe)) }
+    }
+}
+
+private const val IRAN = "IR"
+private val IranStripes = listOf(Color(0xFF239F40), Color(0xFFFFFFFF), Color(0xFFDA0000))
