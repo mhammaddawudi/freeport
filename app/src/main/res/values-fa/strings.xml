@@ -136,6 +136,8 @@
     <string name="noize_balanced_desc">پیش‌فرض WireGuard.</string>
     <string name="noize_aggressive">تهاجمی</string>
     <string name="noize_aggressive_desc">سنگین‌ترین پرکردن WireGuard.</string>
+    <string name="noize_amnezia">AmneziaWG</string>
+    <string name="noize_amnezia_desc">بسته‌های بی‌معنی پیش از دست‌دادن، مثل اپ AmneziaWG.</string>
 
     <string name="ip_v4">IPv4</string>
     <string name="ip_v6">IPv6</string>

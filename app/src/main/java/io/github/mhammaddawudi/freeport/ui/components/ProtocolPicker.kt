@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -266,21 +267,24 @@ private fun SelectionMark(lit: Float, accent: Color) {
     }
 }
 
-/** Green and breathing when live, amber and still while the tunnel comes up. */
+/**
+ * Green and breathing when live, amber and still while the tunnel comes up.
+ * The breath is drawn, not laid out, and stops entirely on low-end phones.
+ */
 @Composable
 fun StatusDot(colour: Color, pulsing: Boolean, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "statusDot")
-    val pulse by transition.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(1_400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "dotPulse",
+    val lite = rememberLiteMotion()
+    val pulse = rememberLoop(running = pulsing && !lite, durationMs = 1_400, reverse = true)
+    Box(
+        modifier
+            .size(20.dp)
+            .drawBehind {
+                val halo = if (pulsing && !lite) pulse.value else 0f
+                drawCircle(
+                    colour.copy(alpha = 0.25f * (1f - halo) + 0.05f),
+                    radius = (5f + 4f * halo).dp.toPx(),
+                )
+                drawCircle(colour, radius = 4.dp.toPx())
+            },
     )
-    val halo = if (pulsing) pulse else 0f
-    Box(modifier.size(20.dp), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .size((10f + 8f * halo).dp)
-                .clip(CircleShape)
-                .background(colour.copy(alpha = 0.25f * (1f - halo) + 0.05f)),
-        )
-        Box(Modifier.size(8.dp).clip(CircleShape).background(colour))
-    }
 }

@@ -87,6 +87,8 @@ class MockWarpCore(
         return CoreResult.Ok(endpoint)
     }
 
+    override fun attachTun(job: JobHandle, fd: Int): Boolean = false
+
     override suspend fun startTunnel(
         identity: Identity,
         endpoint: Endpoint,

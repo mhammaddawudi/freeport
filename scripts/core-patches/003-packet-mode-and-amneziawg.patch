@@ -1,0 +1,535 @@
+diff -ruN a/warp/src/api.rs b/warp/src/api.rs
+--- a/warp/src/api.rs	2026-11-09 15:22:09
++++ b/warp/src/api.rs	2026-11-09 15:21:13
+@@ -476,6 +476,15 @@
+         .map_err(|_| WarpError::Other(format!("identity has an unusable ipv4 {}", identity.ipv4)))
+ }
+ 
++/// Where the app hands its TUN descriptor to a WireGuard tunnel once the
++/// tunnel is measured, for packet mode (see `packet`).
++pub type TunSlot = tokio::sync::watch::Sender<Option<i32>>;
++pub type TunWaiter = tokio::sync::watch::Receiver<Option<i32>>;
++
++pub fn tun_slot() -> (TunSlot, TunWaiter) {
++    tokio::sync::watch::channel(None)
++}
++
+ #[derive(Debug, Clone)]
+ pub struct TunnelSpec {
+     pub transport: Transport,
+@@ -487,6 +496,8 @@
+     pub warpnoize: warpnoize::WarpNoizeConfig,
+     pub keepalive: u16,
+     pub verify_timeout: Duration,
++    /// Packet mode for WireGuard: the app's TUN descriptor arrives here.
++    pub tun: Option<TunWaiter>,
+ }
+ 
+ impl TunnelSpec {
+@@ -499,6 +510,7 @@
+             warpnoize: warpnoize::from_profile("balanced"),
+             keepalive: 5,
+             verify_timeout: Duration::from_secs(10),
++            tun: None,
+         }
+     }
+ 
+@@ -600,6 +612,7 @@
+                         peer,
+                         spec.warpnoize.clone(),
+                         &listeners,
++                        spec.tun.clone(),
+                     )
+                     .await
+                 }
+diff -ruN a/warp/src/ffi.rs b/warp/src/ffi.rs
+--- a/warp/src/ffi.rs	2026-11-09 15:22:09
++++ b/warp/src/ffi.rs	2026-11-09 15:21:13
+@@ -49,6 +49,12 @@
+     JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+ }
+ 
++/// Packet-mode tunnels waiting for, or holding, the app's TUN descriptor.
++fn tun_slots() -> &'static Mutex<HashMap<u64, api::TunSlot>> {
++    static SLOTS: OnceLock<Mutex<HashMap<u64, api::TunSlot>>> = OnceLock::new();
++    SLOTS.get_or_init(|| Mutex::new(HashMap::new()))
++}
++
+ fn identities() -> &'static Mutex<HashMap<u64, Arc<Identity>>> {
+     static IDENTITIES: OnceLock<Mutex<HashMap<u64, Arc<Identity>>>> = OnceLock::new();
+     IDENTITIES.get_or_init(|| Mutex::new(HashMap::new()))
+@@ -244,6 +250,10 @@
+ 
+ #[derive(serde::Deserialize)]
+ struct TunnelPayload {
++    /// WireGuard only: wait for a TUN descriptor (`warp_tunnel_attach_tun`)
++    /// and carry the device's packets directly.
++    #[serde(default)]
++    packet: Option<bool>,
+     peer: String,
+     #[serde(default)]
+     transport: Option<String>,
+@@ -317,6 +327,7 @@
+ #[no_mangle]
+ pub extern "C" fn warp_job_free(id: u64) -> *mut c_char {
+     respond(|| {
++        tun_slots().lock().remove(&id);
+         let removed = jobs().lock().remove(&id);
+         match removed {
+             Some(job) => {
+@@ -480,10 +491,15 @@
+         let payload: TunnelPayload = unsafe { read_json(payload) }?;
+         let identity = identity_of(identity)?;
+         let peer = socket_of(&payload.peer, "the peer address")?;
+-        let spec = tunnel_spec_of(&payload)?;
++        let mut spec = tunnel_spec_of(&payload)?;
+         let want_ech = payload.ech.unwrap_or(false);
++        let slot = (payload.packet.unwrap_or(false) && spec.transport == api::Transport::WireGuard).then(|| {
++            let (slot, waiter) = api::tun_slot();
++            spec.tun = Some(waiter);
++            slot
++        });
+ 
+-        spawn_job(move |cancel| async move {
++        let reply = spawn_job(move |cancel| async move {
+             let mut spec = spec;
+             spec.ech = job_ech(want_ech, spec.transport).await?;
+ 
+@@ -492,7 +508,25 @@
+                 Err(crate::error::WarpError::Cancelled) => Ok(json!({"state": "stopped"})),
+                 Err(e) => Err(describe(e)),
+             }
+-        })
++        });
++        if let (Ok(value), Some(slot)) = (&reply, slot) {
++            if let Some(job) = value.get("job").and_then(Value::as_u64) {
++                tun_slots().lock().insert(job, slot);
++            }
++        }
++        reply
++    })
++}
++
++/// Hands a packet-mode tunnel the app's TUN descriptor; the core owns it
++/// from here and closes it when the tunnel ends.
++#[no_mangle]
++pub extern "C" fn warp_tunnel_attach_tun(job: u64, fd: i32) -> *mut c_char {
++    respond(|| {
++        let slots = tun_slots().lock();
++        let slot = slots.get(&job).ok_or_else(|| "that job is not a packet-mode tunnel".to_string())?;
++        slot.send(Some(fd)).map_err(|_| "the tunnel has already ended".to_string())?;
++        Ok(json!({"attached": job}))
+     })
+ }
+ 
+diff -ruN a/warp/src/lib.rs b/warp/src/lib.rs
+--- a/warp/src/lib.rs	2026-11-09 15:21:13
++++ b/warp/src/lib.rs	2026-11-09 15:21:13
+@@ -17,6 +17,8 @@
+ pub mod masque;
+ pub mod masque_h2;
+ pub mod netstack;
++#[cfg(unix)]
++pub mod packet;
+ pub mod noize;
+ pub mod prober;
+ pub mod psiphon;
+@@ -2683,7 +2685,7 @@
+         last_good = Some((peer, profile.clone(), profile_name));
+ 
+         let started = Instant::now();
+-        match run_wireguard_tunnel(identity.clone(), peer, profile, &listeners).await {
++        match run_wireguard_tunnel(identity.clone(), peer, profile, &listeners, None).await {
+             Ok(()) => log::warn!("[-] WireGuard tunnel closed; reconnecting"),
+             Err(e) => log::warn!("[-] WireGuard tunnel ended: {e}; reconnecting"),
+         }
+@@ -2708,6 +2710,7 @@
+     peer: SocketAddr,
+     warpnoize: warpnoize::WarpNoizeConfig,
+     listeners: &Listeners,
++    tun: Option<api::TunWaiter>,
+ ) -> Result<()> {
+     let private_key = identity.private_key_bytes()?;
+     let peer_public = identity.peer_public_key_bytes()?;
+@@ -2741,12 +2744,33 @@
+         ipv4,
+     );
+ 
++    // In packet mode the stack gets its own pair of channels and the router
++    // sits between it, the device and the tunnel.
++    let (stack_in, stack_out, router) = match tun {
++        #[cfg(unix)]
++        Some(waiter) => {
++            let (to_stack, stack_in) = tokio::sync::mpsc::channel(sysprofile::channel_capacity());
++            let (stack_out, from_stack) = tokio::sync::mpsc::channel(sysprofile::channel_capacity());
++            let router = packet::route(inbound_rx, outbound_tx, to_stack, from_stack, waiter);
++            (stack_in, stack_out, Some(router))
++        }
++        #[cfg(not(unix))]
++        Some(_) => (inbound_rx, outbound_tx, None),
++        None => (inbound_rx, outbound_tx, None),
++    };
++    let router = async move {
++        match router {
++            Some(router) => router.await,
++            None => std::future::pending().await,
++        }
++    };
++
+     let stack = netstack::spawn(
+         &identity.ipv4,
+         &identity.ipv6,
+         TUNNEL_MTU,
+-        inbound_rx,
+-        outbound_tx,
++        stack_in,
++        stack_out,
+     )?;
+ 
+     let policy = exitloc::Policy::from_env();
+@@ -2754,6 +2778,7 @@
+ 
+     let tunnel_result = tokio::select! {
+         result = tunnel.run(outbound_rx) => result,
++        result = router => result.map_err(|e| WarpError::Other(format!("packet mode: {e}"))),
+         reason = exit_policy_guard(&stack, &policy) => return Err(reason),
+         never = listeners.serve(&stack) => match never {},
+     };
+diff -ruN a/warp/src/packet.rs b/warp/src/packet.rs
+--- a/warp/src/packet.rs	1970-01-01 03:30:00
++++ b/warp/src/packet.rs	2026-11-09 15:21:13
+@@ -0,0 +1,234 @@
++//! Packet mode: the device's own IP packets go straight into WireGuard.
++//!
++//! Without it every app connection is ended twice on the phone — once by
++//! tun2socks, once by the userspace stack in front of WireGuard — and both
++//! recover from loss far worse than the phone's own TCP. With it the phone's
++//! kernel TCP runs end to end to the far server, the way the WireGuard and
++//! AmneziaWG apps carry traffic.
++//!
++//! The userspace stack stays up beside it for the app's own connections
++//! (health checks, speed tests, the SOCKS port). Replies are told apart by
++//! the connections that stack opened; everything else goes to the device.
++
++use std::collections::HashMap;
++use std::io;
++use std::net::IpAddr;
++use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
++use std::sync::Arc;
++use std::time::{Duration, Instant};
++
++use parking_lot::Mutex;
++use tokio::io::unix::AsyncFd;
++use tokio::sync::{mpsc, watch};
++
++use crate::error::{Result, WarpError};
++
++use crate::api::TunWaiter;
++
++/// TCP or UDP, our port, their address, their port.
++type Flow = (u8, u16, IpAddr, u16);
++
++const FLOW_IDLE: Duration = Duration::from_secs(10 * 60);
++const MAX_PACKET: usize = 65_535;
++const TCP: u8 = 6;
++const UDP: u8 = 17;
++
++/// The protocol and both ends of an IPv4 or IPv6 TCP/UDP packet.
++fn ends(pkt: &[u8]) -> Option<(u8, IpAddr, u16, IpAddr, u16)> {
++    let version = pkt.first()? >> 4;
++    let (proto, src, dst, offset) = match version {
++        4 if pkt.len() >= 20 => {
++            let ihl = usize::from(pkt[0] & 0x0f) * 4;
++            let src: [u8; 4] = pkt[12..16].try_into().ok()?;
++            let dst: [u8; 4] = pkt[16..20].try_into().ok()?;
++            (pkt[9], IpAddr::from(src), IpAddr::from(dst), ihl)
++        }
++        6 if pkt.len() >= 40 => {
++            let src: [u8; 16] = pkt[8..24].try_into().ok()?;
++            let dst: [u8; 16] = pkt[24..40].try_into().ok()?;
++            (pkt[6], IpAddr::from(src), IpAddr::from(dst), 40)
++        }
++        _ => return None,
++    };
++    if proto != TCP && proto != UDP {
++        return None;
++    }
++    let ports = pkt.get(offset..offset + 4)?;
++    let sport = u16::from_be_bytes([ports[0], ports[1]]);
++    let dport = u16::from_be_bytes([ports[2], ports[3]]);
++    Some((proto, src, sport, dst, dport))
++}
++
++/// The connections the userspace stack opened, so their replies reach it.
++#[derive(Default)]
++struct Flows(Mutex<HashMap<Flow, Instant>>);
++
++impl Flows {
++    fn opened(&self, pkt: &[u8]) {
++        let Some((proto, _, sport, dst, dport)) = ends(pkt) else { return };
++        let mut flows = self.0.lock();
++        if flows.len() > 4_096 {
++            flows.retain(|_, seen| seen.elapsed() < FLOW_IDLE);
++        }
++        flows.insert((proto, sport, dst, dport), Instant::now());
++    }
++
++    fn owns_reply(&self, pkt: &[u8]) -> bool {
++        let Some((proto, src, sport, _, dport)) = ends(pkt) else { return false };
++        match self.0.lock().get_mut(&(proto, dport, src, sport)) {
++            Some(seen) => {
++                *seen = Instant::now();
++                true
++            }
++            None => false,
++        }
++    }
++}
++
++struct Tun(AsyncFd<OwnedFd>);
++
++impl Tun {
++    fn adopt(fd: RawFd) -> io::Result<Tun> {
++        // Ours from here: the app passed a duplicate and keeps its own.
++        let owned = unsafe { OwnedFd::from_raw_fd(fd) };
++        let flags = unsafe { libc::fcntl(owned.as_raw_fd(), libc::F_GETFL) };
++        if flags < 0 || unsafe { libc::fcntl(owned.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
++            return Err(io::Error::last_os_error());
++        }
++        Ok(Tun(AsyncFd::new(owned)?))
++    }
++
++    async fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
++        loop {
++            let mut ready = self.0.readable().await?;
++            let done = ready.try_io(|fd| {
++                let n = unsafe { libc::read(fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
++                if n < 0 { Err(io::Error::last_os_error()) } else { Ok(n as usize) }
++            });
++            if let Ok(result) = done {
++                return result;
++            }
++        }
++    }
++
++    async fn write(&self, pkt: &[u8]) -> io::Result<()> {
++        loop {
++            let mut ready = self.0.writable().await?;
++            let done = ready.try_io(|fd| {
++                let n = unsafe { libc::write(fd.as_raw_fd(), pkt.as_ptr().cast(), pkt.len()) };
++                if n < 0 { Err(io::Error::last_os_error()) } else { Ok(()) }
++            });
++            if let Ok(result) = done {
++                return result;
++            }
++        }
++    }
++}
++
++/// Moves packets between WireGuard, the userspace stack and, once the app
++/// hands it over, the device. Runs until one side closes.
++pub async fn route(
++    mut from_wg: mpsc::Receiver<Vec<u8>>,
++    to_wg: mpsc::Sender<Vec<u8>>,
++    to_stack: mpsc::Sender<Vec<u8>>,
++    mut from_stack: mpsc::Receiver<Vec<u8>>,
++    mut waiter: TunWaiter,
++) -> Result<()> {
++    let flows = Arc::new(Flows::default());
++    let (tun_tx, tun_rx) = watch::channel::<Option<Arc<Tun>>>(None);
++
++    // The app's own connections, out through the tunnel.
++    let stack_flows = flows.clone();
++    let stack_wg = to_wg.clone();
++    let outbound = async move {
++        while let Some(pkt) = from_stack.recv().await {
++            stack_flows.opened(&pkt);
++            if stack_wg.send(pkt).await.is_err() {
++                break;
++            }
++        }
++    };
++
++    // Replies: the stack's to the stack, everything else to the device.
++    let inbound = async move {
++        while let Some(pkt) = from_wg.recv().await {
++            let device = tun_rx.borrow().clone();
++            match device {
++                Some(tun) if !flows.owns_reply(&pkt) => {
++                    if let Err(e) = tun.write(&pkt).await {
++                        log::debug!("[packet] device write failed: {e}");
++                    }
++                }
++                _ => {
++                    if to_stack.send(pkt).await.is_err() {
++                        break;
++                    }
++                }
++            }
++        }
++    };
++
++    // The device's packets, straight in, once the app has handed it over.
++    let device = async move {
++        let fd = loop {
++            if let Some(fd) = *waiter.borrow_and_update() {
++                break fd;
++            }
++            if waiter.changed().await.is_err() {
++                return Ok::<(), WarpError>(());
++            }
++        };
++        let tun = Arc::new(Tun::adopt(fd).map_err(|e| WarpError::Other(format!("the device tunnel: {e}")))?);
++        let _ = tun_tx.send(Some(tun.clone()));
++        log::info!("[+] packet mode: the device's traffic goes straight into wireguard");
++        let mut buf = vec![0u8; MAX_PACKET];
++        loop {
++            let n = tun.read(&mut buf).await.map_err(|e| WarpError::Other(format!("the device tunnel: {e}")))?;
++            if n == 0 {
++                return Ok(());
++            }
++            if to_wg.send(buf[..n].to_vec()).await.is_err() {
++                return Ok(());
++            }
++        }
++    };
++
++    tokio::select! {
++        _ = outbound => Ok(()),
++        _ = inbound => Ok(()),
++        result = device => result,
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn udp4(src: [u8; 4], sport: u16, dst: [u8; 4], dport: u16) -> Vec<u8> {
++        let mut pkt = vec![0u8; 28];
++        pkt[0] = 0x45;
++        pkt[9] = UDP;
++        pkt[12..16].copy_from_slice(&src);
++        pkt[16..20].copy_from_slice(&dst);
++        pkt[20..22].copy_from_slice(&sport.to_be_bytes());
++        pkt[22..24].copy_from_slice(&dport.to_be_bytes());
++        pkt
++    }
++
++    #[test]
++    fn replies_to_the_stacks_connections_go_back_to_it() {
++        let flows = Flows::default();
++        flows.opened(&udp4([172, 16, 0, 2], 40_000, [1, 1, 1, 1], 53));
++        assert!(flows.owns_reply(&udp4([1, 1, 1, 1], 53, [172, 16, 0, 2], 40_000)));
++        // Same server, another port: a device connection.
++        assert!(!flows.owns_reply(&udp4([1, 1, 1, 1], 53, [172, 16, 0, 2], 40_001)));
++    }
++
++    #[test]
++    fn short_or_foreign_packets_are_nobodys() {
++        assert!(ends(&[0x45, 0, 0]).is_none());
++        let mut icmp = udp4([1, 1, 1, 1], 0, [172, 16, 0, 2], 0);
++        icmp[9] = 1;
++        assert!(ends(&icmp).is_none());
++    }
++}
+diff -ruN a/warp/src/warpnoize.rs b/warp/src/warpnoize.rs
+--- a/warp/src/warpnoize.rs	2026-11-09 15:21:13
++++ b/warp/src/warpnoize.rs	2026-11-09 15:21:13
+@@ -139,13 +139,74 @@
+         }
+     }
+ 
++    /// AmneziaWG's own client defaults: a few junk datagrams of 40-70
++    /// bytes straight before the handshake, no signature packets. The
++    /// shape that got through where plain WireGuard did not.
++    pub fn amnezia() -> Self {
++        Self {
++            jc: 4,
++            jc_before_hs: 4,
++            jmin: 40,
++            jmax: 70,
++            ..Self::off()
++        }
++    }
++
++    /// Applies AmneziaWG-style settings over this profile, one `Key = value`
++    /// per line or separated by `;`: Jc, Jmin, Jmax and I1-I5 as in an
++    /// AmneziaWG config. S1-S4 and H1-H4 are read but must stay at their
++    /// defaults (0 and 1-4): Cloudflare runs plain WireGuard and drops any
++    /// handshake with padding or other message types.
++    pub fn with_awg(mut self, spec: &str) -> Self {
++        for item in spec.split(|c| c == '\n' || c == ';') {
++            let Some((key, value)) = item.split_once('=') else { continue };
++            let (key, value) = (key.trim().to_ascii_lowercase(), value.trim());
++            let number = value.parse::<usize>().ok();
++            let signature = (!value.is_empty()).then(|| value.to_string());
++            match (key.as_str(), number) {
++                ("jc", Some(n)) => {
++                    self.jc = n;
++                    self.jc_before_hs = n;
++                    self.jc_after_i1 = 0;
++                }
++                ("jmin", Some(n)) => self.jmin = n,
++                ("jmax", Some(n)) => self.jmax = n,
++                ("i1", _) => self.i1 = signature,
++                ("i2", _) => self.i2 = signature,
++                ("i3", _) => self.i3 = signature,
++                ("i4", _) => self.i4 = signature,
++                ("i5", _) => self.i5 = signature,
++                ("s1" | "s2" | "s3" | "s4", Some(0)) => {}
++                ("h1", Some(1)) | ("h2", Some(2)) | ("h3", Some(3)) | ("h4", Some(4)) => {}
++                ("s1" | "s2" | "s3" | "s4" | "h1" | "h2" | "h3" | "h4", _) => {
++                    log::warn!("[-] {key} = {value} is ignored: cloudflare only answers plain wireguard headers");
++                }
++                _ => log::warn!("[-] unknown amneziawg setting '{key}'"),
++            }
++        }
++        if self.jmax < self.jmin {
++            self.jmax = self.jmin;
++        }
++        self
++    }
++
+     pub fn is_enabled(&self) -> bool {
+         self.jc > 0 || self.i1.is_some()
+     }
+ }
+ 
++/// The named profile, with any AmneziaWG settings in `WARP_AWG` over it.
+ pub fn from_profile(name: &str) -> WarpNoizeConfig {
++    let profile = named_profile(name);
++    match std::env::var("WARP_AWG") {
++        Ok(spec) if !spec.trim().is_empty() => profile.with_awg(&spec),
++        _ => profile,
++    }
++}
++
++fn named_profile(name: &str) -> WarpNoizeConfig {
+     match name.trim().to_ascii_lowercase().as_str() {
++        "amnezia" | "amneziawg" | "awg" => WarpNoizeConfig::amnezia(),
+         "off" | "none" => WarpNoizeConfig::off(),
+         "light" => WarpNoizeConfig::light(),
+         "firewall" => WarpNoizeConfig::firewall(),
+@@ -423,6 +484,21 @@
+         let balanced = WarpNoizeConfig::balanced();
+         assert_ne!(from_profile("firewall").jc, balanced.jc);
+         assert_ne!(from_profile("gfw").jc, balanced.jc);
++    }
++
++    #[test]
++    fn amnezia_settings_override_the_profile() {
++        let cfg = WarpNoizeConfig::off().with_awg("Jc = 5\nJmin = 30; Jmax = 20\nI1 = <r 10>\nH1 = 1\nS1 = 0");
++        assert_eq!(cfg.jc_before_hs, 5);
++        assert_eq!((cfg.jmin, cfg.jmax), (30, 30));
++        assert_eq!(cfg.i1.as_deref(), Some("<r 10>"));
++    }
++
++    #[test]
++    fn the_amnezia_profile_sends_only_plain_junk() {
++        let cfg = named_profile("AmneziaWG");
++        assert_eq!((cfg.jc_before_hs, cfg.jmin, cfg.jmax), (4, 40, 70));
++        assert!(cfg.i1.is_none());
+     }
+ 
+     #[test]

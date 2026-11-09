@@ -136,6 +136,8 @@
     <string name="noize_balanced_desc">Standarda WireGuard.</string>
     <string name="noize_aggressive">Tund</string>
     <string name="noize_aggressive_desc">Dagirtina herî giran a WireGuard.</string>
+    <string name="noize_amnezia">AmneziaWG</string>
+    <string name="noize_amnezia_desc">Pakêtên bêwate berî destpêkê, wek sepana AmneziaWG.</string>
 
     <string name="ip_v4">IPv4</string>
     <string name="ip_v6">IPv6</string>

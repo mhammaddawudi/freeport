@@ -24,6 +24,7 @@ extern char *warp_identity_open(const char *payload);
 extern char *warp_identity_free(uint64_t id);
 extern char *warp_scan_start(uint64_t identity, const char *payload);
 extern char *warp_tunnel_start(uint64_t identity, const char *payload);
+extern char *warp_tunnel_attach_tun(uint64_t job, int32_t fd);
 extern char *warp_core_start(const char *arguments);
 
 static const char *NULL_REPLY = "{\"ok\":false,\"error\":\"the core returned nothing\"}";
@@ -167,6 +168,10 @@ JNIEXPORT jstring JNICALL JNI_FN(nativeScanStart)(
 JNIEXPORT jstring JNICALL JNI_FN(nativeTunnelStart)(
     JNIEnv *env, jobject self, jlong identity, jstring payload) {
     return call_with_id_and_text(env, identity, payload, warp_tunnel_start);
+}
+
+JNIEXPORT jstring JNICALL JNI_FN(nativeAttachTun)(JNIEnv *env, jobject self, jlong job, jint fd) {
+    return take_reply(env, warp_tunnel_attach_tun((uint64_t) job, (int32_t) fd));
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(nativeJobPoll)(JNIEnv *env, jobject self, jlong id) {

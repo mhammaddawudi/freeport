@@ -24,11 +24,13 @@ android {
     buildToolsVersion = "34.0.0"
 
     defaultConfig {
+        // Phones only: x86_64 is for emulators and would add ~27 MB to the universal apk.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         applicationId = "io.github.mhammaddawudi.freeport"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "2.5.1"
+        versionCode = 18
+        versionName = "3.0.0"
         // Where edges measured by people on the same operator are shared
         // (server/edge-board). Empty turns sharing off; each phone still
         // learns its own fast edges per operator.
@@ -38,8 +40,7 @@ android {
 
     // One apk per phone architecture plus a universal one. The per-ABI apks
     // are what most people should install — they are less than half the size.
-    // The universal apk carries every ABI in jniLibs (arm64-v8a, armeabi-v7a,
-    // x86_64). All of them share one versionCode, so any of them can be
+    // The universal apk carries both phone ABIs (arm64-v8a, armeabi-v7a). All of them share one versionCode, so any of them can be
     // installed over any other.
     splits {
         abi {

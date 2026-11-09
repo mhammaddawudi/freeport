@@ -2,11 +2,8 @@ package io.github.mhammaddawudi.freeport.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -26,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -40,6 +38,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import io.github.mhammaddawudi.freeport.ui.theme.Aurora
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.isEngaged
@@ -51,12 +54,12 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * The connect button, and the whole of the connection's state.
+ * The connect button, and the whole of the connection's state: a portal.
  *
- * There is no disc, ring or plate behind it — the star is the target, and its
- * own state carries the status. Idle it sits dim and still-ish, turning very
- * slowly; while a session comes up it breathes; connected it burns at full
- * gold inside a halo that pulses with it.
+ * Three gyroscope rings turn round a glass core. At rest they drift slowly in
+ * violet; while a session comes up they spin and the progress arc climbs in
+ * magenta; connected, the aurora closes into one bright ring and light waves
+ * leave it. The warp field behind streams out from its centre.
  */
 @Composable
 fun ConnectOrb(
@@ -77,20 +80,13 @@ fun ConnectOrb(
     )
     val haptics = LocalHapticFeedback.current
 
-    val infinite = rememberInfiniteTransition(label = "orb")
-    // Fast enough to read as motion at a glance. The arc it drives is only
-    // drawn while a session is coming up, so nothing turns when idle and the
-    // speed is free to say "working" rather than "idling".
-
-    val shimmer by infinite.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(1_800, easing = LinearEasing)), label = "shimmer",
-    )
-    val ripple by infinite.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(2800, easing = LinearEasing)), label = "ripple",
-    )
-    val pulse by infinite.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "pulse",
-    )
+    // Nothing turns while disconnected: the loops only run while a session
+    // comes up, or once it is up on phones that can afford it, so an idle
+    // screen asks for no frames at all.
+    val lite = rememberLiteMotion()
+    val shimmer by rememberLoop(running = busy || (connected && !lite), durationMs = if (busy) 2_400 else 14_000)
+    val ripple by rememberLoop(running = connected && !lite, durationMs = 2_800)
+    val pulse by rememberLoop(running = busy, durationMs = 2_200, reverse = true)
 
     val glow by animateFloatAsState(if (connected) 1f else 0f, tween(900, easing = FastOutSlowInEasing), label = "glow")
     val busyGlow by animateFloatAsState(if (busy) 1f else 0f, tween(500), label = "busyGlow")
@@ -146,11 +142,19 @@ fun ConnectOrb(
     val discTop = WarpColors.SurfaceRaised
     val discBottom = WarpColors.Void
     val dialIdle = WarpColors.Ink
+    val dark = WarpColors.IsDark
+    val aurora = Aurora.colors()
+    val focus = LocalFieldFocus.current
+    DisposableEffect(focus) { onDispose { focus.centre = null } }
 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(diameter)
+                .onGloballyPositioned { box ->
+                    val at = box.positionInRoot()
+                    focus.centre = Offset(at.x + box.size.width / 2f, at.y + box.size.height / 2f)
+                }
                 .clickable(
                     interactionSource = interaction,
                     indication = null,
@@ -163,197 +167,36 @@ fun ConnectOrb(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Canvas(Modifier.fillMaxSize()) {
-                val centre = center
-                val radius = size.minDimension / 2f
-                val breath = if (busy) 1f + 0.02f * pulse else 1f
-                val ringRadius = radius * 0.62f * grow * press * breath
-                val stroke = 6.dp.toPx()
-                val box = Offset(centre.x - ringRadius, centre.y - ringRadius)
-                val span = Size(ringRadius * 2, ringRadius * 2)
-
-                // Connected: rings travelling outward from the button.
-                if (glow > 0.01f) {
-                    for (i in 0 until 3) {
-                        val t = (ripple + i / 3f) % 1f
-                        drawCircle(
-                            color = tone.primary.copy(alpha = (1f - t) * 0.22f * glow),
-                            radius = ringRadius * (1f + 0.5f * t),
-                            center = centre,
-                            style = Stroke(1.5.dp.toPx()),
-                        )
-                    }
-                }
-
-                // The inside of the ring is lit while the session is coming up
-                // as well as once it is up, so the button reads as something
-                // switched on rather than an outline.
-                if (busyGlow > 0.01f) {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(
-                                rim.copy(alpha = 0.07f * busyGlow * (0.6f + 0.4f * pulse)),
-                                Color.Transparent,
-                            ),
-                            centre,
-                            ringRadius,
-                        ),
-                        radius = ringRadius,
-                        center = centre,
-                    )
-                }
-
-                // The dial: ticks round the ring that light up as the session
-                // comes up — the same progress the arc shows, made legible at
-                // a glance like an instrument rather than a spinner.
-                val ticks = 60
-                val lit = when {
-                    connected -> 1f
-                    busy -> progress
-                    else -> 0f
-                }
-                for (i in 0 until ticks) {
-                    val fraction = i / ticks.toFloat()
-                    val angle = ((-90f + 360f * fraction) * (PI / 180f)).toFloat()
-                    val major = i % 5 == 0
-                    val inner = radius * (if (major) 0.80f else 0.82f) * grow * press
-                    val outer = radius * 0.86f * grow * press
-                    val on = fraction < lit
-                    val colour = if (on) {
-                        core.copy(alpha = 0.55f + 0.45f * glow)
-                    } else {
-                        dialIdle.copy(alpha = if (major) 0.16f else 0.07f)
-                    }
-                    drawLine(
-                        color = colour,
-                        start = Offset(centre.x + inner * cos(angle), centre.y + inner * sin(angle)),
-                        end = Offset(centre.x + outer * cos(angle), centre.y + outer * sin(angle)),
-                        strokeWidth = if (major) 2.dp.toPx() else 1.4.dp.toPx(),
-                        cap = StrokeCap.Round,
-                    )
-                }
-
-                // A glass disc inside the ring, lit from the top left, so the
-                // button reads as something you can press.
-                val discRadius = ringRadius - stroke * 1.4f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(discTop, discBottom),
-                        Offset(centre.x - discRadius * 0.35f, centre.y - discRadius * 0.45f),
-                        discRadius * 1.5f,
+            Canvas(Modifier.fillMaxSize().graphicsLayer()) {
+                drawPortal(
+                    PortalFrame(
+                        spin = shimmer,
+                        ripple = ripple,
+                        pulse = pulse,
+                        glow = glow,
+                        busyGlow = busyGlow,
+                        grow = grow * press * (if (busy) 1f + 0.02f * pulse else 1f),
+                        progress = progress,
+                        core = core,
+                        rim = rim,
+                        aurora = aurora,
+                        discTop = discTop,
+                        discBottom = discBottom,
+                        track = dialIdle,
+                        dark = dark,
+                        waves = !lite,
                     ),
-                    radius = discRadius,
-                    center = centre,
-                )
-
-                // The ring. Idle it is a faint outline; connected it closes
-                // into a full bright circle; connecting, an arc runs round it.
-                drawCircle(
-                    color = core.copy(alpha = 0.30f + 0.25f * glow),
-                    radius = ringRadius,
-                    center = centre,
-                    style = Stroke(stroke, cap = StrokeCap.Round),
-                )
-                if (glow > 0.01f) {
-                    drawArc(
-                        brush = Brush.sweepGradient(listOf(rim, core, rim), centre),
-                        startAngle = -90f,
-                        sweepAngle = 360f * glow,
-                        useCenter = false,
-                        topLeft = box,
-                        size = span,
-                        style = Stroke(stroke, cap = StrokeCap.Round),
-                    )
-                }
-                // Connecting. The arc is the honest part — it only advances
-                // when the connection does — so the life comes from three
-                // things layered over it that cost nothing in meaning: a lit
-                // head at the growing end, a highlight that keeps travelling
-                // the ring, and faint rings leaving it.
-                if (busyGlow > 0.01f) {
-                    for (i in 0 until 2) {
-                        val t = (ripple + i / 2f) % 1f
-                        drawCircle(
-                            color = rim.copy(alpha = (1f - t) * 0.13f * busyGlow),
-                            radius = ringRadius * (1f + 0.34f * t),
-                            center = centre,
-                            style = Stroke(1.5.dp.toPx()),
-                        )
-                    }
-
-                    rotate(shimmer * 360f, centre) {
-                        drawArc(
-                            color = core.copy(alpha = 0.22f * busyGlow),
-                            startAngle = -115f,
-                            sweepAngle = 50f,
-                            useCenter = false,
-                            topLeft = box,
-                            size = span,
-                            style = Stroke(stroke * 0.7f, cap = StrokeCap.Round),
-                        )
-                    }
-
-                    drawArc(
-                        brush = Brush.sweepGradient(listOf(rim, core, rim), centre),
-                        startAngle = -90f,
-                        sweepAngle = 360f * progress,
-                        useCenter = false,
-                        topLeft = box,
-                        size = span,
-                        style = Stroke(stroke, cap = StrokeCap.Round),
-                        alpha = busyGlow,
-                    )
-
-                    if (progress > 0.01f) {
-                        val head = (-90f + 360f * progress) * (PI / 180f).toFloat()
-                        val headAt = Offset(
-                            centre.x + ringRadius * cos(head),
-                            centre.y + ringRadius * sin(head),
-                        )
-                        val halo = stroke * (2.0f + 0.5f * pulse)
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                listOf(core.copy(alpha = 0.50f * busyGlow), Color.Transparent),
-                                headAt,
-                                halo,
-                            ),
-                            radius = halo,
-                            center = headAt,
-                        )
-                        drawCircle(
-                            color = core.copy(alpha = busyGlow),
-                            radius = stroke * 0.52f,
-                            center = headAt,
-                        )
-                    }
-                }
-
-                // The power mark, bright when connected and dim when not.
-                val markRadius = ringRadius * 0.40f
-                val markColour = core.copy(alpha = 0.55f + 0.45f * glow)
-                drawArc(
-                    color = markColour,
-                    startAngle = 300f,
-                    sweepAngle = 300f,
-                    useCenter = false,
-                    topLeft = Offset(centre.x - markRadius, centre.y - markRadius + markRadius * 0.12f),
-                    size = Size(markRadius * 2, markRadius * 2),
-                    style = Stroke(stroke * 0.8f, cap = StrokeCap.Round),
-                )
-                drawLine(
-                    color = markColour,
-                    start = Offset(centre.x, centre.y - markRadius * 1.15f),
-                    end = Offset(centre.x, centre.y + markRadius * 0.05f),
-                    strokeWidth = stroke * 0.8f,
-                    cap = StrokeCap.Round,
                 )
             }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             text = label.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = WarpColors.InkMuted,
+            style = MaterialTheme.typography.labelSmall.copy(
+                brush = if (connected) Brush.horizontalGradient(aurora) else null,
+                letterSpacing = 3.sp,
+            ),
+            color = if (connected) Color.Unspecified else WarpColors.InkMuted,
         )
     }
 }

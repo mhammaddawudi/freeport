@@ -67,6 +67,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import io.github.mhammaddawudi.freeport.ui.TrafficUi
 import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
+import io.github.mhammaddawudi.freeport.ui.theme.Aurora
 import io.github.mhammaddawudi.freeport.ui.theme.NumericStyle
 import io.github.mhammaddawudi.freeport.ui.theme.Tone
 import io.github.mhammaddawudi.freeport.ui.theme.Tones
@@ -153,7 +154,7 @@ private fun BrandBar() {
                 .clip(RoundedCornerShape(12.dp))
                 // Dark in both themes: the mark is white, as on the app icon.
                 .background(Brush.verticalGradient(LogoTile))
-                .border(1.dp, WarpColors.Hairline, RoundedCornerShape(12.dp)),
+                .border(1.dp, Brush.linearGradient(Aurora.colors()), RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Image(painterResource(R.mipmap.ic_launcher_foreground), contentDescription = null, Modifier.size(52.dp))
@@ -162,14 +163,14 @@ private fun BrandBar() {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge,
-                color = WarpColors.Ink,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    brush = Brush.horizontalGradient(listOf(WarpColors.Ink, WarpColors.Ink) + Aurora.colors().drop(1)),
+                ),
                 maxLines = 1,
             )
             Text(
                 text = "v${BuildConfig.VERSION_NAME}",
-                style = MaterialTheme.typography.labelSmall,
-                color = WarpColors.InkFaint,
+                style = MaterialTheme.typography.labelSmall.copy(brush = Brush.horizontalGradient(Aurora.colors())),
                 maxLines = 1,
             )
         }
@@ -269,8 +270,10 @@ private fun StatusBlock(state: ConnectionState) {
         ) { text ->
             Text(
                 text,
-                style = MaterialTheme.typography.displaySmall,
-                color = WarpColors.Ink,
+                style = MaterialTheme.typography.displaySmall.copy(
+                    brush = if (state is ConnectionState.Connected) Brush.horizontalGradient(Aurora.colors()) else null,
+                ),
+                color = if (state is ConnectionState.Connected) Color.Unspecified else WarpColors.Ink,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )

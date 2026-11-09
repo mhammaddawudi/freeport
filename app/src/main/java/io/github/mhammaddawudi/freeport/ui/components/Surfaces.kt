@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
+import io.github.mhammaddawudi.freeport.ui.theme.Aurora
 import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 import java.util.Locale
 
@@ -55,16 +56,25 @@ fun GlassCard(
     val edge = if (accent != null) {
         Brush.verticalGradient(listOf(accent.copy(alpha = 0.70f), accent.copy(alpha = 0.18f), accent.copy(alpha = 0.06f)))
     } else {
-        Brush.verticalGradient(
-            listOf(WarpColors.Ink.copy(alpha = 0.16f), WarpColors.Ink.copy(alpha = 0.05f), WarpColors.Ink.copy(alpha = 0.03f)),
+        // The aurora catching the top edge of the glass.
+        Brush.linearGradient(
+            listOf(
+                WarpColors.Violet.copy(alpha = 0.45f),
+                WarpColors.Aqua.copy(alpha = 0.18f),
+                WarpColors.Ink.copy(alpha = 0.04f),
+                WarpColors.Mint.copy(alpha = 0.10f),
+            ),
         )
     }
+    // Translucent, so the warp field shows faintly through.
+    val glass = if (WarpColors.IsDark) 0.72f else 0.82f
     val wash = accent?.copy(alpha = 0.07f) ?: Color.Transparent
     Column(
         modifier = modifier
             .shadow(18.dp, shape, ambientColor = WarpColors.Shadow, spotColor = WarpColors.Shadow.copy(alpha = if (WarpColors.IsDark) 0.6f else 0.22f))
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(WarpColors.SurfaceRaised, WarpColors.Surface)))
+            .background(Brush.verticalGradient(listOf(WarpColors.SurfaceRaised.copy(alpha = glass), WarpColors.Surface.copy(alpha = glass))))
+            .topHighlight(if (WarpColors.IsDark) 0.14f else 0.5f)
             .background(Brush.verticalGradient(listOf(wash, Color.Transparent)))
             .border(1.dp, edge, shape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -83,7 +93,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: String? 
             Modifier
                 .size(width = 3.dp, height = 12.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(WarpColors.Ink.copy(alpha = 0.35f)),
+                .background(Brush.verticalGradient(Aurora.colors())),
         )
         Spacer(Modifier.width(8.dp))
         Text(

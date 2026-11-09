@@ -79,6 +79,8 @@
     <string name="noize_balanced_desc">بنەڕەتی WireGuard.</string>
     <string name="noize_aggressive">توند</string>
     <string name="noize_aggressive_desc">قورسترین پڕکردنەوەی WireGuard.</string>
+    <string name="noize_amnezia">AmneziaWG</string>
+    <string name="noize_amnezia_desc">پاکەتی بێمانا پێش دەستپێکردن، وەک ئەپی AmneziaWG.</string>
 
     <string name="ip_v4">IPv4</string>
     <string name="ip_v6">IPv6</string>

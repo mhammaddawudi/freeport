@@ -27,6 +27,7 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +45,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.isEngaged
 import io.github.mhammaddawudi.freeport.ui.components.WarpTab
-import io.github.mhammaddawudi.freeport.ui.components.AuroraBackground
+import io.github.mhammaddawudi.freeport.ui.components.WarpField
+import io.github.mhammaddawudi.freeport.ui.components.FieldFocus
+import io.github.mhammaddawudi.freeport.ui.components.LocalFieldFocus
 import io.github.mhammaddawudi.freeport.ui.components.FloatingTabBar
 import io.github.mhammaddawudi.freeport.ui.components.UpdateDialog
 import io.github.mhammaddawudi.freeport.ui.components.isShown
@@ -116,10 +119,12 @@ fun WarpRoot(viewModel: WarpViewModel = viewModel()) {
     // Blurred behind the update dialog (Android 12+; older phones get the dim alone).
     val asking = isShown(update)
 
+    val fieldFocus = remember { FieldFocus() }
+    CompositionLocalProvider(LocalFieldFocus provides fieldFocus) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().then(if (asking) Modifier.blur(18.dp) else Modifier)) {
-            // A neutral backdrop in every state: the connect button carries the state.
-            AuroraBackground()
+            // The warp field: still at rest, light speed while connecting.
+            WarpField(state)
 
             AnimatedContent(
                 targetState = tab,
@@ -214,6 +219,7 @@ fun WarpRoot(viewModel: WarpViewModel = viewModel()) {
             onDownload = viewModel::installUpdate,
             onLater = viewModel::postponeUpdate,
         )
+    }
     }
 }
 

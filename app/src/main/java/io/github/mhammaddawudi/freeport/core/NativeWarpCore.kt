@@ -99,6 +99,9 @@ class NativeWarpCore : WarpCore {
         }
     }
 
+    override fun attachTun(job: JobHandle, fd: Int): Boolean =
+        JSONObject(nativeAttachTun(job.id, fd)).optBoolean("ok")
+
     override suspend fun startManaged(
         settings: WarpSettings,
         configDir: String,
@@ -230,6 +233,7 @@ class NativeWarpCore : WarpCore {
     private external fun nativeIdentityFree(identity: Long): String
     private external fun nativeScanStart(identity: Long, payload: String): String
     private external fun nativeTunnelStart(identity: Long, payload: String): String
+    private external fun nativeAttachTun(job: Long, fd: Int): String
     private external fun nativeJobPoll(job: Long): String
     private external fun nativeJobCancel(job: Long): String
     private external fun nativeJobFree(job: Long): String

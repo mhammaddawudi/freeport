@@ -136,6 +136,8 @@
     <string name="noize_balanced_desc">The WireGuard default.</string>
     <string name="noize_aggressive">Aggressive</string>
     <string name="noize_aggressive_desc">The heaviest WireGuard padding.</string>
+    <string name="noize_amnezia">AmneziaWG</string>
+    <string name="noize_amnezia_desc">Junk packets before the handshake, the way the AmneziaWG app sends them.</string>
 
     <string name="ip_v4">IPv4</string>
     <string name="ip_v6">IPv6</string>

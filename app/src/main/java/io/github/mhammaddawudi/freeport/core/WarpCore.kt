@@ -67,6 +67,14 @@ interface WarpCore {
     ): CoreResult<JobHandle>
 
     /**
+     * Gives a WireGuard tunnel started in packet mode the device's tun
+     * descriptor, so packets go straight into WireGuard without tun2socks.
+     * The core takes ownership of [fd] only when this returns true.
+     * Corresponds to `warp_tunnel_attach_tun`.
+     */
+    fun attachTun(job: JobHandle, fd: Int): Boolean
+
+    /**
      * Hands the whole connection to the core — identity, scan and tunnel —
      * the way the CLI runs it. Corresponds to `warp_core_start`.
      *

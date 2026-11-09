@@ -78,7 +78,7 @@ enum class Protocol(
         transport = "wg",
         coreArguments = listOf("--wg"),
         defaultPort = 2408,
-        defaultNoize = "balanced",
+        defaultNoize = "amnezia",
     ),
 
     /** Psiphon's own network, outside Cloudflare: free, no cap, picks its own servers. */
@@ -114,6 +114,9 @@ enum class Protocol(
             WireGuard, Gool -> NoizeProfile.wireguardProfiles
             Psiphon, Tor -> emptyList()
         }
+
+    /** Plain WireGuard: slow to reach full speed, then the fastest. Automatic gives it time. */
+    val warmsUp: Boolean get() = this == WireGuard
 
     companion object {
         fun fromId(id: String?): Protocol = entries.firstOrNull { it.id == id } ?: Auto
@@ -182,11 +185,12 @@ enum class NoizeProfile(
     Firewall("firewall", R.string.noize_firewall, R.string.noize_firewall_desc),
     Gfw("gfw", R.string.noize_heavy, R.string.noize_heavy_desc),
     Balanced("balanced", R.string.noize_balanced, R.string.noize_balanced_desc),
-    Aggressive("aggressive", R.string.noize_aggressive, R.string.noize_aggressive_desc);
+    Aggressive("aggressive", R.string.noize_aggressive, R.string.noize_aggressive_desc),
+    Amnezia("amnezia", R.string.noize_amnezia, R.string.noize_amnezia_desc);
 
     companion object {
         val masqueProfiles = listOf(Off, Light, Firewall, Gfw)
-        val wireguardProfiles = listOf(Off, Light, Balanced, Aggressive)
+        val wireguardProfiles = listOf(Amnezia, Off, Light, Balanced, Aggressive)
 
         fun fromWire(wire: String?, fallback: NoizeProfile = Firewall): NoizeProfile =
             entries.firstOrNull { it.wire == wire } ?: fallback

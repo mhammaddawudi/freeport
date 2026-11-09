@@ -34,6 +34,13 @@ import java.util.concurrent.ConcurrentHashMap
 /** Whether device traffic is captured, or only the local proxy is up. */
 enum class TunMode { FullDevice, ProxyOnly }
 
+/**
+ * A WireGuard tunnel that takes the device's packets itself: the tun carries
+ * the tunnel's own addresses, and [attach] hands the core a descriptor it
+ * then owns. No tun2socks and no second TCP stack in between.
+ */
+class PacketPath(val ipv4: String, val ipv6: String, val attach: (fd: Int) -> Boolean)
+
 sealed interface ConnectionState {
     data object Idle : ConnectionState
     data class Preparing(val protocol: Protocol) : ConnectionState
@@ -109,7 +116,7 @@ class WarpEngine(
          * locally, so connections reach the proxy by name — needed by a proxy
          * that carries no UDP.
          */
-        fun onTunnelUp(settings: WarpSettings, mappedDns: Boolean = false): TunMode
+        fun onTunnelUp(settings: WarpSettings, mappedDns: Boolean = false, packet: PacketPath? = null): TunMode
 
         /** The tunnel is gone. Must be safe to call when nothing is up. */
         fun onTunnelDown()
@@ -120,7 +127,7 @@ class WarpEngine(
          * so the phone never sees the VPN go down. Null when there is no
          * capture to keep, and the caller sets one up from scratch.
          */
-        fun onTunnelSwapped(settings: WarpSettings, mappedDns: Boolean = false): TunMode? = null
+        fun onTunnelSwapped(settings: WarpSettings, mappedDns: Boolean = false, packet: PacketPath? = null): TunMode? = null
     }
 
     private val identityDir = File(context.filesDir, "identity").apply { mkdirs() }
@@ -423,7 +430,7 @@ class WarpEngine(
                 fastestKnown(candidates, shared.mapValues { it.value.await() })
                     .filter { (protocol, _) -> protocol in identities },
                 stalledAt,
-            ) { it.first }
+            ) { it.first }.sortedBy { (protocol, _) -> if (protocol.warmsUp && protocol !in stalled) 0 else 1 }
             if (known.isNotEmpty()) log.info("[*] automatic: ${known.size} edge(s) known to be fast here, fastest first")
             for ((protocol, edge) in known.take(MAX_KNOWN_TRIES)) {
                 val settings = candidates.getValue(protocol)
@@ -479,13 +486,15 @@ class WarpEngine(
             lanes.forEach { it.cancel() }
         }
 
-        val best = (found.entries.filter { it.key !in stalled }.minByOrNull { it.value.rttMs }
+        // WireGuard carries the most once warm, so it wins whenever it answered.
+        val best = (found.entries.firstOrNull { it.key.warmsUp && it.key !in stalled }
+            ?: found.entries.filter { it.key !in stalled }.minByOrNull { it.value.rttMs }
             ?: found.entries.minByOrNull { stalledAt[it.key] ?: 0L })?.let { it.key to it.value }
         if (best == null) return null
 
         val (protocol, endpoint) = best
         val chosen = candidates.getValue(protocol)
-        log.good("[+] automatic: ${protocol.displayName} answered first (${endpoint.rttMs}ms)")
+        log.good("[+] automatic: ${protocol.displayName} chosen (${endpoint.rttMs}ms)")
         core.applyEnvironment(chosen)
         return runTunnel(identities.getValue(protocol), endpoint, chosen, host, viaAuto = true)
     }
@@ -595,7 +604,12 @@ class WarpEngine(
                 return Outcome("tunnel: $reason")
             }
 
-            return holdConnected(job, endpoint, settings, host, viaAuto)
+            val packet = if (CorePayloads.packetMode(settings)) {
+                PacketPath(identity.ipv4, identity.ipv6) { fd -> core.attachTun(job, fd) }
+            } else {
+                null
+            }
+            return holdConnected(job, endpoint, settings, host, viaAuto, packet)
         } finally {
             withContext(NonCancellable) {
                 core.stopTunnel(job)
@@ -745,6 +759,7 @@ class WarpEngine(
         settings: WarpSettings,
         host: TunnelHost,
         viaAuto: Boolean = false,
+        packet: PacketPath? = null,
     ): Outcome = coroutineScope {
         // Speed is checked before the device is handed over, so a slow edge
         // is swapped while the button still says connecting — the person
@@ -766,8 +781,9 @@ class WarpEngine(
             val carried = if (relayPort != null) settings.copy(socksPort = relayPort) else settings
             val carry = carryOver
             carryOver = null
-            val mode = carry?.let { host.onTunnelSwapped(carried, mappedDns = relayPort != null) }
-                ?: host.onTunnelUp(carried, mappedDns = relayPort != null)
+            val direct = packet.takeIf { relayPort == null }
+            val mode = carry?.let { host.onTunnelSwapped(carried, mappedDns = relayPort != null, direct) }
+                ?: host.onTunnelUp(carried, mappedDns = relayPort != null, direct)
             val since = carry?.sinceMillis ?: System.currentTimeMillis()
             val connected = ConnectionState.Connected(
                 settings.protocol, endpoint, since, mode, viaAuto, carried.socksPort, relayed = relayPort != null,
@@ -827,7 +843,11 @@ class WarpEngine(
             // Only a measured edge on the tunnel's own exit can be judged; an
             // unlocked session would have to bring Psiphon up again as well.
             val guard = if (endpoint != null && relayPort == null && baseline > 0 && settings.pinnedPeer.isBlank()) {
-                SpeedGuard(baseline, now = SystemClock::elapsedRealtime)
+                SpeedGuard(
+                    baseline,
+                    now = SystemClock::elapsedRealtime,
+                    graceMs = if (settings.protocol.warmsUp) SpeedGuard.WARMUP_GRACE_MS else SpeedGuard.GRACE_MS,
+                )
             } else {
                 null
             }
@@ -888,7 +908,15 @@ class WarpEngine(
      */
     private suspend fun judge(settings: WarpSettings, endpoint: Endpoint, viaAuto: Boolean): String? {
         baseline = 0
-        val measured = ThroughputProbe.measure(settings.socksPort, JUDGE_BYTES, JUDGE_WINDOW_MS) ?: return null
+        // WireGuard ramps up over its first seconds, and in packet mode this
+        // probe takes the core's slower SOCKS path rather than the device's,
+        // so it gets a longer look and a lower bar before it is swapped out.
+        val warms = settings.protocol.warmsUp
+        val measured = ThroughputProbe.measure(
+            settings.socksPort,
+            if (warms) WARM_JUDGE_BYTES else JUDGE_BYTES,
+            if (warms) WARM_JUDGE_WINDOW_MS else JUDGE_WINDOW_MS,
+        ) ?: return null
         val kbps = measured.kbps
         log.info("[*] ${endpoint.socket} delivers $kbps KB/s, first byte in ${measured.firstByteMs}ms")
         val tested = endpoint.copy(rttMs = measured.firstByteMs)
@@ -907,7 +935,8 @@ class WarpEngine(
             board.fetch(settings.protocol, settings.ipVersion.wire, shared, settings.socksPort)
         }
         baseline = kbps
-        if (kbps >= SLOW_KBPS || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
+        val bar = if (warms) WARM_SLOW_KBPS else SLOW_KBPS
+        if (kbps >= bar || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
         rotations++
         slowEdges += endpoint.socket
         forget(settings, viaAuto)
@@ -937,7 +966,9 @@ class WarpEngine(
             return null
         }
         refreshes.addLast(SystemClock.elapsedRealtime())
-        if (kbps < StallMemory.STALL_KBPS) {
+        // A WireGuard slowdown is refreshed in place, never held against the
+        // protocol: automatic would otherwise leave the one that works best.
+        if (kbps < StallMemory.STALL_KBPS && !settings.protocol.warmsUp) {
             cache.markStalled(cacheKey(settings), System.currentTimeMillis())
             // Its connect-time speed was not what it delivers under video;
             // left in the pool, that figure would put it back on top.
@@ -1133,6 +1164,11 @@ class WarpEngine(
 
         /** Below this (about 2.4 Mbit/s) Instagram video stalls; such an edge is swapped. */
         const val SLOW_KBPS = 300L
+
+        /** WireGuard's first look: longer, and only a dead edge is swapped. */
+        const val WARM_JUDGE_BYTES = 4_000_000
+        const val WARM_JUDGE_WINDOW_MS = 6_000L
+        const val WARM_SLOW_KBPS = 120L
 
         /** A shared edge's score is worth this much (percent) of one measured on this phone. */
         const val BOARD_HANDICAP = 130L

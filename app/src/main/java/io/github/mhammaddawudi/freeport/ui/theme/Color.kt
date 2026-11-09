@@ -35,6 +35,8 @@ data class WarpPalette(
     val amber: Color,
     val coral: Color,
     val rose: Color,
+    /** Magenta: the colour of a session coming up. */
+    val flare: Color,
     /** What raised surfaces cast; a black shadow on a light ground reads as dirt. */
     val shadow: Color,
     /** The top of the update card's gradient, a shade off the raised surface. */
@@ -43,78 +45,65 @@ data class WarpPalette(
 )
 
 /**
- * Taken from the logo: a white mark on a near-black tile, and nothing else.
- *
- * The accent slots keep their old names so call sites did not all have to
- * change, but they are now a brightness ladder rather than different hues —
- * which is also what separates the connect states: grey at rest, warm while
- * a session comes up, white once it is carrying traffic. Only the warning
- * and error tones hold any real colour, because those have to be read as
- * warnings rather than as decoration.
+ * Deep space with an aurora running through it: violet, cyan and mint, the
+ * colours of the warp field behind the portal. The states keep their old
+ * meaning — violet at rest, magenta while a session comes up, mint once it
+ * carries traffic — so they read at a glance without a word on screen.
  */
 val DarkPalette = WarpPalette(
-    // A cool near-black rather than neutral grey: it reads as depth, and
-    // the white mark and the green "connected" both sit brighter on it.
-    void = Color(0xFF08080C),
-    abyss = Color(0xFF0D0D12),
-    surface = Color(0xFF121218),
-    surfaceRaised = Color(0xFF1A1A22),
+    void = Color(0xFF04040B),
+    abyss = Color(0xFF080816),
+    surface = Color(0xFF0D0D1D),
+    surfaceRaised = Color(0xFF16162B),
     hairline = Color(0x1FFFFFFF),
     hairlineStrong = Color(0x47FFFFFF),
-    ink = Color(0xFFF5F5F8),
-    inkMuted = Color(0xFFA0A0AD),
-    inkFaint = Color(0xFF62626F),
+    ink = Color(0xFFF4F4FF),
+    inkMuted = Color(0xFFA6A6C6),
+    inkFaint = Color(0xFF60607F),
 
-    // connected: green, the one thing that has to be readable at a glance
-    mint = Color(0xFF3EE08F),
-    cyan = Color(0xFFE6E7EC),
-    // and the colour that marks a chosen protocol
-    selected = Color(0xFFB98CFF),
-    // what a chosen tab or switch is tinted with: the logo's white, softened
-    // so a filled pill does not glare on a near-black ground
-    control = Color(0xFFE9E9F0),
-    aqua = Color(0xFF7CEBC0),
+    mint = Color(0xFF2EF2A0),
+    cyan = Color(0xFFE8E8F6),
+    selected = Color(0xFFA78BFA),
+    control = Color(0xFFE9E9F5),
+    aqua = Color(0xFF22D3EE),
 
-    // at rest
-    violet = Color(0xFF8C8C99),
-    indigo = Color(0xFF6E6E7B),
+    violet = Color(0xFF8B5CFF),
+    indigo = Color(0xFF4F7CFF),
 
-    // working, and gone wrong
     amber = Color(0xFFF2C46B),
-    coral = Color(0xFFE39A7A),
-    rose = Color(0xFFFF5F6D),
+    coral = Color(0xFFFF7AB6),
+    rose = Color(0xFFFF4D6D),
+    flare = Color(0xFFFF4FD8),
     shadow = Color(0xFF000000),
-    sheetTop = Color(0xFF23232D),
+    sheetTop = Color(0xFF22223A),
     isDark = true,
 )
 
-/**
- * Day: paper white with the same ladder of greys, ink for text and for the
- * chosen tab, and accents deep enough to hold their contrast on white.
- */
+/** Day: pearl white, with the same aurora in deeper tones that hold on white. */
 val LightPalette = WarpPalette(
-    void = Color(0xFFF2F2F6),
-    abyss = Color(0xFFEAEAF0),
-    surface = Color(0xFFF9F9FB),
+    void = Color(0xFFF3F2FA),
+    abyss = Color(0xFFEAE8F6),
+    surface = Color(0xFFF9F8FE),
     surfaceRaised = Color(0xFFFFFFFF),
-    hairline = Color(0x1A10101A),
-    hairlineStrong = Color(0x3D10101A),
-    ink = Color(0xFF15151C),
-    inkMuted = Color(0xFF5A5A68),
-    inkFaint = Color(0xFF8C8C9A),
+    hairline = Color(0x1A14102A),
+    hairlineStrong = Color(0x3D14102A),
+    ink = Color(0xFF14122A),
+    inkMuted = Color(0xFF5A5874),
+    inkFaint = Color(0xFF8D8BA6),
 
-    mint = Color(0xFF0B9A5B),
-    cyan = Color(0xFF22222B),
-    selected = Color(0xFF7446DB),
-    control = Color(0xFF1B1B23),
-    aqua = Color(0xFF0E9C7A),
+    mint = Color(0xFF07A36A),
+    cyan = Color(0xFF221F3A),
+    selected = Color(0xFF6D3CF5),
+    control = Color(0xFF1B1930),
+    aqua = Color(0xFF0891B2),
 
-    violet = Color(0xFF6C6C7A),
-    indigo = Color(0xFF9C9CAA),
+    violet = Color(0xFF6D3CF5),
+    indigo = Color(0xFF3B5BDB),
 
     amber = Color(0xFFB7790A),
-    coral = Color(0xFFC9623C),
+    coral = Color(0xFFDB2777),
     rose = Color(0xFFD9344A),
+    flare = Color(0xFFC026D3),
     shadow = Color(0xFF3A3A55),
     sheetTop = Color(0xFFFFFFFF),
     isDark = false,
@@ -149,7 +138,18 @@ object WarpColors {
     val Amber: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.amber
     val Coral: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.coral
     val Rose: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.rose
+    val Flare: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.flare
     val Shadow: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.shadow
     val SheetTop: Color @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.sheetTop
     val IsDark: Boolean @Composable @ReadOnlyComposable get() = LocalWarpPalette.current.isDark
+}
+
+/** The brand's aurora, left to right: violet, cyan, mint. */
+object Aurora {
+    @Composable
+    @ReadOnlyComposable
+    fun colors(): List<Color> {
+        val p = LocalWarpPalette.current
+        return listOf(p.violet, p.aqua, p.mint)
+    }
 }

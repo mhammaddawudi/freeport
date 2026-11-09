@@ -28,6 +28,7 @@ import io.github.mhammaddawudi.freeport.core.WarpEngine
 import io.github.mhammaddawudi.freeport.core.ConnectionState
 import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.core.CoreProvider
+import io.github.mhammaddawudi.freeport.core.PacketPath
 import io.github.mhammaddawudi.freeport.core.TunMode
 import io.github.mhammaddawudi.freeport.data.WarpSettings
 import io.github.mhammaddawudi.freeport.data.TunnelMode
@@ -48,6 +49,9 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
     private var watcher: Job? = null
     private val tunLock = Any()
     private var tun: ParcelFileDescriptor? = null
+
+    /** The current [tun] carries the tunnel's own addresses and feeds the core directly. */
+    private var packetTun = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var activeNetwork: Network? = null
     private var networkWatch: ConnectivityManager.NetworkCallback? = null
@@ -117,7 +121,10 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
         super.onDestroy()
     }
 
-    override fun onTunnelUp(settings: WarpSettings, mappedDns: Boolean): TunMode {
+    override fun onTunnelUp(settings: WarpSettings, mappedDns: Boolean, packet: PacketPath?): TunMode {
+        if (packet != null && CoreProvider.isNative && attachPacketTun(settings, packet)) {
+            return TunMode.FullDevice
+        }
         val bridge = app.tunBridge
         if (!bridge.isAvailable) return TunMode.ProxyOnly
 
@@ -172,10 +179,76 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
         synchronized(tunLock) {
             tun?.close()
             tun = established
+            packetTun = false
         }
         bridge.start(established.fd, TUN_MTU, settings.socksPort, mappedDns)
         CoreLog.good("[+] capturing device traffic through ${bridge.name}")
         return TunMode.FullDevice
+    }
+
+    /**
+     * Packet mode: a tun with the tunnel's own addresses whose packets go
+     * straight into WireGuard inside the core, with no tun2socks and no
+     * userspace TCP stack in the way. False leaves nothing behind, and the
+     * caller falls back to tun2socks.
+     */
+    private fun attachPacketTun(settings: WarpSettings, packet: PacketPath): Boolean {
+        val v4 = packet.ipv4.substringBefore('/').trim()
+        val v6 = packet.ipv6.substringBefore('/').trim()
+        if (v4.isEmpty()) return false
+        val builder = Builder()
+            .setSession("${getString(R.string.app_name)} · ${settings.protocol.displayName}")
+            .setMtu(PACKET_MTU)
+            .addAddress(v4, 32)
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer("1.1.1.1")
+            .addDnsServer("1.0.0.1")
+            .setConfigureIntent(
+                PendingIntent.getActivity(
+                    this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+        if (v6.isNotEmpty()) {
+            runCatching { builder.addAddress(v6, 128).addRoute("::", 0) }
+                .onFailure { CoreLog.warn("[-] packet mode without ipv6: ${it.message}") }
+        }
+        if (settings.bypassLan && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            LAN_PREFIXES.forEach { (address, length) ->
+                builder.excludeRoute(IpPrefix(InetAddress.getByName(address), length))
+            }
+        }
+        applyRouting(builder, settings)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
+
+        val established = try {
+            builder.establish()
+        } catch (e: RuntimeException) {
+            CoreLog.warn("[-] packet mode: could not create the tun interface: ${e.message}")
+            null
+        } ?: return false
+
+        if (!handTo(established, packet)) {
+            runCatching { established.close() }
+            CoreLog.warn("[-] packet mode was refused, falling back to tun2socks")
+            return false
+        }
+        synchronized(tunLock) {
+            runCatching { app.tunBridge.stop() }
+            tun?.close()
+            tun = established
+            packetTun = true
+        }
+        CoreLog.good("[+] capturing device traffic straight into wireguard")
+        return true
+    }
+
+    /** Gives the core its own copy of [tun]'s descriptor; the core closes it when the tunnel ends. */
+    private fun handTo(tun: ParcelFileDescriptor, packet: PacketPath): Boolean {
+        val copy = runCatching { tun.dup() }.getOrNull() ?: return false
+        val fd = copy.detachFd()
+        val taken = runCatching { packet.attach(fd) }.getOrDefault(false)
+        if (!taken) runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
+        return taken
     }
 
     /**
@@ -226,7 +299,18 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
      * connections end and the apps open new ones, which is the whole point:
      * the new ones are not throttled.
      */
-    override fun onTunnelSwapped(settings: WarpSettings, mappedDns: Boolean): TunMode? {
+    override fun onTunnelSwapped(settings: WarpSettings, mappedDns: Boolean, packet: PacketPath?): TunMode? {
+        // The same identity keeps the same addresses, so a packet-mode tun
+        // only needs a fresh descriptor for the new job.
+        synchronized(tunLock) {
+            val current = tun ?: return null
+            if (packetTun != (packet != null)) return null
+            if (packet != null) {
+                if (!handTo(current, packet)) return null
+                CoreLog.good("[+] tunnel refreshed under the same capture")
+                return TunMode.FullDevice
+            }
+        }
         val bridge = app.tunBridge
         if (!bridge.isAvailable) return null
         synchronized(tunLock) {
@@ -243,6 +327,7 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
             runCatching { app.tunBridge.stop() }
             tun?.let { runCatching { it.close() } }
             tun = null
+            packetTun = false
         }
     }
 
@@ -367,6 +452,9 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
         const val ACTION_RESHOW = "io.github.mhammaddawudi.freeport.RESHOW_NOTIFICATION"
 
         private const val TUN_MTU = 1500
+
+        /** WireGuard's own overhead leaves 1280 safe on every path, v6 included. */
+        private const val PACKET_MTU = 1280
         private const val TUN_V4 = "10.18.19.1"
         private const val TUN_V6 = "fd18:1900::1"
 

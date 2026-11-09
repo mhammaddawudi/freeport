@@ -32,7 +32,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import io.github.mhammaddawudi.freeport.R
+import io.github.mhammaddawudi.freeport.ui.theme.Aurora
 import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.lerp
 
 enum class WarpTab(@StringRes val label: Int, val glyph: GlyphKind) {
     Home(R.string.tab_home, GlyphKind.Shield),
@@ -55,10 +58,14 @@ fun FloatingTabBar(
             .clip(shape)
             .background(
                 Brush.verticalGradient(
-                    listOf(WarpColors.SurfaceRaised, WarpColors.Surface),
+                    listOf(WarpColors.SurfaceRaised.copy(alpha = 0.92f), WarpColors.Surface.copy(alpha = 0.92f)),
                 ),
             )
-            .border(1.dp, Brush.verticalGradient(listOf(WarpColors.Ink.copy(alpha = 0.14f), WarpColors.Ink.copy(alpha = 0.04f))), shape)
+            .border(
+                1.dp,
+                Brush.linearGradient(listOf(WarpColors.Violet.copy(alpha = 0.5f), WarpColors.Ink.copy(alpha = 0.06f), WarpColors.Aqua.copy(alpha = 0.35f))),
+                shape,
+            )
             .padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -68,16 +75,16 @@ fun FloatingTabBar(
             // A solid pill with dark content, rather than a translucent white
             // wash under white text: the old pair sat a few percent apart and
             // read as washed out instead of selected.
-            val background by animateColorAsState(
-                if (active) accent else Color.Transparent, tween(240), label = "tabBg",
-            )
+            // The chosen tab is a pill of aurora with dark text on it.
+            val fill by animateFloatAsState(if (active) 1f else 0f, tween(260), label = "tabFill")
+            val pill = Aurora.colors().map { lerp(it, Color.White, 0.35f).copy(alpha = fill) }
             val foreground by animateColorAsState(
-                if (active) WarpColors.Void else WarpColors.InkMuted, tween(240), label = "tabFg",
+                if (active) Color(0xFF0A0A18) else WarpColors.InkMuted, tween(240), label = "tabFg",
             )
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(22.dp))
-                    .background(background)
+                    .background(Brush.horizontalGradient(pill))
                     .clickable(role = Role.Tab) { onSelect(tab) }
                     .padding(horizontal = 18.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,

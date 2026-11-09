@@ -43,6 +43,13 @@ internal object CorePayloads {
         return payload.toString()
     }
 
+    /**
+     * Plain WireGuard without the region-unlock relay can take the device's
+     * packets directly; everything else still needs tun2socks.
+     */
+    fun packetMode(settings: WarpSettings): Boolean =
+        settings.protocol == Protocol.WireGuard && !settings.regionUnlock
+
     fun tunnel(endpoint: Endpoint, settings: WarpSettings): String {
         val payload = JSONObject()
             .put("peer", endpoint.socket)
@@ -51,6 +58,7 @@ internal object CorePayloads {
             .put("profile", settings.effectiveNoize.wire)
             .put("keepalive", settings.keepaliveSeconds)
             .put("ech", settings.fetchEch && !settings.protocol.isTcp)
+            .put("packet", packetMode(settings))
 
         if (settings.httpProxyEnabled) {
             payload.put("http", "127.0.0.1:${settings.httpProxyPort}")

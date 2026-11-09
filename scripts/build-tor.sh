@@ -24,6 +24,8 @@ SNOWFLAKE_VERSION="${SNOWFLAKE_VERSION:-v2.15.1}"
 API="${ANDROID_API:-26}"
 WORK="${WORK:-$ROOT/.native-build/tor}"
 JNILIBS="$ROOT/app/src/main/jniLibs"
+# ONLY=arti or ONLY=snowflake rebuilds just one of the two.
+ONLY="${ONLY:-all}"
 
 : "${ANDROID_NDK_HOME:?set ANDROID_NDK_HOME to an Android NDK (r26 or newer)}"
 HOST_TAG="$(uname -s | tr '[:upper:]' '[:lower:]')-x86_64"
@@ -34,6 +36,7 @@ mkdir -p "$WORK"
 # Paths of the build machine would otherwise be written into the binaries.
 REMAP="-ffile-prefix-map=$HOME=/build -fdebug-prefix-map=$HOME=/build"
 
+if [ "$ONLY" != arti ]; then
 echo "==> snowflake $SNOWFLAKE_VERSION"
 export GOTOOLCHAIN=local GOFLAGS=-modcacherw GOPROXY="${GOPROXY:-https://proxy.golang.org,direct}" GOSUMDB=off
 MODULE=gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/v2
@@ -52,18 +55,24 @@ for spec in arm64:arm64-v8a:aarch64-linux-android arm:armeabi-v7a:armv7a-linux-a
       -ldflags="-s -w -buildid= -checklinkname=0 -extldflags=-Wl,-z,max-page-size=16384" \
       -o "$JNILIBS/$abi/libsnowflake.so" ./client)
 done
+fi
+[ "$ONLY" = snowflake ] && exit 0
 
 echo "==> arti $ARTI_VERSION"
 GH_INDEX=()
-if ! curl -fsS -m 15 -o /dev/null https://index.crates.io/config.json; then
+if [ -z "${CARGO_NET_OFFLINE:-}" ] && ! curl -fsS -m 15 -o /dev/null https://index.crates.io/config.json; then
   echo "   crates.io's index is not reachable, using its copy on GitHub"
   GH_INDEX=(--config 'source.crates-io.replace-with="ghidx"'
             --config 'source.ghidx.registry="https://github.com/rust-lang/crates.io-index"')
   export CARGO_NET_GIT_FETCH_WITH_CLI=true
 fi
 export CARGO_NET_RETRY=10
+# Tor is the last resort and limited by the network, not the CPU, so arti is
+# built for size: roughly half the bytes of the default release profile.
+export CARGO_PROFILE_RELEASE_OPT_LEVEL=s CARGO_PROFILE_RELEASE_LTO=fat \
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 CARGO_PROFILE_RELEASE_PANIC=abort
 
-for spec in aarch64-linux-android:arm64-v8a:aarch64-linux-android armv7-linux-androideabi:armeabi-v7a:armv7a-linux-androideabi x86_64-linux-android:x86_64:x86_64-linux-android; do
+for spec in ${ARTI_SPECS:-aarch64-linux-android:arm64-v8a:aarch64-linux-android armv7-linux-androideabi:armeabi-v7a:armv7a-linux-androideabi x86_64-linux-android:x86_64:x86_64-linux-android}; do
   IFS=: read -r triple abi cc <<<"$spec"
   rustup target list --installed | grep -qx "$triple" || rustup target add "$triple"
   u="$(echo "$triple" | tr '-' '_')"; U="$(echo "$u" | tr '[:lower:]' '[:upper:]')"
@@ -71,7 +80,7 @@ for spec in aarch64-linux-android:arm64-v8a:aarch64-linux-android armv7-linux-an
   export CARGO_TARGET_${U}_LINKER="$NDK/$cc$API-clang"
   export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 --remap-path-prefix=$HOME=/build -C strip=symbols"
   # rustls rather than native-tls: nothing to link against on Android.
-  cargo install "${GH_INDEX[@]}" arti --version "$ARTI_VERSION" --locked \
+  cargo install ${GH_INDEX[@]+"${GH_INDEX[@]}"} --force arti --version "$ARTI_VERSION" --locked \
     --root "$WORK/arti-$abi" --target "$triple" \
     --no-default-features --features "tokio,rustls,compression,bridge-client,pt-client,static-sqlite"
   cp "$WORK/arti-$abi/bin/arti" "$JNILIBS/$abi/libarti.so"

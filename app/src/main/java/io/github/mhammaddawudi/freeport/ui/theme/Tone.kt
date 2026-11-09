@@ -17,7 +17,7 @@ object Tones {
             ConnectionState.Idle -> Tone(p.violet, p.indigo)
             is ConnectionState.Connected -> Tone(p.mint, p.aqua)
             is ConnectionState.Failed -> Tone(p.rose, p.coral)
-            else -> Tone(p.amber, p.coral)
+            else -> Tone(p.flare, p.violet)
         }
     }
 }

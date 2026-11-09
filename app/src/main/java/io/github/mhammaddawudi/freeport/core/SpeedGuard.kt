@@ -22,6 +22,8 @@ class SpeedGuard(
     private val baselineKbps: Long,
     private val now: () -> Long,
     private val startedAt: Long = now(),
+    /** How long a fresh session runs before it is judged at all. */
+    private val graceMs: Long = GRACE_MS,
 ) {
     private val samples = ArrayDeque<Pair<Long, Long>>()
     private var lastSuspicionAt = Long.MIN_VALUE / 2
@@ -42,7 +44,7 @@ class SpeedGuard(
      */
     fun suspicious(): Boolean {
         val at = now()
-        if (at - startedAt < GRACE_MS || at - lastSuspicionAt < RECHECK_MS) return false
+        if (at - startedAt < graceMs || at - lastSuspicionAt < RECHECK_MS) return false
         if (samples.size < 2) return false
         val first = samples.first()
         val last = samples.last()
@@ -93,6 +95,9 @@ class SpeedGuard(
 
         /** A fresh session gets this long before it is judged at all. */
         const val GRACE_MS = 60_000L
+
+        /** WireGuard takes a few minutes to reach full speed, so it is left alone longer. */
+        const val WARMUP_GRACE_MS = 180_000L
 
         /** After a check, whatever its outcome, the next one waits this long. */
         const val RECHECK_MS = 150_000L

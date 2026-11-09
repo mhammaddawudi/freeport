@@ -8,10 +8,10 @@ import org.junit.Test
 class SpeedGuardTest {
 
     /** A clock the test moves, and a guard that started at its zero. */
-    private class Rig(baseline: Long) {
+    private class Rig(baseline: Long, graceMs: Long = SpeedGuard.GRACE_MS) {
         var clock = 0L
         var rx = 0L
-        val guard = SpeedGuard(baseline, now = { clock }, startedAt = 0)
+        val guard = SpeedGuard(baseline, now = { clock }, startedAt = 0, graceMs = graceMs)
 
         /** [seconds] of traffic at [kbps], sampled once a second like the engine does. */
         fun run(seconds: Int, kbps: Long) {
@@ -83,5 +83,22 @@ class SpeedGuardTest {
         assertEquals(1_400L, SpeedGuard(4_000, now = { 0 }).floorKbps)
         assertTrue(SpeedGuard(4_000, now = { 0 }).confirms(900))
         assertFalse(SpeedGuard(4_000, now = { 0 }).confirms(2_000))
+    }
+
+    @Test
+    fun `wireguard warming up is not judged in its first minutes`() {
+        val rig = Rig(baseline = 2_000, graceMs = SpeedGuard.WARMUP_GRACE_MS)
+        rig.run(70, 2_000)
+        rig.run(50, 150)
+        assertFalse(rig.guard.suspicious())
+        rig.run(70, 150)
+        assertTrue(rig.guard.suspicious())
+    }
+
+    @Test
+    fun `only wireguard gets the warm-up`() {
+        io.github.mhammaddawudi.freeport.data.Protocol.entries.forEach {
+            assertEquals(it == io.github.mhammaddawudi.freeport.data.Protocol.WireGuard, it.warmsUp)
+        }
     }
 }
