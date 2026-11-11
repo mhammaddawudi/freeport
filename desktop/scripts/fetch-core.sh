@@ -16,6 +16,7 @@ CORE_COMMIT="${CORE_COMMIT:-d58f9d568083129ce2c767c85054021eb3ee6a38}"
 
 if [ ! -d "$CORE_SRC/.git" ]; then
   git init -q "$CORE_SRC"
+  git -C "$CORE_SRC" config core.autocrlf false
   git -C "$CORE_SRC" remote add origin "$CORE_REPO"
   git -C "$CORE_SRC" fetch -q --depth 1 origin "$CORE_COMMIT"
   git -C "$CORE_SRC" checkout -q FETCH_HEAD

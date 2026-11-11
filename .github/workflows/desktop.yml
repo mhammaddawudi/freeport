@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - name: macos-arm64
-            os: macos-14
+            os: macos-15
             target: aarch64-apple-darwin
             arch: arm64
           - name: macos-intel
@@ -35,6 +35,10 @@ jobs:
       run:
         shell: bash
     steps:
+      # Windows runners turn LF into CRLF on checkout, which breaks the
+      # core's rename and the patches; keep every file byte for byte.
+      - run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v4
         with:
           path: freeport

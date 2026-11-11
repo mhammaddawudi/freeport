@@ -22,6 +22,7 @@ case "$ARCH" in arm64|aarch64) GOARCH=arm64 ;; *) GOARCH=amd64 ;; esac
 
 if [ ! -d "$SRC/.git" ]; then
   git init -q "$SRC"
+  git -C "$SRC" config core.autocrlf false
   git -C "$SRC" remote add origin "$REPO"
   git -C "$SRC" fetch -q --depth 1 origin "$COMMIT"
   git -C "$SRC" checkout -q FETCH_HEAD
