@@ -166,7 +166,7 @@ diff -ruN a/warp/src/lib.rs b/warp/src/lib.rs
 +            (stack_in, stack_out, Some(router))
 +        }
 +        #[cfg(not(unix))]
-+        Some(_) => (inbound_rx, outbound_tx, None),
++        Some(_) => (inbound_rx, outbound_tx, None::<std::future::Pending<crate::error::Result<()>>>),
 +        None => (inbound_rx, outbound_tx, None),
 +    };
 +    let router = async move {
