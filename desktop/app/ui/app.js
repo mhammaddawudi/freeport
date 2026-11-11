@@ -61,6 +61,9 @@ function toast(text) {
   toast.timer = setTimeout(() => { node.hidden = true; }, 3200);
 }
 
+function capitalize(word) {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -205,7 +208,7 @@ function renderSettings() {
   const s = state.settings;
   if (!s) return;
   const transport = s.protocol === "wire-guard" || s.protocol === "gool" ? "wg" : "masque";
-  fillSelect(document.querySelector('[data-setting="noize"]'), NOIZE[transport], (v) => (v === "amnezia" ? "AmneziaWG" : v));
+  fillSelect(document.querySelector('[data-setting="noize"]'), NOIZE[transport], (v) => (v === "amnezia" ? "AmneziaWG" : v === "gfw" ? "GFW" : capitalize(v)));
   document.querySelectorAll("[data-setting]").forEach((input) => {
     const value = s[input.dataset.setting];
     if (input.type === "checkbox") input.checked = !!value;
@@ -214,6 +217,7 @@ function renderSettings() {
   if (!NOIZE[transport].includes(s.noize)) document.querySelector('[data-setting="noize"]').value = NOIZE[transport][0];
   $("unlock").checked = s.region_unlock;
   $("country").value = s.exit_country || "";
+  Choices.syncAll();
 }
 
 function readSettings() {
@@ -230,6 +234,7 @@ function readSettings() {
 async function saveSettings(next, announce = true) {
   try {
     state.settings = await invoke("save_settings", { settings: next });
+    $("bind-error").hidden = true;
     renderSettings();
     renderProtocols();
     if (announce) toast(t("saved"));
@@ -337,7 +342,7 @@ function wire(prefs) {
 
 function fillStaticSelects() {
   fillSelect($("country"), COUNTRIES, countryLabel);
-  fillSelect(document.querySelector('[data-setting="scan_mode"]'), SCAN_MODES, (v) => v);
+  fillSelect(document.querySelector('[data-setting="scan_mode"]'), SCAN_MODES, capitalize);
   fillSelect(document.querySelector('[data-setting="ip_version"]'), IP_VERSIONS, (v) => ({ v4: "IPv4", v6: "IPv6", both: "IPv4 + IPv6" })[v]);
   fillSelect($("language"), Object.keys(LANGUAGES), (v) => LANGUAGES[v].label);
   fillSelect($("theme"), ["dark", "light", "system"], (v) => t(`theme_${v}`));
@@ -345,6 +350,7 @@ function fillStaticSelects() {
   $("language").value = prefs.language || guessLanguage();
   $("theme").value = prefs.theme || "dark";
   renderSettings();
+  Choices.syncAll();
 }
 
 async function start() {
@@ -356,7 +362,7 @@ async function start() {
   const snapshot = await invoke("snapshot");
   state.settings = snapshot.settings;
   state.status = snapshot.status;
-  $("version").textContent = `v${snapshot.version} · NEW SEASON`;
+  $("version").textContent = `v${snapshot.version}`;
   if (snapshot.bind_error) {
     const box = $("bind-error");
     box.hidden = false;

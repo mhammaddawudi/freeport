@@ -333,7 +333,7 @@ impl Engine {
         });
         let via = endpoint.map(|e| format!(" via {}", e.socket())).unwrap_or_default();
         log::info!(target: "freeport", "[+] connected{via}");
-        log::info!(target: "freeport", "[*] SOCKS5 127.0.0.1:{} · HTTP 127.0.0.1:{}", self.front.socks.port(), self.front.http.port());
+        log::info!(target: "freeport", "[*] SOCKS5 127.0.0.1:{} · HTTP 127.0.0.1:{}", self.front.ports().0, self.front.ports().1);
 
         let _checks = Helper(tokio::spawn(self.clone().watch_exit(settings.clone(), inner, relayed)));
         let _scout = (endpoint.is_some() && !pinned)

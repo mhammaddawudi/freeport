@@ -16,9 +16,9 @@ use std::sync::atomic::Ordering::Relaxed;
 use crate::view::Traffic;
 
 pub struct Session {
-    engine: Option<Arc<Engine>>,
+    engine: Mutex<Option<Arc<Engine>>>,
     /// Why the local proxies could not be opened, shown instead of a button.
-    pub bind_error: Option<String>,
+    bind_error: Mutex<Option<String>>,
     settings: Mutex<Settings>,
     /// Freeport set the system proxy for this session, so it puts it back.
     holds_proxy: AtomicBool,
@@ -39,24 +39,73 @@ impl Session {
             Ok(front) => (Some(Engine::new(front)), None),
             Err(error) => (None, Some(format!("{error:#}"))),
         };
-        Session { engine, bind_error, settings: Mutex::new(settings), holds_proxy: AtomicBool::new(false) }
+        Session {
+            engine: Mutex::new(engine),
+            bind_error: Mutex::new(bind_error),
+            settings: Mutex::new(settings),
+            holds_proxy: AtomicBool::new(false),
+        }
     }
 
-    pub fn engine(&self) -> Result<&Arc<Engine>> {
+    pub fn engine(&self) -> Result<Arc<Engine>> {
         self.engine
-            .as_ref()
-            .ok_or_else(|| anyhow!(self.bind_error.clone().unwrap_or_else(|| "the engine is not running".into())))
+            .lock()
+            .clone()
+            .ok_or_else(|| anyhow!(self.bind_error().unwrap_or_else(|| "the engine is not running".into())))
+    }
+
+    pub fn bind_error(&self) -> Option<String> {
+        self.bind_error.lock().clone()
     }
 
     pub fn settings(&self) -> Settings {
         self.settings.lock().clone()
     }
 
-    pub fn save(&self, settings: Settings) -> Result<()> {
+    /// Saves the settings and moves the proxies at once when their ports
+    /// changed. Returns true when this started the engine for the first time
+    /// (the saved ports were taken at launch), so the caller can watch it.
+    pub async fn save(&self, settings: Settings) -> Result<bool> {
         validate(&settings)?;
+        let before = self.settings();
+        let moved = (before.socks_port, before.http_port) != (settings.socks_port, settings.http_port);
+        let mut started = false;
+        if moved {
+            let current = self.engine.lock().clone();
+            match current {
+                Some(engine) => move_front(&engine.front, &settings).await?,
+                None => {
+                    let front = bind_front(&settings).await?;
+                    *self.engine.lock() = Some(Engine::new(front));
+                    *self.bind_error.lock() = None;
+                    started = true;
+                }
+            }
+        }
+        let proxy_was = before.system_proxy;
+        let proxy_now = settings.system_proxy;
         settings.save()?;
         *self.settings.lock() = settings;
-        Ok(())
+        if proxy_was && !proxy_now {
+            // Switched off: the device's proxy settings are cleared at once.
+            self.release_proxy();
+            if sysproxy::left_on() {
+                if let Err(error) = sysproxy::disable() {
+                    log::warn!(target: "freeport", "[-] could not restore the system proxy: {error:#}");
+                }
+            }
+        } else if proxy_now && self.is_connected() {
+            // Switched on while connected, or the ports it points at moved.
+            if moved {
+                self.holds_proxy.store(false, Ordering::SeqCst);
+            }
+            self.take_proxy();
+        }
+        Ok(started)
+    }
+
+    fn is_connected(&self) -> bool {
+        self.engine.lock().as_ref().is_some_and(|engine| matches!(engine.watch().borrow().phase, Phase::Connected { .. }))
     }
 
     pub async fn connect(&self) -> Result<()> {
@@ -73,7 +122,7 @@ impl Session {
     }
 
     pub fn traffic(&self) -> Traffic {
-        match &self.engine {
+        match self.engine.lock().as_ref() {
             Some(engine) => Traffic {
                 up: engine.front.stats.up.load(Relaxed),
                 down: engine.front.stats.down.load(Relaxed),
@@ -129,6 +178,20 @@ async fn bind_front(settings: &Settings) -> Result<Front> {
             Front::bind(settings.socks_port, settings.http_port).await
         }
     }
+}
+
+/// Moves the running proxies, taking the new ports from whatever holds them.
+async fn move_front(front: &Front, settings: &Settings) -> Result<()> {
+    if front.rebind(settings.socks_port, settings.http_port).await.is_ok() {
+        return Ok(());
+    }
+    let (socks, http) = front.ports();
+    for port in [settings.socks_port, settings.http_port] {
+        if port != socks && port != http {
+            evict::evict(port).await;
+        }
+    }
+    front.rebind(settings.socks_port, settings.http_port).await
 }
 
 /// Settings from the window are checked before they are saved.

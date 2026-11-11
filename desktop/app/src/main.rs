@@ -3,6 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod awake;
 mod session;
 mod view;
 
@@ -47,7 +48,7 @@ fn snapshot(session: State<'_, Shared>) -> Snapshot {
         settings: session.settings(),
         version: env!("CARGO_PKG_VERSION"),
         platform: std::env::consts::OS,
-        bind_error: session.bind_error.clone(),
+        bind_error: session.bind_error(),
     }
 }
 
@@ -62,8 +63,11 @@ async fn disconnect(session: State<'_, Shared>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn save_settings(session: State<'_, Shared>, settings: Settings) -> Result<Settings, String> {
-    session.save(settings).map_err(|error| format!("{error:#}"))?;
+async fn save_settings(app: AppHandle, session: State<'_, Shared>, settings: Settings) -> Result<Settings, String> {
+    let started = session.save(settings).await.map_err(|error| format!("{error:#}"))?;
+    if started {
+        watch_status(&app, session.inner().clone());
+    }
     Ok(session.settings())
 }
 
@@ -138,7 +142,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &toggle, &quit])?;
     app.manage(toggle);
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
+    let icon = tray_icon(false)?;
     TrayIconBuilder::with_id("main")
         .icon(icon)
         .tooltip("Freeport")
@@ -168,6 +172,15 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Grey while off, the New Season aurora once connected.
+fn tray_icon(connected: bool) -> tauri::Result<tauri::image::Image<'static>> {
+    let bytes: &'static [u8] = match connected {
+        true => include_bytes!("../icons/tray-on.png"),
+        false => include_bytes!("../icons/tray-off.png"),
+    };
+    tauri::image::Image::from_bytes(bytes)
+}
+
 fn update_tray(app: &AppHandle, view: &StatusView) {
     if let Some(toggle) = app.try_state::<MenuItem<tauri::Wry>>() {
         let _ = toggle.set_text(if view.phase == "idle" { "Connect" } else { "Disconnect" });
@@ -179,11 +192,15 @@ fn update_tray(app: &AppHandle, view: &StatusView) {
             other => format!("Freeport · {other}"),
         };
         let _ = tray.set_tooltip(Some(tip));
+        if let Ok(icon) = tray_icon(view.phase == "connected") {
+            let _ = tray.set_icon(Some(icon));
+        }
     }
 }
 
 fn main() {
     logbus::install(false, false);
+    awake::hold();
     let session: Shared = Arc::new(tauri::async_runtime::block_on(Session::open()));
 
     let app = tauri::Builder::default()

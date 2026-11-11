@@ -29,7 +29,13 @@ pub struct Settings {
     pub keepalive_secs: u16,
     pub fragment: bool,
     pub pinned_peer: String,
+    /// Which one-off upgrades of saved choices have run; 0 in older files.
+    #[serde(default)]
+    pub revision: u32,
 }
+
+/// Bump with each upgrade in [`Settings::upgrade`].
+const REVISION: u32 = 1;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -47,6 +53,7 @@ impl Default for Settings {
             keepalive_secs: 5,
             fragment: false,
             pinned_peer: String::new(),
+            revision: REVISION,
         }
     }
 }
@@ -69,10 +76,22 @@ impl Settings {
         let Ok(path) = settings_file() else {
             return Settings::default();
         };
-        fs::read_to_string(&path)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+        let saved: Option<Settings> = fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str(&text).ok());
+        match saved {
+            Some(settings) if settings.revision < REVISION => {
+                let upgraded = settings.upgrade();
+                let _ = upgraded.save();
+                upgraded
+            }
+            Some(settings) => settings,
+            None => Settings::default(),
+        }
+    }
+
+    /// Brings choices saved by an older build up to date.
+    fn upgrade(self) -> Settings {
+        // 1: Balanced became the scan everyone starts on.
+        Settings { scan_mode: ScanMode::Balanced, revision: REVISION, ..self }
     }
 
     pub fn save(&self) -> Result<()> {
@@ -110,6 +129,17 @@ mod tests {
         assert_eq!(settings.effective_noize(), Noize::Amnezia);
         let masque = settings.with_protocol(Protocol::MasqueH2);
         assert_eq!(masque.effective_noize(), Noize::Gfw);
+    }
+
+    #[test]
+    fn older_settings_move_to_the_balanced_scan_once() {
+        let old: Settings = serde_json::from_str(r#"{"scan_mode":"turbo"}"#).unwrap();
+        assert_eq!(old.revision, 0);
+        let upgraded = old.upgrade();
+        assert_eq!(upgraded.scan_mode, ScanMode::Balanced);
+        assert_eq!(upgraded.revision, REVISION);
+        let chosen: Settings = serde_json::from_str(r#"{"scan_mode":"turbo","revision":1}"#).unwrap();
+        assert_eq!(chosen.scan_mode, ScanMode::Turbo);
     }
 
     #[test]

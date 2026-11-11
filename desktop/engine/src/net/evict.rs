@@ -149,6 +149,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn a_listener_is_found_by_its_port() {
+        let _serial = crate::net::serial();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let found = holders(port);
