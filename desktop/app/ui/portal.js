@@ -14,7 +14,11 @@ const Portal = (() => {
 
   let phase = "idle";
   let pressed = false;
+  // ConnectOrb's specs: tweens with FastOutSlowIn, a bouncy press spring, linear loops.
   const v = { glow: 0, busy: 0, grow: 0.88, warmth: 0.46, progress: 0, press: 1 };
+  const tw = { glow: new Tween(0), busy: new Tween(0), grow: new Tween(0.88), warmth: new Tween(0.46), progress: new Tween(0) };
+  const press = new Spring(1, 0.45, 420);
+  const loops = { spin: new Loop(), ripple: new Loop(), pulse: new Loop(true) };
   let spin = 0;
   let ripple = 0;
   let pulse = 0;
@@ -31,7 +35,7 @@ const Portal = (() => {
       glow: m === "connected" ? 1 : 0,
       busy: m === "busy" ? 1 : 0,
       grow: m === "connected" ? 1 : 0.88,
-      warmth: m === "connected" ? 1 : m === "busy" ? 0.66 : 0.46,
+      warmth: m === "connected" ? 1 : m === "busy" ? 0.66 : phase === "failed" ? 0.3 : 0.46,
       progress: PROGRESS[phase] ?? 0,
       press: pressed ? 0.93 : 1,
     };
@@ -212,20 +216,23 @@ const Portal = (() => {
     const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
     last = now;
     const goal = goals();
-    v.glow = approach(v.glow, goal.glow, dt, 0.3);
-    v.busy = approach(v.busy, goal.busy, dt, 0.18);
-    v.grow = approach(v.grow, goal.grow, dt, 0.28);
-    v.warmth = approach(v.warmth, goal.warmth, dt, 0.2);
-    v.press = approach(v.press, goal.press, dt, 0.06);
-    // The ring creeps towards each phase's ceiling and closes only once connected.
-    v.progress = approach(v.progress, goal.progress, dt, phase === "connected" ? 0.2 : 2.5);
+    tw.glow.set(goal.glow, 900, now);
+    tw.busy.set(goal.busy, 500, now);
+    tw.grow.set(goal.grow, 800, now);
+    tw.warmth.set(goal.warmth, 600, now);
+    const counting = phase === "scanning";
+    const span = phase === "connecting" || phase === "unlocking" ? 9000 : counting ? 6000 : phase === "connected" ? 500 : 700;
+    tw.progress.set(goal.progress, span, now, span >= 6000 ? Ease.linear : Ease.standard);
+    for (const key of Object.keys(tw)) v[key] = tw[key].value(now);
+    press.to = goal.press;
+    v.press = press.step(dt);
     if (moving()) {
-      spin = (spin + dt / (mood() === "busy" ? 2.4 : 14)) % 1;
-      ripple = (ripple + dt / 2.8) % 1;
-      pulse = 0.5 + 0.5 * Math.sin(now / 350);
+      spin = loops.spin.advance(dt, mood() === "busy" ? 2400 : 14000);
+      ripple = loops.ripple.advance(dt, 2800);
+      pulse = loops.pulse.advance(dt, 2200);
     }
     draw();
-    const settled = Object.keys(goal).every((key) => Math.abs(v[key] - goal[key]) < 0.003);
+    const settled = Object.values(tw).every((t) => t.done(now)) && press.settled();
     if (!moving() && settled) {
       running = false;
       last = 0;

@@ -28,6 +28,8 @@ const REMEMBERED_STARTUP: Duration = Duration::from_secs(15);
 const MANAGED_STARTUP: Duration = Duration::from_secs(90);
 /// Psiphon's first start downloads its server list; later ones take ~20s.
 const RELAY_STARTUP: Duration = Duration::from_secs(75);
+/// Snowflake finds a volunteer and Tor builds its circuits; often minutes.
+const TOR_STARTUP: Duration = Duration::from_secs(240);
 const PORT_RELEASE: Duration = Duration::from_millis(1_500);
 const POLL: Duration = Duration::from_secs(1);
 const LATENCY_EVERY: Duration = Duration::from_secs(15);
@@ -62,6 +64,9 @@ impl Engine {
         });
         if protocol == Protocol::Auto {
             return self.attempt_auto(settings).await;
+        }
+        if protocol.is_direct() {
+            return self.run_direct(settings).await;
         }
         self.core.apply_environment(settings);
         log::info!(
@@ -298,6 +303,52 @@ impl Engine {
             reason = job.outcome() => return Outcome::failed(format!("tunnel: {reason}")),
         }
         self.hold(job, endpoint, settings, port).await
+    }
+
+    /// Psiphon or Tor on its own: no scan and no Cloudflare edge, just the
+    /// program's own SOCKS port behind the front ones for as long as it runs.
+    async fn run_direct(self: &Arc<Self>, settings: &Settings) -> Outcome {
+        let protocol = settings.protocol;
+        self.set_phase(Phase::Connecting, Some(protocol));
+        let Some(port) = ports::free_from(RELAY_BASE) else {
+            return Outcome::failed("no free local port for the proxy");
+        };
+        let started = match protocol {
+            Protocol::Tor => self.tor.start(port, TOR_STARTUP).await,
+            _ => {
+                let country = if settings.region_unlock { settings.exit_country.as_str() } else { "" };
+                self.relay.start(0, port, country, RELAY_STARTUP).await
+            }
+        };
+        if let Err(e) = started {
+            return Outcome::failed(format!("{e:#}"));
+        }
+        self.front.point_at(port);
+        let since = Instant::now();
+        self.update(|status| {
+            status.phase = Phase::Connected;
+            status.since = Some(since);
+            status.relayed = false;
+            status.endpoint = None;
+        });
+        log::info!(target: "freeport", "[+] connected through {}", protocol.name());
+        let _checks = Helper(tokio::spawn(self.clone().watch_exit(settings.clone(), port, None)));
+        let reason = loop {
+            tokio::time::sleep(POLL).await;
+            let alive = match protocol {
+                Protocol::Tor => self.tor.is_alive(),
+                _ => self.relay.is_alive(),
+            };
+            if !alive {
+                break format!("{} stopped", protocol.name());
+            }
+        };
+        self.front.point_at(0);
+        match protocol {
+            Protocol::Tor => self.tor.stop().await,
+            _ => self.relay.stop().await,
+        }
+        Outcome { reason, held: since.elapsed(), connected: true, rotate: false }
     }
 
     async fn hold(

@@ -9,6 +9,7 @@ mod scout;
 mod core;
 mod health;
 mod relay;
+pub mod tor;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -85,6 +86,7 @@ pub struct Engine {
     pub(crate) core: core::Core,
     pub(crate) cache: cache::EndpointCache,
     pub(crate) relay: Relay,
+    pub(crate) tor: tor::Tor,
     /// Edges found too slow for video this session; scans and the shared
     /// list skip them.
     pub(crate) slow: Mutex<std::collections::HashSet<std::net::SocketAddr>>,
@@ -100,6 +102,7 @@ impl Engine {
             core: core::Core::default(),
             cache: cache::EndpointCache::load(),
             relay: Relay::default(),
+            tor: tor::Tor::default(),
             slow: Mutex::new(Default::default()),
         })
     }
@@ -147,6 +150,7 @@ impl Engine {
         // Aborting dropped the core job; Psiphon is a child process and is
         // stopped here rather than left to the drop.
         self.relay.stop().await;
+        self.tor.stop().await;
         self.front.point_at(0);
         self.status.send_replace(Status::default());
     }

@@ -15,7 +15,7 @@
         "width": 440,
         "height": 820,
         "minWidth": 380,
-        "minHeight": 640,
+        "minHeight": 560,
         "resizable": true,
         "center": true,
         "backgroundColor": "#04040B"

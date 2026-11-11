@@ -11,7 +11,11 @@ const PROTOCOLS = [
   { id: "masque-h2", name: "MASQUE H2", desc: "h2_desc", glyph: "h2", apps: ["Instagram", "TikTok"] },
   { id: "wire-guard", name: "WireGuard", desc: "wg_desc", glyph: "serpent", apps: ["Games", "X"] },
   { id: "gool", name: "Warp in Warp", desc: "gool_desc", glyph: "cloud", apps: ["Telegram", "YouTube"] },
+  { id: "psiphon", name: "Psiphon", desc: "psiphon_desc", glyph: "letterP", apps: ["Telegram", "Chrome"] },
+  { id: "tor", name: "Tor", desc: "tor_desc", glyph: "onion", apps: ["Chrome", "X"] },
 ];
+// Psiphon and Tor leave on their own: region unlock has nothing to ride on.
+const DIRECT = ["psiphon", "tor"];
 const COUNTRIES = ["", "DE", "NL", "US", "GB", "FR", "CA", "SE", "CH", "JP", "SG"];
 const SCAN_MODES = ["swift", "turbo", "balanced", "thorough", "stealth", "ironclad"];
 const NOIZE = {
@@ -205,6 +209,7 @@ function fillSelect(select, values, label) {
 }
 
 function renderSettings() {
+  PerApp.render();
   const s = state.settings;
   if (!s) return;
   const transport = s.protocol === "wire-guard" || s.protocol === "gool" ? "wg" : "masque";
@@ -216,6 +221,9 @@ function renderSettings() {
   });
   if (!NOIZE[transport].includes(s.noize)) document.querySelector('[data-setting="noize"]').value = NOIZE[transport][0];
   $("unlock").checked = s.region_unlock;
+  const direct = DIRECT.includes(s.protocol);
+  $("unlock").disabled = direct;
+  $("unlock").closest(".card, .row, label")?.classList.toggle("muted", direct);
   $("country").value = s.exit_country || "";
   Choices.syncAll();
 }
@@ -363,6 +371,7 @@ async function start() {
   state.settings = snapshot.settings;
   state.status = snapshot.status;
   $("version").textContent = `v${snapshot.version}`;
+  PerApp.init({ invoke, toast, settings: () => state.settings, save: (next) => saveSettings(next, false) });
   if (snapshot.bind_error) {
     const box = $("bind-error");
     box.hidden = false;

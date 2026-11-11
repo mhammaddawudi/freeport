@@ -3,12 +3,14 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod apps;
 mod awake;
 mod session;
 mod view;
 
 use std::sync::Arc;
 
+use freeport_engine::engine::Phase;
 use freeport_engine::logbus;
 use freeport_engine::settings::Settings;
 use serde::Serialize;
@@ -107,18 +109,56 @@ fn open_in_browser(url: &str) -> std::io::Result<()> {
     command.arg(url).spawn().map(|_| ())
 }
 
+fn open_chosen_apps(session: &Shared) {
+    let settings = session.settings();
+    if !settings.open_apps_on_connect {
+        return;
+    }
+    let (socks, http) = (settings.socks_port, settings.http_port);
+    for path in settings.proxied_apps {
+        if let Err(error) = apps::open(&path, socks, http) {
+            log::warn!(target: "freeport", "[-] {error:#}");
+        }
+    }
+}
+
+#[tauri::command]
+async fn installed_apps() -> Vec<apps::App> {
+    tauri::async_runtime::spawn_blocking(apps::installed).await.unwrap_or_default()
+}
+
+#[tauri::command]
+async fn open_app(session: State<'_, Shared>, path: String) -> Result<(), String> {
+    let settings = session.settings();
+    let (socks, http) = (settings.socks_port, settings.http_port);
+    tauri::async_runtime::spawn_blocking(move || apps::open(&path, socks, http))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| format!("{error:#}"))
+}
+
 /// Sends every status change to the window, and lets the session follow it.
 fn watch_status(app: &AppHandle, session: Shared) {
     let Ok(engine) = session.engine() else { return };
     let mut status = engine.watch();
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        // Chosen apps open once per session, not again after each reconnect.
+        let mut opened = false;
         loop {
-            let view = {
+            let (view, phase) = {
                 let current = status.borrow_and_update();
                 session.follow(&current.phase);
-                StatusView::of(&current)
+                (StatusView::of(&current), current.phase.clone())
             };
+            match phase {
+                Phase::Connected if !opened => {
+                    opened = true;
+                    open_chosen_apps(&session);
+                }
+                Phase::Idle => opened = false,
+                _ => {}
+            }
             update_tray(&app, &view);
             let _ = app.emit("status", view);
             if status.changed().await.is_err() {
@@ -198,6 +238,20 @@ fn update_tray(app: &AppHandle, view: &StatusView) {
     }
 }
 
+/// Sizes the window to the screen it opens on, so it never runs past the
+/// taskbar or the Dock on a small display.
+fn fit_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else { return };
+    let Ok(Some(monitor)) = window.current_monitor().or_else(|_| window.primary_monitor()) else { return };
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area().size.to_logical::<f64>(scale);
+    let height = (area.height * 0.92).clamp(560.0, 820.0);
+    let width = (height * 0.54).clamp(380.0, 440.0).min(area.width * 0.95);
+    let _ = window.set_min_size(Some(tauri::LogicalSize::new(width.min(380.0), height.min(560.0))));
+    let _ = window.set_size(tauri::LogicalSize::new(width, height));
+    let _ = window.center();
+}
+
 fn main() {
     logbus::install(false, false);
     awake::hold();
@@ -205,9 +259,10 @@ fn main() {
 
     let app = tauri::Builder::default()
         .manage(session.clone())
-        .invoke_handler(tauri::generate_handler![snapshot, connect, disconnect, save_settings, traffic, logs, open_link])
+        .invoke_handler(tauri::generate_handler![snapshot, connect, disconnect, save_settings, traffic, logs, open_link, installed_apps, open_app])
         .setup(move |app| {
             build_tray(app.handle())?;
+            fit_window(app.handle());
             watch_status(app.handle(), session.clone());
             Ok(())
         })

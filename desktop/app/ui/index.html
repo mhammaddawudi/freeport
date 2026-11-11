@@ -80,6 +80,19 @@
           </div>
         </div>
 
+        <div class="label" data-t="per_app"></div>
+        <div class="card" id="per-app">
+          <div class="row">
+            <div class="grow"><div class="title" data-t="per_app"></div><div class="hint" data-t="per_app_desc"></div></div>
+          </div>
+          <div class="row">
+            <div class="grow"><div class="title" data-t="open_on_connect"></div></div>
+            <label class="switch"><input type="checkbox" id="open-on-connect"><span></span></label>
+          </div>
+          <div id="app-list" class="app-list"></div>
+          <input id="app-search" class="app-search" type="search" autocomplete="off" data-t-placeholder="add_app">
+          <div id="app-results" class="app-list"></div>
+        </div>
         <div class="label" data-t="advanced"></div>
         <div class="card">
           <div class="row"><div class="grow title" data-t="scan"></div><select data-setting="scan_mode"></select></div>
@@ -127,6 +140,7 @@
   <script src="motion.js"></script>
   <script src="field.js"></script>
   <script src="portal.js"></script>
+  <script src="perapp.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

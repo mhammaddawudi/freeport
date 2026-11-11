@@ -29,6 +29,12 @@ pub struct Settings {
     pub keepalive_secs: u16,
     pub fragment: bool,
     pub pinned_peer: String,
+    /// Apps Freeport opens through its proxy, leaving the rest of the system alone.
+    #[serde(default)]
+    pub proxied_apps: Vec<String>,
+    /// Open those apps as soon as a session comes up.
+    #[serde(default)]
+    pub open_apps_on_connect: bool,
     /// Which one-off upgrades of saved choices have run; 0 in older files.
     #[serde(default)]
     pub revision: u32,
@@ -53,6 +59,8 @@ impl Default for Settings {
             keepalive_secs: 5,
             fragment: false,
             pinned_peer: String::new(),
+            proxied_apps: Vec::new(),
+            open_apps_on_connect: false,
             revision: REVISION,
         }
     }

@@ -66,6 +66,10 @@ jobs:
       - name: Psiphon
         run: freeport/desktop/scripts/build-psiphon.sh ${{ matrix.arch }}
 
+      # Arti and Snowflake, for the Tor protocol, as the Android app ships them.
+      - name: Tor
+        run: freeport/desktop/scripts/build-tor.sh ${{ matrix.target }}
+
       - name: Tests
         working-directory: freeport/desktop
         run: cargo test -p freeport-engine -p freeport-desktop

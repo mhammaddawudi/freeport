@@ -24,6 +24,8 @@ const WarpField = (() => {
   let focus = null;
   let speed = 0;
   let streak = 0.15;
+  const speedTween = new Tween(0);
+  const streakTween = new Tween(0.15);
   let travel = 0;
   let last = 0;
   let running = false;
@@ -47,13 +49,20 @@ const WarpField = (() => {
     const blob = (x, y, r, colour, alpha) => {
       const gradient = g.createRadialGradient(x, y, 0, x, y, r);
       gradient.addColorStop(0, rgba(hexToRgb(colour), alpha * p.nebula));
+      gradient.addColorStop(0.5, rgba(hexToRgb(colour), alpha * p.nebula * 0.27));
       gradient.addColorStop(1, rgba(hexToRgb(colour), 0));
       g.fillStyle = gradient;
       g.fillRect(0, 0, width, height);
     };
-    blob(o.x, o.y, width * 0.95, primary, 0.24);
+    blob(o.x, o.y, width * 0.85, primary, 0.22);
     blob(width * 0.92, height * 0.06, width * 0.7, secondary, 0.16);
     blob(width * 0.05, height * 0.8, width * 0.8, secondary, 0.1);
+    // WarpField darkens the bottom so the cards sit on calm ground.
+    const floor = g.createLinearGradient(0, height * 0.7, 0, height);
+    floor.addColorStop(0, rgba(hexToRgb(p.void), 0));
+    floor.addColorStop(1, rgba(hexToRgb(p.void), 0.9));
+    g.fillStyle = floor;
+    g.fillRect(0, height * 0.7, width, height * 0.3);
   }
 
   function paintStars() {
@@ -71,7 +80,7 @@ const WarpField = (() => {
       const alpha = Math.min(1, near * near * 1.2) * p.starAlpha;
       const tint = star.hue < 0.18 ? p.aqua : star.hue < 0.3 ? p.violet : p.ink;
       g.strokeStyle = rgba(mix(tint, primary, 0.25), alpha);
-      g.lineWidth = star.size * (0.6 + 2.2 * near) / 1.4;
+      g.lineWidth = star.size * (0.6 + 2.2 * near) / 2.4;
       g.beginPath();
       g.moveTo(o.x + (star.x / tail) * reach, o.y + (star.y / tail) * reach);
       g.lineTo(o.x + (star.x / z) * reach, o.y + (star.y / z) * reach);
@@ -83,11 +92,13 @@ const WarpField = (() => {
     const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
     last = now;
     const goal = targets();
-    speed = approach(speed, goal.speed, dt, 0.5);
-    streak = approach(streak, goal.streak, dt, 0.45);
+    speedTween.set(goal.speed, 1400, now);
+    streakTween.set(goal.streak, 1200, now);
+    speed = speedTween.value(now);
+    streak = streakTween.value(now);
     travel = (travel + speed * dt) % 1000;
     paintStars();
-    const settled = Math.abs(speed - goal.speed) < 0.002 && Math.abs(streak - goal.streak) < 0.002;
+    const settled = speedTween.done(now) && streakTween.done(now);
     if (goal.speed === 0 && settled) {
       running = false;
       last = 0;

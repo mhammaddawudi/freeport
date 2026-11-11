@@ -99,8 +99,8 @@ impl Drop for Starting<'_> {
 }
 
 impl Relay {
-    /// Starts Psiphon dialling out through `upstream_port` and serving
-    /// SOCKS5 on `local_port`, and waits for its first tunnel.
+    /// Starts Psiphon dialling out through `upstream_port` (0: directly) and
+    /// serving SOCKS5 on `local_port`, and waits for its first tunnel.
     pub async fn start(&self, upstream_port: u16, local_port: u16, country: &str, within: Duration) -> Result<()> {
         self.starting.store(true, Ordering::SeqCst);
         let _starting = Starting(&self.starting);
@@ -129,7 +129,8 @@ impl Relay {
             let _ = fs::write(data.join(PID_FILE), pid.to_string());
         }
         let towards = if country.is_empty() { String::new() } else { format!(" towards {country}") };
-        log::info!(target: "freeport", "[*] region unlock: starting psiphon{towards}");
+        let role = if upstream_port == 0 { "psiphon" } else { "region unlock" };
+        log::info!(target: "freeport", "[*] {role}: starting psiphon{towards}");
 
         let (ready_tx, mut ready_rx) = watch::channel(Readiness::Waiting);
         let ready_tx = Arc::new(ready_tx);
@@ -263,6 +264,14 @@ fn config_json(upstream_port: u16, local_port: u16, country: &str, data: &std::p
         "UpstreamProxyURL": format!("socks5://127.0.0.1:{upstream_port}"),
         "EmitBytesTransferred": false,
     });
+    // Port 0 is Psiphon on its own: straight out, on every protocol it has.
+    if upstream_port == 0 {
+        if let Some(map) = config.as_object_mut() {
+            map.remove("UpstreamProxyURL");
+            map.remove("LimitTunnelProtocols");
+            map.remove("InproxyTunnelProtocolSelectionProbability");
+        }
+    }
     if !country.is_empty() {
         config["EgressRegion"] = json!(country);
     }
@@ -388,6 +397,14 @@ mod tests {
         drop(writer);
         reading.await.unwrap();
         assert!(matches!(*rx.borrow(), Readiness::Failed(_)));
+    }
+
+    #[test]
+    fn psiphon_on_its_own_dials_straight_out() {
+        let config = config_json(0, 18191, "", std::path::Path::new("/tmp/psiphon"));
+        assert!(config.get("UpstreamProxyURL").is_none());
+        assert!(config.get("LimitTunnelProtocols").is_none());
+        assert_eq!(config["LocalSocksProxyPort"], 18191);
     }
 
     #[test]
