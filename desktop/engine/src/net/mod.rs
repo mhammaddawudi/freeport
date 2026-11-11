@@ -1,3 +1,4 @@
+pub mod evict;
 pub mod exit;
 pub mod front;
 pub mod http;

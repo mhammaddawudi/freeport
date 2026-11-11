@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use freeport_engine::engine::{Engine, Phase};
+use freeport_engine::net::evict;
 use freeport_engine::net::front::Front;
 use freeport_engine::net::sysproxy;
 use freeport_engine::settings::Settings;
@@ -34,7 +35,7 @@ impl Session {
                 log::warn!(target: "freeport", "[-] could not restore the system proxy: {error:#}");
             }
         }
-        let (engine, bind_error) = match Front::bind(settings.socks_port, settings.http_port).await {
+        let (engine, bind_error) = match bind_front(&settings).await {
             Ok(front) => (Some(Engine::new(front)), None),
             Err(error) => (None, Some(format!("{error:#}"))),
         };
@@ -108,6 +109,24 @@ impl Session {
         }
         if let Err(error) = sysproxy::disable() {
             log::warn!(target: "freeport", "[-] could not restore the system proxy: {error:#}");
+        }
+    }
+}
+
+/// Opens the local proxies. When another program — usually another VPN
+/// client — holds a port, it is stopped and the port taken over.
+async fn bind_front(settings: &Settings) -> Result<Front> {
+    match Front::bind(settings.socks_port, settings.http_port).await {
+        Ok(front) => Ok(front),
+        Err(first) => {
+            let mut stopped = evict::evict(settings.socks_port).await;
+            stopped.extend(evict::evict(settings.http_port).await);
+            if stopped.is_empty() {
+                return Err(first);
+            }
+            let names: Vec<String> = stopped.iter().map(|h| h.name.clone()).collect();
+            log::info!(target: "freeport", "[+] took the proxy ports back from {}", names.join(", "));
+            Front::bind(settings.socks_port, settings.http_port).await
         }
     }
 }

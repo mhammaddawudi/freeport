@@ -4,12 +4,13 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
+// Android's order: Automatic, then Cloudflare's carriers.
 const PROTOCOLS = [
-  { id: "auto", name: "auto", desc: "auto_desc" },
-  { id: "wire-guard", name: "WireGuard", desc: "wg_desc" },
-  { id: "masque-h2", name: "MASQUE H2", desc: "h2_desc" },
-  { id: "masque-h3", name: "MASQUE", desc: "h3_desc" },
-  { id: "gool", name: "Warp in Warp", desc: "gool_desc" },
+  { id: "auto", name: "auto", desc: "auto_desc", glyph: "sparkle", apps: [] },
+  { id: "masque-h3", name: "MASQUE", desc: "h3_desc", glyph: "h3", apps: ["WhatsApp", "Chrome"] },
+  { id: "masque-h2", name: "MASQUE H2", desc: "h2_desc", glyph: "h2", apps: ["Instagram", "TikTok"] },
+  { id: "wire-guard", name: "WireGuard", desc: "wg_desc", glyph: "serpent", apps: ["Games", "X"] },
+  { id: "gool", name: "Warp in Warp", desc: "gool_desc", glyph: "cloud", apps: ["Telegram", "YouTube"] },
 ];
 const COUNTRIES = ["", "DE", "NL", "US", "GB", "FR", "CA", "SE", "CH", "JP", "SG"];
 const SCAN_MODES = ["swift", "turbo", "balanced", "thorough", "stealth", "ironclad"];
@@ -60,10 +61,6 @@ function toast(text) {
   toast.timer = setTimeout(() => { node.hidden = true; }, 3200);
 }
 
-function formatRate(bytesPerSecond) {
-  const kb = bytesPerSecond / 1024;
-  return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB/s` : `${Math.round(kb)} KB/s`;
-}
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -82,9 +79,7 @@ function countryLabel(code) {
 function renderStatus() {
   const s = state.status;
   const connected = s.phase === "connected";
-  const headline = $("headline");
-  headline.textContent = t(`state_${s.phase}`);
-  headline.classList.toggle("connected", connected);
+  setHeadline(t(`state_${s.phase}`), connected);
   const detail = $("detail");
   detail.classList.toggle("bad", s.phase === "reconnecting");
   detail.textContent = s.phase === "reconnecting" ? s.reason || "" : s.protocol_name ? `${s.protocol_name}${s.via_auto ? " · " + t("auto") : ""}${s.relayed ? " · Psiphon" : ""}` : "";
@@ -92,9 +87,9 @@ function renderStatus() {
   action.textContent = connected ? t("disconnect") : s.phase === "idle" ? t("connect") : t("cancel");
   action.classList.toggle("connected", connected);
   $("portal").setAttribute("aria-label", action.textContent);
-  $("stats").hidden = !connected;
-  $("stat-ping").textContent = s.latency_ms != null ? `${s.latency_ms} ms` : "-";
-  $("stat-exit").textContent = s.exit_country ? `${s.exit_flag || ""} ${s.exit_country}` : "-";
+  $("stats").classList.toggle("open", connected);
+  $("stat-ping").textContent = s.latency_ms != null ? String(s.latency_ms) : "—";
+  $("ping-box").className = `stat ${pingTone(s.latency_ms)}`;
   const claude = $("claude");
   claude.hidden = s.claude_open == null;
   claude.textContent = s.claude_open ? t("claude_open") : t("claude_refused");
@@ -107,32 +102,82 @@ function renderStatus() {
 }
 
 function renderTimer() {
-  $("timer").textContent = state.connectedAt ? formatDuration(Math.floor((Date.now() - state.connectedAt) / 1000)) : "";
+  $("timer").classList.toggle("on", !!state.connectedAt);
+  $("timer-text").textContent = state.connectedAt ? formatDuration(Math.floor((Date.now() - state.connectedAt) / 1000)) : "";
 }
 
+// The headline slides up into place when it changes, as on Android.
+function setHeadline(text, connected) {
+  const node = $("headline");
+  node.classList.toggle("connected", connected);
+  if (node.textContent === text) return;
+  node.textContent = text;
+  node.classList.remove("enter");
+  void node.offsetWidth;
+  node.classList.add("enter");
+}
+
+function pingTone(ms) {
+  if (ms == null) return "faint";
+  return ms < 150 ? "mint" : ms < 400 ? "amber" : "rose";
+}
+
+function splitRate(bytesPerSecond) {
+  const kb = bytesPerSecond / 1024;
+  return kb >= 1024 ? [(kb / 1024).toFixed(1), "MB/s"] : [String(Math.round(kb)), "KB/s"];
+}
+
+function hydrateGlyphs(root = document) {
+  root.querySelectorAll("i[data-glyph]").forEach((node) => { node.innerHTML = Glyphs.svg(node.dataset.glyph); });
+}
+
+function protocolName(p) {
+  return p.id === "auto" ? t("auto") : p.name;
+}
+
+function glyphTile(p) {
+  return `<span class="tile">${Glyphs.svg(p.glyph, 1.6)}</span>`;
+}
+
+function statusDot(live) {
+  return `<span class="status-dot ${live ? "live" : "rising"}"></span>`;
+}
+
+// One folding row: closed it shows the choice, open it lists every protocol.
 function renderProtocols() {
-  const box = $("protocols");
-  const chosen = state.settings && state.settings.protocol;
-  const live = state.status.phase !== "idle" ? state.status.protocol : null;
-  box.replaceChildren(
+  const chosenId = (state.settings && state.settings.protocol) || "auto";
+  const chosen = PROTOCOLS.find((p) => p.id === chosenId) || PROTOCOLS[0];
+  const phase = state.status.phase;
+  const active = phase !== "idle" && phase !== "disconnecting" ? state.status.protocol : null;
+  const live = phase === "connected";
+
+  const head = $("picker-head");
+  const picked = chosen.id === "auto" && active && active !== "auto" ? PROTOCOLS.find((p) => p.id === active) : null;
+  head.innerHTML = `${glyphTile(chosen)}<span class="name"></span>${picked ? `<span class="sep">·</span><span class="picked"></span>` : ""}${active ? statusDot(live) : ""}<span class="grow"></span><span class="chevron">${Glyphs.svg("chevron", 2)}</span>`;
+  head.querySelector(".name").textContent = protocolName(chosen);
+  if (picked) head.querySelector(".picked").textContent = picked.name;
+  head.classList.add("lit");
+
+  $("protocols").replaceChildren(
     ...PROTOCOLS.map((p) => {
-      const button = document.createElement("button");
-      button.className = `card protocol${p.id === chosen ? " selected" : ""}`;
-      const name = p.id === "auto" ? t("auto") : p.name;
-      button.innerHTML = `<span class="dot"></span><span class="grow"><span class="title"></span><span class="hint"></span></span>`;
-      button.querySelector(".title").textContent = name;
-      button.querySelector(".hint").textContent = t(p.desc);
-      button.querySelector(".hint").style.display = "block";
-      if (live && p.id === live) {
-        const badge = document.createElement("span");
-        badge.className = "live";
-        badge.textContent = t("live");
-        button.append(badge);
-      }
-      button.addEventListener("click", () => chooseProtocol(p.id));
-      return button;
+      const row = document.createElement("button");
+      row.className = `protocol${p.id === chosen.id ? " lit" : ""}`;
+      row.setAttribute("role", "radio");
+      row.setAttribute("aria-checked", String(p.id === chosen.id));
+      row.title = t(p.desc);
+      const badges = p.apps.length ? `<span class="badges">${p.apps.map((a) => Glyphs.badge(a)).join("")}</span>` : "";
+      row.innerHTML = `${glyphTile(p)}<span class="grow line"><span class="name"></span>${active === p.id ? statusDot(live) : ""}</span>${badges}<span class="mark"></span>`;
+      row.querySelector(".name").textContent = protocolName(p);
+      row.addEventListener("click", () => { setPicker(false); chooseProtocol(p.id); });
+      return row;
     }),
   );
+}
+
+function setPicker(open) {
+  $("picker").classList.toggle("open", open);
+  $("picker-body").classList.toggle("open", open);
+  $("picker-head").setAttribute("aria-expanded", String(open));
 }
 
 async function chooseProtocol(id) {
@@ -228,8 +273,12 @@ async function refreshTraffic() {
     state.rates = { up: Math.max(0, now.up - state.traffic.up), down: Math.max(0, now.down - state.traffic.down) };
   }
   state.traffic = now;
-  $("stat-down").textContent = formatRate(state.rates.down);
-  $("stat-up").textContent = formatRate(state.rates.up);
+  const [down, downUnit] = splitRate(state.rates.down);
+  const [up, upUnit] = splitRate(state.rates.up);
+  $("stat-down").textContent = down;
+  $("unit-down").textContent = downUnit;
+  $("stat-up").textContent = up;
+  $("unit-up").textContent = upUnit;
 }
 
 // ---- Wiring ----
@@ -237,7 +286,16 @@ async function refreshTraffic() {
 function showTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-  ["home", "settings", "logs"].forEach((name) => { $(`tab-${name}`).hidden = name !== tab; });
+  ["home", "settings", "logs"].forEach((name) => {
+    const section = $(`tab-${name}`);
+    const showing = name === tab;
+    if (showing && section.hidden) {
+      section.classList.remove("enter");
+      void section.offsetWidth;
+      section.classList.add("enter");
+    }
+    section.hidden = !showing;
+  });
   if (tab === "logs") refreshLogs().then(() => { $("logs").scrollTop = $("logs").scrollHeight; });
 }
 
@@ -249,6 +307,7 @@ function placeFieldFocus() {
 
 function wire(prefs) {
   $("portal").addEventListener("click", toggle);
+  $("picker-head").addEventListener("click", () => setPicker(!$("picker").classList.contains("open")));
   document.querySelectorAll(".tabbar button").forEach((b) => b.addEventListener("click", () => { showTab(b.dataset.tab); placeFieldFocus(); }));
   document.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () => invoke("open_link", { url: b.dataset.link }).catch((e) => toast(String(e)))));
   $("unlock").addEventListener("change", (e) => saveSettings({ ...state.settings, region_unlock: e.target.checked }, false));
@@ -290,6 +349,7 @@ function fillStaticSelects() {
 
 async function start() {
   if (LITE) document.body.classList.add("lite");
+  hydrateGlyphs();
   const prefs = { language: guessLanguage(), theme: "dark", ...loadPrefs() };
   applyLanguage(prefs.language);
   applyTheme(prefs.theme);

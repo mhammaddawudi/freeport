@@ -29,19 +29,12 @@
       <section class="tab" id="tab-home">
         <div id="bind-error" class="card warn" hidden></div>
         <div class="status">
-          <h1 id="headline"></h1>
+          <div class="headline-box"><h1 id="headline"></h1></div>
           <p id="detail"></p>
         </div>
         <button id="portal" class="portal" aria-live="polite"><canvas id="portal-canvas"></canvas></button>
         <div id="action" class="action"></div>
-        <div id="timer" class="timer"></div>
-
-        <div id="stats" class="card stats" hidden>
-          <div><span data-t="down"></span><b id="stat-down">0</b></div>
-          <div><span data-t="up"></span><b id="stat-up">0</b></div>
-          <div><span data-t="ping"></span><b id="stat-ping">-</b></div>
-          <div><span data-t="exit"></span><b id="stat-exit">-</b></div>
-        </div>
+        <div id="timer" class="timer"><i data-glyph="clock"></i><span id="timer-text"></span></div>
 
         <div class="card region">
           <div class="row">
@@ -57,8 +50,18 @@
           </div>
         </div>
 
-        <div class="label" data-t="protocols"></div>
-        <div id="protocols" class="protocols"></div>
+        <div id="stats" class="reveal">
+          <div class="card stats">
+            <div class="stat"><i data-glyph="down" class="mint"></i><b id="stat-down">0</b><small id="unit-down">KB/s</small></div>
+            <div class="stat"><i data-glyph="up" class="lilac"></i><b id="stat-up">0</b><small id="unit-up">KB/s</small></div>
+            <div class="stat" id="ping-box"><i data-glyph="pulse"></i><b id="stat-ping">—</b><small>ms</small></div>
+          </div>
+        </div>
+
+        <div id="picker" class="card picker">
+          <button id="picker-head" class="picker-head" aria-expanded="false"></button>
+          <div class="reveal" id="picker-body"><div id="protocols" class="protocols"></div></div>
+        </div>
       </section>
 
       <section class="tab" id="tab-settings" hidden>
@@ -112,13 +115,14 @@
   </div>
 
   <nav class="tabbar">
-    <button data-tab="home" class="active"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/></svg><span data-t="tab_home"></span></button>
-    <button data-tab="settings"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-t="tab_settings"></span></button>
-    <button data-tab="logs"><svg viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M12 18h7"/></svg><span data-t="tab_logs"></span></button>
+    <button data-tab="home" class="active"><i data-glyph="shield"></i><span data-t="tab_home"></span></button>
+    <button data-tab="settings"><i data-glyph="sliders"></i><span data-t="tab_settings"></span></button>
+    <button data-tab="logs"><i data-glyph="terminal"></i><span data-t="tab_logs"></span></button>
   </nav>
   <div id="toast" class="toast" hidden></div>
 
   <script src="i18n.js"></script>
+  <script src="glyphs.js"></script>
   <script src="motion.js"></script>
   <script src="field.js"></script>
   <script src="portal.js"></script>
