@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["engine", "app"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+strip = true

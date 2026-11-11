@@ -1,0 +1,23 @@
+[package]
+name = "freeport-desktop"
+version = "3.0.0"
+edition = "2021"
+description = "Freeport for Windows and macOS"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "freeport-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+freeport-engine = { path = "../engine" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tokio = { version = "1.52", features = ["sync", "time", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+log = "0.4"
+parking_lot = "0.12"

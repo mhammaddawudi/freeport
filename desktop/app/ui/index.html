@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Freeport</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="nebula" class="sky"></canvas>
+  <canvas id="stars" class="sky"></canvas>
+
+  <div id="app">
+    <header class="brand">
+      <div class="logo"><img src="logo.png" alt=""></div>
+      <div class="name">
+        <div class="wordmark">Freeport</div>
+        <div class="version" id="version"></div>
+      </div>
+      <button class="round" data-link="https://t.me/Freeport_VPN" data-t-title="channel" aria-label="Telegram">
+        <svg viewBox="0 0 24 24"><path d="M21.94,4.66L18.72,19.85C18.48,20.92 17.84,21.19 16.94,20.68L12.03,17.06L9.66,19.34C9.4,19.6 9.18,19.82 8.67,19.82L9.02,14.82L18.11,6.61C18.51,6.26 18.02,6.06 17.49,6.41L6.25,13.49L1.41,11.98C0.36,11.65 0.34,10.93 1.63,10.42L20.55,3.13C21.43,2.8 22.2,3.33 21.94,4.66Z"/></svg>
+      </button>
+      <button class="round" data-link="https://github.com/mhammaddawudi" aria-label="GitHub">
+        <svg viewBox="0 0 24 24"><path d="M12,0.297c-6.63,0 -12,5.373 -12,12 0,5.303 3.438,9.8 8.205,11.385 0.6,0.113 0.82,-0.258 0.82,-0.577 0,-0.285 -0.01,-1.04 -0.015,-2.04 -3.338,0.724 -4.042,-1.61 -4.042,-1.61C4.422,18.07 3.633,17.7 3.633,17.7c-1.087,-0.744 0.084,-0.729 0.084,-0.729 1.205,0.084 1.838,1.236 1.838,1.236 1.07,1.835 2.809,1.305 3.495,0.998 0.108,-0.776 0.417,-1.305 0.76,-1.605 -2.665,-0.3 -5.466,-1.332 -5.466,-5.93 0,-1.31 0.465,-2.38 1.235,-3.22 -0.135,-0.303 -0.54,-1.523 0.105,-3.176 0,0 1.005,-0.322 3.3,1.23 0.96,-0.267 1.98,-0.399 3,-0.405 1.02,0.006 2.04,0.138 3,0.405 2.28,-1.552 3.285,-1.23 3.285,-1.23 0.645,1.653 0.24,2.873 0.12,3.176 0.765,0.84 1.23,1.91 1.23,3.22 0,4.61 -2.805,5.625 -5.475,5.92 0.42,0.36 0.81,1.096 0.81,2.22 0,1.606 -0.015,2.896 -0.015,3.286 0,0.315 0.21,0.69 0.825,0.57C20.565,22.092 24,17.592 24,12.297c0,-6.627 -5.373,-12 -12,-12"/></svg>
+      </button>
+    </header>
+
+    <main>
+      <section class="tab" id="tab-home">
+        <div id="bind-error" class="card warn" hidden></div>
+        <div class="status">
+          <h1 id="headline"></h1>
+          <p id="detail"></p>
+        </div>
+        <button id="portal" class="portal" aria-live="polite"><canvas id="portal-canvas"></canvas></button>
+        <div id="action" class="action"></div>
+        <div id="timer" class="timer"></div>
+
+        <div id="stats" class="card stats" hidden>
+          <div><span data-t="down"></span><b id="stat-down">0</b></div>
+          <div><span data-t="up"></span><b id="stat-up">0</b></div>
+          <div><span data-t="ping"></span><b id="stat-ping">-</b></div>
+          <div><span data-t="exit"></span><b id="stat-exit">-</b></div>
+        </div>
+
+        <div class="card region">
+          <div class="row">
+            <div class="grow">
+              <div class="title" data-t="region_unlock"></div>
+              <div class="hint" data-t="region_unlock_desc"></div>
+            </div>
+            <label class="switch"><input type="checkbox" id="unlock"><span></span></label>
+          </div>
+          <div class="row">
+            <select id="country"></select>
+            <span id="claude" class="pill" hidden></span>
+          </div>
+        </div>
+
+        <div class="label" data-t="protocols"></div>
+        <div id="protocols" class="protocols"></div>
+      </section>
+
+      <section class="tab" id="tab-settings" hidden>
+        <div class="label" data-t="network"></div>
+        <div class="card">
+          <div class="row">
+            <div class="grow"><div class="title" data-t="system_proxy"></div><div class="hint" data-t="system_proxy_desc"></div></div>
+            <label class="switch"><input type="checkbox" data-setting="system_proxy"><span></span></label>
+          </div>
+          <div class="row">
+            <div class="grow"><div class="title" data-t="proxies"></div><div class="hint" data-t="proxies_desc"></div></div>
+          </div>
+          <div class="row ports">
+            <label>SOCKS5 <input type="number" min="1024" max="65535" data-setting="socks_port"></label>
+            <label>HTTP <input type="number" min="1024" max="65535" data-setting="http_port"></label>
+          </div>
+        </div>
+
+        <div class="label" data-t="advanced"></div>
+        <div class="card">
+          <div class="row"><div class="grow title" data-t="scan"></div><select data-setting="scan_mode"></select></div>
+          <div class="row"><div class="grow title" data-t="noize"></div><select data-setting="noize"></select></div>
+          <div class="row"><div class="grow title" data-t="ip"></div><select data-setting="ip_version"></select></div>
+          <div class="row">
+            <div class="grow"><div class="title" data-t="ech"></div><div class="hint" data-t="ech_desc"></div></div>
+            <label class="switch"><input type="checkbox" data-setting="fetch_ech"><span></span></label>
+          </div>
+          <div class="row">
+            <div class="grow title" data-t="fragment"></div>
+            <label class="switch"><input type="checkbox" data-setting="fragment"><span></span></label>
+          </div>
+          <div class="row"><div class="grow title" data-t="keepalive"></div><input type="number" min="1" max="120" data-setting="keepalive_secs"></div>
+          <div class="row column"><div class="title" data-t="pinned"></div><input type="text" data-setting="pinned_peer" data-t-placeholder="pinned_hint" spellcheck="false"></div>
+          <button id="save" class="primary" data-t="save"></button>
+        </div>
+
+        <div class="label" data-t="appearance"></div>
+        <div class="card">
+          <div class="row"><div class="grow title" data-t="language"></div><select id="language"></select></div>
+          <div class="row"><div class="grow title" data-t="theme"></div><select id="theme"></select></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-logs" hidden>
+        <div class="row log-bar">
+          <button id="copy-logs" class="chip" data-t="copy"></button>
+        </div>
+        <div id="logs" class="card logs"></div>
+      </section>
+    </main>
+  </div>
+
+  <nav class="tabbar">
+    <button data-tab="home" class="active"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/></svg><span data-t="tab_home"></span></button>
+    <button data-tab="settings"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-t="tab_settings"></span></button>
+    <button data-tab="logs"><svg viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M12 18h7"/></svg><span data-t="tab_logs"></span></button>
+  </nav>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="i18n.js"></script>
+  <script src="motion.js"></script>
+  <script src="field.js"></script>
+  <script src="portal.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
