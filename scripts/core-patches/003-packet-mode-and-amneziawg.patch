@@ -172,7 +172,7 @@ diff -ruN a/warp/src/lib.rs b/warp/src/lib.rs
 +    let router = async move {
 +        match router {
 +            Some(router) => router.await,
-+            None => std::future::pending().await,
++            None => std::future::pending::<crate::error::Result<()>>().await,
 +        }
 +    };
 +
