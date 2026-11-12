@@ -25,7 +25,7 @@ const NOIZE = {
 const IP_VERSIONS = ["v4", "v6", "both"];
 const PREFS_KEY = "freeport.prefs";
 
-const state = { status: { phase: "idle" }, settings: null, traffic: null, rates: { up: 0, down: 0 }, connectedAt: null, tab: "home" };
+const state = { status: { phase: "idle" }, settings: null, traffic: null, rates: { up: 0, down: 0 }, connectedAt: null, tab: "home", reach: {}, probing: false };
 const $ = (id) => document.getElementById(id);
 
 // Language and theme are this window's own choices, kept in its storage.
@@ -173,7 +173,7 @@ function renderProtocols() {
       row.setAttribute("aria-checked", String(p.id === chosen.id));
       row.title = t(p.desc);
       const badges = p.apps.length ? `<span class="badges">${p.apps.map((a) => Glyphs.badge(a)).join("")}</span>` : "";
-      row.innerHTML = `${glyphTile(p)}<span class="grow line"><span class="name"></span>${active === p.id ? statusDot(live) : ""}</span>${badges}<span class="mark"></span>`;
+      row.innerHTML = `${glyphTile(p)}<span class="grow line"><span class="name"></span>${active === p.id ? statusDot(live) : ""}</span>${pingLabel(p.id)}${badges}<span class="mark"></span>`;
       row.querySelector(".name").textContent = protocolName(p);
       row.addEventListener("click", () => { setPicker(false); chooseProtocol(p.id); });
       return row;
@@ -181,7 +181,50 @@ function renderProtocols() {
   );
 }
 
+// The last round trip on this network: green when quick, amber when slow, a dash when it did not answer.
+function pingLabel(id) {
+  if (!PINGED.includes(id)) return "";
+  const ms = state.reach[id];
+  if (ms === undefined) return state.probing ? `<span class="ping faint">…</span>` : "";
+  if (ms < 0) return `<span class="ping bad">—</span>`;
+  return `<span class="ping ${ms <= 400 ? "good" : "slow"}">${ms} ms</span>`;
+}
+
+const PINGED = ["masque-h3", "masque-h2", "wire-guard"];
+
+async function pollReach() {
+  try {
+    const [pairs, probing] = await invoke("protocol_reach");
+    state.reach = Object.fromEntries(pairs);
+    state.probing = probing;
+    renderProtocols();
+  } catch (_) {}
+  if ($("picker").classList.contains("open") && (state.probing || state.status.phase !== "idle")) setTimeout(pollReach, 1000);
+}
+
+async function renderLan() {
+  const rows = $("lan-rows");
+  if (!state.settings || !state.settings.lan_share) return rows.replaceChildren();
+  const [ip, socks, http] = await invoke("lan_info").catch(() => [null, 10808, 10809]);
+  rows.replaceChildren(
+    ...[["SOCKS5", socks], ["HTTP", http]].map(([kind, port]) => {
+      const row = document.createElement("button");
+      row.className = "row lan";
+      const address = ip ? `${ip}:${port}` : t("lan_no_wifi");
+      row.innerHTML = `<span class="grow title"></span><span class="ping ${ip ? "good" : "slow"}"></span>`;
+      row.querySelector(".title").textContent = kind;
+      row.querySelector(".ping").textContent = address;
+      if (ip) row.addEventListener("click", async () => { await navigator.clipboard.writeText(address).catch(() => {}); toast(t("copied")); });
+      return row;
+    }),
+  );
+}
+
 function setPicker(open) {
+  if (open && !$("picker").classList.contains("open")) {
+    invoke("probe_protocols").catch(() => {});
+    setTimeout(pollReach, 150);
+  }
   $("picker").classList.toggle("open", open);
   $("picker-body").classList.toggle("open", open);
   $("picker-head").setAttribute("aria-expanded", String(open));
@@ -210,6 +253,7 @@ function fillSelect(select, values, label) {
 
 function renderSettings() {
   PerApp.render();
+  renderLan();
   const s = state.settings;
   if (!s) return;
   const transport = s.protocol === "wire-guard" || s.protocol === "gool" ? "wg" : "masque";
@@ -329,6 +373,7 @@ function wire(prefs) {
   $("country").addEventListener("change", (e) => saveSettings({ ...state.settings, exit_country: e.target.value, region_unlock: true }, false));
   $("save").addEventListener("click", () => saveSettings(readSettings()));
   ["tun", "tun_per_app"].forEach((key) => document.querySelector(`[data-setting="${key}"]`).addEventListener("change", () => saveSettings(readSettings(), false)));
+  document.querySelector('[data-setting="lan_share"]').addEventListener("change", async () => { await saveSettings(readSettings(), false); renderLan(); });
   document.querySelector('[data-setting="auto_tune"]').addEventListener("change", () => saveSettings(readSettings(), false));
   document.querySelector('[data-setting="system_proxy"]').addEventListener("change", () => saveSettings(readSettings(), false));
   $("copy-logs").addEventListener("click", async () => {

@@ -78,6 +78,26 @@ fn traffic(session: State<'_, Shared>) -> Traffic {
     session.traffic()
 }
 
+/// Each protocol's last round trip here (-1: no answer), and whether a ping runs.
+#[tauri::command]
+fn protocol_reach(session: State<'_, Shared>) -> (Vec<(freeport_engine::model::Protocol, i64)>, bool) {
+    session.engine().map(|engine| engine.reach()).unwrap_or_default()
+}
+
+/// Pings the protocols while nothing is connected.
+#[tauri::command]
+fn probe_protocols(session: State<'_, Shared>) {
+    if let Ok(engine) = session.engine() {
+        engine.probe(session.settings());
+    }
+}
+
+/// Where devices on the same Wi-Fi point their proxy, while sharing is on.
+#[tauri::command]
+fn lan_info(session: State<'_, Shared>) -> (Option<String>, u16, u16) {
+    (session.lan_address(), freeport_engine::net::lan::SOCKS_PORT, freeport_engine::net::lan::HTTP_PORT)
+}
+
 /// The newest `limit` log lines.
 #[tauri::command]
 fn logs(limit: usize) -> Vec<LogView> {
@@ -259,7 +279,7 @@ fn main() {
 
     let app = tauri::Builder::default()
         .manage(session.clone())
-        .invoke_handler(tauri::generate_handler![snapshot, connect, disconnect, save_settings, traffic, logs, open_link, installed_apps, open_app])
+        .invoke_handler(tauri::generate_handler![snapshot, connect, disconnect, save_settings, traffic, logs, open_link, installed_apps, open_app, protocol_reach, probe_protocols, lan_info])
         .setup(move |app| {
             build_tray(app.handle())?;
             fit_window(app.handle());

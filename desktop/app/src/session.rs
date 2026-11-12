@@ -8,6 +8,7 @@ use anyhow::{anyhow, Result};
 use freeport_engine::engine::{Engine, Phase};
 use freeport_engine::net::evict;
 use freeport_engine::net::front::Front;
+use freeport_engine::net::lan::{self, LanShare};
 use freeport_engine::net::sysproxy;
 use freeport_engine::net::tun;
 use freeport_engine::settings::Settings;
@@ -24,6 +25,8 @@ pub struct Session {
     /// Freeport set the system proxy for this session, so it puts it back.
     holds_proxy: AtomicBool,
     tun: Arc<tun::Tun>,
+    /// The listeners for devices on the same Wi-Fi, while that is on.
+    lan: Mutex<Option<LanShare>>,
 }
 
 impl Session {
@@ -41,13 +44,40 @@ impl Session {
             Ok(front) => (Some(Engine::new(front)), None),
             Err(error) => (None, Some(format!("{error:#}"))),
         };
-        Session {
+        let session = Session {
             engine: Mutex::new(engine),
             bind_error: Mutex::new(bind_error),
             settings: Mutex::new(settings),
             holds_proxy: AtomicBool::new(false),
             tun: Arc::new(tun::Tun::default()),
+            lan: Mutex::new(None),
+        };
+        session.share_lan().await;
+        session
+    }
+
+    /// Opens, moves or closes the Wi-Fi listeners to match the settings.
+    pub async fn share_lan(&self) {
+        let settings = self.settings();
+        let front = (settings.socks_port, settings.http_port);
+        if !settings.lan_share || self.engine.lock().is_none() {
+            *self.lan.lock() = None;
+            return;
         }
+        if self.lan.lock().as_ref().map(LanShare::front) == Some(front) {
+            return;
+        }
+        *self.lan.lock() = None;
+        match LanShare::start(front.0, front.1).await {
+            Ok(share) => *self.lan.lock() = Some(share),
+            Err(error) => log::warn!(target: "freeport", "[-] Wi-Fi sharing: {error:#}"),
+        }
+    }
+
+    /// This computer's LAN address while sharing is on.
+    pub fn lan_address(&self) -> Option<String> {
+        self.lan.lock().as_ref()?;
+        lan::address().map(|ip| ip.to_string())
     }
 
     pub fn engine(&self) -> Result<Arc<Engine>> {
@@ -105,6 +135,7 @@ impl Session {
             self.take_proxy();
         }
         self.retune_tun(&before);
+        self.share_lan().await;
         Ok(started)
     }
 

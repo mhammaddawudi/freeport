@@ -86,6 +86,11 @@
             <label>SOCKS5 <input type="number" min="1024" max="65535" data-setting="socks_port"></label>
             <label>HTTP <input type="number" min="1024" max="65535" data-setting="http_port"></label>
           </div>
+          <div class="row">
+            <div class="grow"><div class="title" data-t="lan_share"></div><div class="hint" data-t="lan_share_desc"></div></div>
+            <label class="switch"><input type="checkbox" data-setting="lan_share"><span></span></label>
+          </div>
+          <div id="lan-rows"></div>
         </div>
 
         <div class="label" data-t="per_app"></div>

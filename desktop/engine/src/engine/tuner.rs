@@ -112,6 +112,12 @@ impl Tuner {
         }
     }
 
+    /// The best speed measured for `protocol`, any profile; None when never measured.
+    pub fn measured(&self, protocol: Protocol) -> Option<u64> {
+        let at = now();
+        protocol.noize_choices().iter().flat_map(|n| recipes(protocol, *n)).filter_map(|r| self.read(&key(protocol, r), at)).max()
+    }
+
     /// What Automatic expects of `protocol`: its measured best, or a prior.
     pub fn expected(&self, protocol: Protocol) -> u64 {
         self.expected_at(protocol, now())

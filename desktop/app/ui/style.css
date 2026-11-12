@@ -264,3 +264,13 @@ i[data-glyph] { display: inline-flex; width: 20px; height: 20px; flex: none; }
 .app-remove { background: transparent; color: var(--faint, #8d8ba6); font-size: 16px; padding: 3px 8px; }
 .app-search { width: 100%; margin-top: 12px; box-sizing: border-box; font: inherit; color: inherit;
   background: rgba(127, 127, 160, 0.1); border: 1px solid var(--hairline); border-radius: 12px; padding: 9px 12px; outline: none; }
+
+/* A protocol's round trip, and the Wi-Fi sharing addresses. */
+.ping { font-size: 12px; font-variant-numeric: tabular-nums; margin-inline-end: 10px; white-space: nowrap; }
+.ping.good { color: var(--mint); }
+.ping.slow { color: var(--amber); }
+.ping.bad { color: var(--rose); }
+.ping.faint { color: var(--faint); }
+.row.lan { width: 100%; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: start; }
+.row.lan .ping { font-family: ui-monospace, monospace; margin: 0; }
+#lan-rows .row { margin-top: 12px; }

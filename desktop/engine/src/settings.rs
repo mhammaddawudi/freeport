@@ -41,6 +41,9 @@ pub struct Settings {
     /// In TUN mode, only the apps in `proxied_apps`.
     #[serde(default)]
     pub tun_per_app: bool,
+    /// Offer the proxies to devices on the same Wi-Fi.
+    #[serde(default)]
+    pub lan_share: bool,
     /// Apps Freeport opens through its proxy, leaving the rest of the system alone.
     #[serde(default)]
     pub proxied_apps: Vec<String>,
@@ -79,6 +82,7 @@ impl Default for Settings {
             masque_mtu: 0,
             tun: false,
             tun_per_app: false,
+            lan_share: false,
             proxied_apps: Vec::new(),
             open_apps_on_connect: false,
             revision: REVISION,

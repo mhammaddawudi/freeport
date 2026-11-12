@@ -8,6 +8,7 @@ mod cache;
 mod scout;
 mod core;
 mod health;
+mod probe;
 mod relay;
 pub mod tor;
 pub(crate) mod tuner;
@@ -95,6 +96,11 @@ pub struct Engine {
     /// nothing; the next round tries them last.
     pub(crate) benched: Mutex<Vec<crate::model::Protocol>>,
     pub(crate) tuner: tuner::Tuner,
+    /// Each protocol's last round trip on this network in ms; -1 when it did not answer.
+    pub(crate) reach: Mutex<std::collections::HashMap<Protocol, i64>>,
+    pub(crate) probing: std::sync::atomic::AtomicBool,
+    /// Set while Automatic measures a protocol before choosing; the proxy is not handed over.
+    pub(crate) auditioning: std::sync::atomic::AtomicBool,
 }
 
 impl Engine {
@@ -110,6 +116,9 @@ impl Engine {
             tor: tor::Tor::default(),
             slow: Mutex::new(Default::default()),
             benched: Mutex::new(Vec::new()),
+            reach: Mutex::new(Default::default()),
+            probing: Default::default(),
+            auditioning: Default::default(),
             tuner: if cfg!(test) { tuner::Tuner::default() } else { tuner::Tuner::load() },
         })
     }
@@ -134,6 +143,7 @@ impl Engine {
     /// Starts a session with `settings`, replacing any that is running.
     pub async fn connect(self: &Arc<Self>, settings: Settings) {
         let _control = self.control.lock().await;
+        self.probing.store(false, std::sync::atomic::Ordering::SeqCst);
         self.stop_session().await;
         let engine = self.clone();
         let handle = tokio::spawn(async move { engine.run_session(settings).await });
