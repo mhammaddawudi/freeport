@@ -157,6 +157,7 @@ fn shortcut(shortcut: &Path) -> Result<(String, String, String)> {
 
 #[cfg(windows)]
 fn launch(shortcut_path: &Path, socks: u16, http: u16) -> Result<()> {
+    use std::os::windows::process::CommandExt;
     let shortcut = shortcut_path;
     let (target, args, dir) = self::shortcut(shortcut)?;
     let mut command = Command::new(&target);
