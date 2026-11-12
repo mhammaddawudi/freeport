@@ -19,6 +19,8 @@ data class WarpSettings(
     val noize: NoizeProfile = NoizeProfile.Firewall,
     /** Let each network's measured speeds choose the obfuscation profile. */
     val autoTune: Boolean = true,
+    /** Offer the tunnel as SOCKS5 and HTTP proxies to devices on the same Wi-Fi. */
+    val lanShare: Boolean = false,
     /** MASQUE packet size the tuner is trying; 0 keeps the core's own. Not saved. */
     val masqueMtu: Int = 0,
     val ipVersion: IpVersion = IpVersion.V4,
@@ -99,6 +101,7 @@ class SettingsRepository(context: Context) {
             fetchEch = prefs.getBoolean(KEY_ECH, defaults.fetchEch),
             keepaliveSeconds = prefs.getInt(KEY_KEEPALIVE, defaults.keepaliveSeconds),
             autoTune = prefs.getBoolean(KEY_AUTO_TUNE, defaults.autoTune),
+            lanShare = prefs.getBoolean(KEY_LAN_SHARE, defaults.lanShare),
             fragmentEnabled = prefs.getBoolean(KEY_FRAGMENT, defaults.fragmentEnabled),
             fragmentSize = prefs.getInt(KEY_FRAGMENT_SIZE, defaults.fragmentSize),
             fragmentDelayMs = prefs.getInt(KEY_FRAGMENT_DELAY, defaults.fragmentDelayMs),
@@ -141,6 +144,7 @@ class SettingsRepository(context: Context) {
             .putBoolean(KEY_ECH, value.fetchEch)
             .putInt(KEY_KEEPALIVE, value.keepaliveSeconds)
             .putBoolean(KEY_AUTO_TUNE, value.autoTune)
+            .putBoolean(KEY_LAN_SHARE, value.lanShare)
             .putBoolean(KEY_FRAGMENT, value.fragmentEnabled)
             .putInt(KEY_FRAGMENT_SIZE, value.fragmentSize)
             .putInt(KEY_FRAGMENT_DELAY, value.fragmentDelayMs)
@@ -177,6 +181,7 @@ class SettingsRepository(context: Context) {
         const val KEY_ECH = "ech"
         const val KEY_KEEPALIVE = "keepalive"
         const val KEY_AUTO_TUNE = "auto_tune"
+        const val KEY_LAN_SHARE = "lan_share"
         const val KEY_FRAGMENT = "fragment"
         const val KEY_FRAGMENT_SIZE = "fragment_size"
         const val KEY_FRAGMENT_DELAY = "fragment_delay"

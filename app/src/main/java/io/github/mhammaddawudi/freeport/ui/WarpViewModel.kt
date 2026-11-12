@@ -23,8 +23,6 @@ import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.core.CoreProvider
 import io.github.mhammaddawudi.freeport.core.CoreResult
 import io.github.mhammaddawudi.freeport.core.Identity
-import io.github.mhammaddawudi.freeport.core.IphoneConfig
-import io.github.mhammaddawudi.freeport.core.IphoneExporter
 import io.github.mhammaddawudi.freeport.core.LatencyProbe
 import io.github.mhammaddawudi.freeport.core.AppUpdate
 import io.github.mhammaddawudi.freeport.core.UpdateChecker
@@ -44,13 +42,6 @@ import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.vpn.WarpVpnService
 
 /** Where the iPhone export is. */
-sealed interface IphoneExportUi {
-    data object Idle : IphoneExportUi
-    data class Working(val phase: IphoneExporter.Phase) : IphoneExportUi
-    data class Ready(val config: IphoneConfig) : IphoneExportUi
-    data class Failed(val message: String) : IphoneExportUi
-}
-
 /** The floating update card. */
 sealed interface UpdateUi {
     data object Hidden : UpdateUi
@@ -74,6 +65,13 @@ class WarpViewModel(application: Application) : AndroidViewModel(application) {
     private val warp = application as WarpApp
 
     val state: StateFlow<ConnectionState> = warp.engine.state
+
+    /** Each protocol's round trip on this network, or NO_ANSWER (-1). */
+    val reach: StateFlow<Map<Protocol, Long>> = warp.engine.reach
+    val probing: StateFlow<Boolean> = warp.engine.probing
+
+    /** Pings the protocols when the list is opened and nothing is connected. */
+    fun probeProtocols() = warp.engine.probe()
     val settings: StateFlow<WarpSettings> = warp.settings.settings
     val identity: StateFlow<Identity?> = warp.engine.identity
     val logs: StateFlow<List<CoreLog.Line>> = CoreLog.lines
@@ -95,9 +93,6 @@ class WarpViewModel(application: Application) : AndroidViewModel(application) {
     private val _traffic = MutableStateFlow(TrafficUi())
     val traffic: StateFlow<TrafficUi> = _traffic.asStateFlow()
 
-    private val _iphoneExport = MutableStateFlow<IphoneExportUi>(IphoneExportUi.Idle)
-    val iphoneExport: StateFlow<IphoneExportUi> = _iphoneExport.asStateFlow()
-    private var exportJob: Job? = null
 
     /** The tunnel's round trip in ms, refreshed while connected; null otherwise. */
     private val _pingMs = MutableStateFlow<Long?>(null)
@@ -316,32 +311,6 @@ class WarpViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reconnect() = warp.engine.reconnect()
-
-    /** Registers a fresh device and finds an edge for it on this network. */
-    fun startIphoneExport() {
-        if (exportJob?.isActive == true) return
-        exportJob = viewModelScope.launch {
-            val result = warp.iphoneExporter.export(settings.value) { phase ->
-                _iphoneExport.value = IphoneExportUi.Working(phase)
-            }
-            // A reset while the core was finishing up must not be overwritten.
-            ensureActive()
-            _iphoneExport.value = when (result) {
-                is CoreResult.Ok -> IphoneExportUi.Ready(result.value)
-                is CoreResult.Err -> {
-                    CoreLog.warn("[-] iPhone export: ${result.message}")
-                    IphoneExportUi.Failed(result.message)
-                }
-            }
-        }
-    }
-
-    /** Stops a running export and forgets the last result. */
-    fun resetIphoneExport() {
-        exportJob?.cancel()
-        exportJob = null
-        _iphoneExport.value = IphoneExportUi.Idle
-    }
 
 
     fun clearLogs() = CoreLog.clear()

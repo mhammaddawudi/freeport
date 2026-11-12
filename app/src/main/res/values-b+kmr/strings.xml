@@ -146,22 +146,6 @@
 
     <!-- iPhone export -->
     <string name="section_share">Parvekirin</string>
-    <string name="iphone_row">Mîhengê ji bo iPhone çêke</string>
-    <string name="iphone_row_value">WireGuard</string>
-    <string name="iphone_title">Mîhengê ji bo iPhone çêke</string>
-    <string name="iphone_subtitle">Mîhengekî WireGuard çêdike ku iPhone dikare wî bixe nav sepana belaş a WireGuard ji App Store. Ji bo wê hesabekî nû yê cuda tê çêkirin, ji ber vê girêdana te ya xwe qet nayê parvekirin.</string>
-    <string name="iphone_same_provider">Li ser heman pêşkêşkera înternetê ya ku pê hatiye çêkirin herî baş dixebite. Heke iPhone înternetek an xeteke mobîl a din bi kar tîne, mîhengê bi telefonekê çêke ku heman înternet heye.</string>
-    <string name="iphone_make">Mîhengê çêke</string>
-    <string name="iphone_make_another">Yekî din çêke</string>
-    <string name="iphone_registering">Hesabekî nû tê çêkirin…</string>
-    <string name="iphone_scanning">Li serverekî ku li ser vê înternetê dixebite tê gerîn…</string>
-    <string name="iphone_failed">Mîheng nehat çêkirin: %1$s</string>
-    <string name="iphone_retry">Dîsa biceribîne</string>
-    <string name="iphone_qr_description">Koda QR ya mîhengê WireGuard</string>
-    <string name="iphone_endpoint">Server %1$s · %2$d ms</string>
-    <string name="iphone_copy">Kopî bike</string>
-    <string name="iphone_share">Pelê .conf bişîne</string>
-    <string name="iphone_how_to">Li ser iPhone: WireGuard ji App Store saz bike, li + bitikîne, paşê «Create from QR code» hilbijêre û vê kodê bixwîne; an ji bo pelê .conf «Create from file or archive» hilbijêre.</string>
 
     <!-- Home: protocols and speed -->
     <string name="scan_swift">Çalak</string>
@@ -199,4 +183,9 @@
     <string name="update_allow_installs">Destûrê bide Freeport ku nûvekirinan saz bike, paşê dîsa Saz bike bitikîne</string>
     <string name="tunnel_auto_tune">Başkirina otomatîk</string>
     <string name="tunnel_auto_tune_desc">Leza her torê dipîve û veşartina herî bilez hildibijêre</string>
+    <string name="lan_share">Li ser Wi-Fi parve bike</string>
+    <string name="lan_share_desc">Amûrên li ser heman Wi-Fi an hotspota vê telefonê dikarin tunelê wek proxy bi kar bînin. Her kesê li ser wê torê dikare wê bi kar bîne.</string>
+    <string name="lan_share_no_wifi">Ne li ser Wi-Fi</string>
+    <string name="lan_share_hint">Vê navnîşanê li amûra din wek proxy binivîse. Ji bo kopîkirinê bitikîne.</string>
+    <string name="lan_share_waiting">Piştî girêdanê dest pê dike.</string>
 </resources>

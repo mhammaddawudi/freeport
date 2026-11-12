@@ -63,10 +63,11 @@ import io.github.mhammaddawudi.freeport.ui.theme.Tones
 fun WarpRoot(viewModel: WarpViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val reach by viewModel.reach.collectAsStateWithLifecycle()
+    val probing by viewModel.probing.collectAsStateWithLifecycle()
     val identity by viewModel.identity.collectAsStateWithLifecycle()
     val logs by viewModel.logs.collectAsStateWithLifecycle()
     val coreVersion by viewModel.coreVersion.collectAsStateWithLifecycle()
-    val iphoneExport by viewModel.iphoneExport.collectAsStateWithLifecycle()
     val traffic by viewModel.traffic.collectAsStateWithLifecycle()
     val pingMs by viewModel.pingMs.collectAsStateWithLifecycle()
     val update by viewModel.update.collectAsStateWithLifecycle()
@@ -142,6 +143,9 @@ fun WarpRoot(viewModel: WarpViewModel = viewModel()) {
                         pingMs = pingMs,
                         onToggle = onToggle,
                         onSelectProtocol = viewModel::selectProtocol,
+                        reach = reach,
+                        probing = probing,
+                        onOpenProtocols = viewModel::probeProtocols,
                         onRegionUnlock = viewModel::setRegionUnlock,
                         onSelectExitCountry = viewModel::selectExitCountry,
                         contentPadding = contentPadding,
@@ -162,9 +166,6 @@ fun WarpRoot(viewModel: WarpViewModel = viewModel()) {
                         },
                         onReconnect = viewModel::reconnect,
                         onOpenAppPicker = { appPickerOpen = true },
-                        iphoneExport = iphoneExport,
-                        onStartIphoneExport = viewModel::startIphoneExport,
-                        onResetIphoneExport = viewModel::resetIphoneExport,
                         contentPadding = contentPadding,
                     )
                     WarpTab.Logs -> LogsScreen(

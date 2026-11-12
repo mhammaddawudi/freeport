@@ -1,10 +1,11 @@
 package io.github.mhammaddawudi.freeport
 
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import android.app.Application
 import io.github.mhammaddawudi.freeport.core.WarpEngine
 import io.github.mhammaddawudi.freeport.core.CoreLog
 import io.github.mhammaddawudi.freeport.core.CoreProvider
-import io.github.mhammaddawudi.freeport.core.IphoneExporter
 import io.github.mhammaddawudi.freeport.core.BackgroundScout
 import io.github.mhammaddawudi.freeport.core.HttpEdgeBoard
 import io.github.mhammaddawudi.freeport.core.NetworkKey
@@ -49,10 +50,8 @@ class WarpApp : Application() {
     lateinit var trafficMeter: TrafficMeter
         private set
 
-    /** Makes WireGuard configs for iPhones, each on a device of its own. */
-    val iphoneExporter: IphoneExporter by lazy {
-        IphoneExporter(java.io.File(filesDir, "identity"), CoreProvider.core)
-    }
+    /** Serves the tunnel to devices on the same Wi-Fi while connected. */
+    val lanShare = io.github.mhammaddawudi.freeport.core.LanShare()
 
     /**
      * Falls back to [ProxyOnlyBridge] when the tun2socks library is not in
@@ -116,6 +115,12 @@ class WarpApp : Application() {
                 override fun onActivityDestroyed(activity: android.app.Activity) = Unit
             },
         )
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
+            kotlinx.coroutines.flow.combine(engine.state, settings.settings) { state, chosen ->
+                val connected = state as? io.github.mhammaddawudi.freeport.core.ConnectionState.Connected
+                if (chosen.lanShare && connected != null) connected.socksPort.takeIf { it > 0 } ?: chosen.socksPort else 0
+            }.distinctUntilChanged().collect { port -> if (port > 0) lanShare.start(port) else lanShare.stop() }
+        }
         CoreLog.info("[*] Freeport ${BuildConfig.VERSION_NAME}${if (CoreProvider.isNative) "" else " · simulated core"}")
     }
 }

@@ -148,22 +148,6 @@
 
     <!-- iPhone export -->
     <string name="section_share">هاوبەشکردن</string>
-    <string name="iphone_row">دروستکردنی ڕێکخستن بۆ ئایفۆن</string>
-    <string name="iphone_row_value">WireGuard</string>
-    <string name="iphone_title">دروستکردنی ڕێکخستن بۆ ئایفۆن</string>
-    <string name="iphone_subtitle">ڕێکخستنێکی WireGuard دروست دەکات کە ئایفۆن دەتوانێت لە بەرنامەی خۆڕایی WireGuard لە ئەپ ستۆر بیهێنێتە ناوەوە. هەژمارێکی نوێی جیای بۆ دروست دەکرێت، بۆیە پەیوەندییەکەی خۆت هەرگیز نادرێت بە کەس.</string>
-    <string name="iphone_same_provider">باشترین کار لەسەر هەمان دابینکەری ئینتەرنێت دەکات کە پێی دروست کراوە. ئەگەر ئایفۆنەکە ئینتەرنێتێکی تر یان هێڵی مۆبایلی تر بەکاردەهێنێت، ڕێکخستنەکە بە مۆبایلێک دروست بکە کە هەمان ئینتەرنێتی هەیە.</string>
-    <string name="iphone_make">دروستکردنی ڕێکخستن</string>
-    <string name="iphone_make_another">دانەیەکی تر دروست بکە</string>
-    <string name="iphone_registering">هەژمارێکی نوێ دروست دەکرێت…</string>
-    <string name="iphone_scanning">گەڕان بۆ ڕاژەکارێک کە لەسەر ئەم ئینتەرنێتە کار بکات…</string>
-    <string name="iphone_failed">ڕێکخستنەکە دروست نەکرا: %1$s</string>
-    <string name="iphone_retry">دووبارە هەوڵ بدەرەوە</string>
-    <string name="iphone_qr_description">کۆدی QRی ڕێکخستنی WireGuard</string>
-    <string name="iphone_endpoint">ڕاژەکار %1$s · %2$d ملی‌چرکە</string>
-    <string name="iphone_copy">کۆپی</string>
-    <string name="iphone_share">ناردنی فایلی ‎.conf</string>
-    <string name="iphone_how_to">لەسەر ئایفۆن: WireGuard لە ئەپ ستۆر دابمەزرێنە، + دابگرە، پاشان «Create from QR code» هەڵبژێرە و ئەم کۆدە سکان بکە؛ یان بۆ فایلی ‎.conf «Create from file or archive» هەڵبژێرە.</string>
 
     <!-- Home: protocols and speed -->
     <string name="scan_swift">چالاک</string>
@@ -201,4 +185,9 @@
     <string name="update_allow_installs">ڕێگە بە فریپۆرت بدە نوێکردنەوە دابمەزرێنێت، پاشان دووبارە «دامەزراندن» دابگرە</string>
     <string name="tunnel_auto_tune">باشترکردنی خۆکار</string>
     <string name="tunnel_auto_tune_desc">خێرایی هەر تۆڕێک دەپێوێت و ئەو پۆشینە هەڵدەبژێرێت کە خێراترینە</string>
+    <string name="lan_share">هاوبەشکردن لەسەر وای‌فای</string>
+    <string name="lan_share_desc">ئامێرەکانی سەر هەمان وای‌فای یان هۆتسپۆتی ئەم مۆبایلە دەتوانن تونێلەکە وەک پرۆکسی بەکاربهێنن. هەر کەسێک لەسەر ئەو تۆڕە دەتوانێت بەکاری بهێنێت.</string>
+    <string name="lan_share_no_wifi">پەیوەست نییە بە وای‌فای</string>
+    <string name="lan_share_hint">ئەم ناونیشانە لە ئامێرەکەی تر وەک پرۆکسی دابنێ. بۆ کۆپی دەستی لێ بدە.</string>
+    <string name="lan_share_waiting">دوای پەیوەستبوون دەست پێ دەکات.</string>
 </resources>

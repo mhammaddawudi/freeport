@@ -1,5 +1,8 @@
 package io.github.mhammaddawudi.freeport.ui.screens
 
+import io.github.mhammaddawudi.freeport.core.LanShare
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -53,7 +56,6 @@ import io.github.mhammaddawudi.freeport.ui.components.GlassCard
 import io.github.mhammaddawudi.freeport.ui.components.Glyph
 import io.github.mhammaddawudi.freeport.ui.components.GlyphKind
 import io.github.mhammaddawudi.freeport.ui.components.InfoRow
-import io.github.mhammaddawudi.freeport.ui.components.IphoneExportSheet
 import io.github.mhammaddawudi.freeport.ui.components.PortRow
 import io.github.mhammaddawudi.freeport.ui.components.RowDivider
 import io.github.mhammaddawudi.freeport.ui.components.SectionLabel
@@ -62,7 +64,6 @@ import io.github.mhammaddawudi.freeport.ui.components.SliderRow
 import io.github.mhammaddawudi.freeport.ui.components.SwitchRow
 import io.github.mhammaddawudi.freeport.ui.components.TuningSheet
 import io.github.mhammaddawudi.freeport.ui.components.TuningSheetHost
-import io.github.mhammaddawudi.freeport.ui.IphoneExportUi
 import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 
 /**
@@ -85,9 +86,6 @@ fun SettingsScreen(
     onSelectLanguage: (AppLanguage) -> Unit,
     onReconnect: () -> Unit,
     onOpenAppPicker: () -> Unit,
-    iphoneExport: IphoneExportUi,
-    onStartIphoneExport: () -> Unit,
-    onResetIphoneExport: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     val context = LocalContext.current
@@ -98,7 +96,6 @@ fun SettingsScreen(
     val cardPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
     var sheet by remember { mutableStateOf<TuningSheet?>(null) }
     var advanced by rememberSaveable { mutableStateOf(false) }
-    var iphoneOpen by rememberSaveable { mutableStateOf(false) }
     val peerHint = stringResource(R.string.advanced_peer_error)
     val batteryUnrestricted = remember {
         context.getSystemService(PowerManager::class.java)
@@ -385,16 +382,38 @@ fun SettingsScreen(
             }
         }
 
-        // ---- sharing with an iPhone ------------------------------------------
+        // ---- sharing the tunnel on Wi-Fi --------------------------------------
         SectionLabel(stringResource(R.string.section_share))
         GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
-            InfoRow(
-                title = stringResource(R.string.iphone_row),
-                value = stringResource(R.string.iphone_row_value),
-                glyph = GlyphKind.Signal,
-                valueColor = WarpColors.Cyan,
-                onClick = { iphoneOpen = true },
+            SwitchRow(
+                title = stringResource(R.string.lan_share),
+                checked = settings.lanShare,
+                onCheckedChange = { on -> onUpdateSettings { it.copy(lanShare = on) } },
+                subtitle = stringResource(R.string.lan_share_desc),
             )
+            if (settings.lanShare) {
+                val ip = remember(state) { LanShare.address() }
+                val live = state is ConnectionState.Connected
+                val clipboard = LocalClipboardManager.current
+                listOf("SOCKS5" to LanShare.SOCKS_PORT, "HTTP" to LanShare.HTTP_PORT).forEach { (kind, port) ->
+                    RowDivider()
+                    val address = ip?.let { "$it:$port" }
+                    InfoRow(
+                        title = kind,
+                        value = address ?: stringResource(R.string.lan_share_no_wifi),
+                        glyph = GlyphKind.Signal,
+                        mono = address != null,
+                        valueColor = if (address != null && live) WarpColors.Mint else WarpColors.Amber,
+                        onClick = address?.let { { clipboard.setText(AnnotatedString(it)) } },
+                    )
+                }
+                Text(
+                    stringResource(if (live) R.string.lan_share_hint else R.string.lan_share_waiting),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarpColors.InkMuted,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
         }
 
         // ---- what the app currently is ---------------------------------------
@@ -444,18 +463,6 @@ fun SettingsScreen(
         onDismiss = { sheet = null },
     )
 
-    if (iphoneOpen) {
-        IphoneExportSheet(
-            state = iphoneExport,
-            onStart = onStartIphoneExport,
-            onDismiss = {
-                iphoneOpen = false
-                // A finished config is kept for when the sheet is reopened;
-                // only a half-done one is stopped.
-                if (iphoneExport is IphoneExportUi.Working) onResetIphoneExport()
-            },
-        )
-    }
 }
 
 @Composable

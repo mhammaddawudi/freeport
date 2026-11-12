@@ -112,6 +112,9 @@ fun ProtocolPicker(
     onSelect: (Protocol) -> Unit,
     modifier: Modifier = Modifier,
     startOpen: Boolean = false,
+    reach: Map<Protocol, Long> = emptyMap(),
+    probing: Boolean = false,
+    onOpen: () -> Unit = {},
 ) {
     var open by rememberSaveable { mutableStateOf(startOpen) }
     val turn by animateFloatAsState(if (open) 180f else 0f, tween(240), label = "pickerChevron")
@@ -122,7 +125,10 @@ fun ProtocolPicker(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 60.dp)
-                .clickable(role = Role.DropdownList) { open = !open }
+                .clickable(role = Role.DropdownList) {
+                    open = !open
+                    if (open) onOpen()
+                }
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -169,6 +175,8 @@ fun ProtocolPicker(
                         protocol = protocol,
                         selected = protocol == selected,
                         live = activity?.takeIf { it.protocol == protocol },
+                        rttMs = reach[protocol],
+                        probing = probing && protocol in PINGED,
                         onClick = {
                             if (protocol != selected) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onSelect(protocol)
@@ -186,6 +194,8 @@ private fun ProtocolRow(
     protocol: Protocol,
     selected: Boolean,
     live: ProtocolActivity?,
+    rttMs: Long?,
+    probing: Boolean,
     onClick: () -> Unit,
 ) {
     val lit by animateFloatAsState(if (selected) 1f else 0f, tween(220), label = "rowLit")
@@ -226,12 +236,29 @@ private fun ProtocolRow(
                 StatusDot(if (live.live) WarpColors.Mint else WarpColors.Amber, pulsing = live.live)
             }
         }
+        PingLabel(rttMs, probing)
         if (apps.isNotEmpty()) {
             AppBadgeRow(apps, size = 22.dp)
             Spacer(Modifier.width(12.dp))
         }
         SelectionMark(lit, accent)
     }
+}
+
+/** The protocols the list pings; the rest have no edge of their own to ping. */
+private val PINGED = setOf(Protocol.MasqueH3, Protocol.MasqueH2, Protocol.WireGuard)
+
+/** The last round trip on this network: green when quick, amber when slow, a dash when it did not answer. */
+@Composable
+private fun PingLabel(rttMs: Long?, probing: Boolean) {
+    val (text, colour) = when {
+        rttMs == null && probing -> "…" to WarpColors.InkFaint
+        rttMs == null -> return
+        rttMs < 0 -> "—" to WarpColors.Rose
+        else -> "$rttMs ms" to if (rttMs <= 400) WarpColors.Mint else WarpColors.Amber
+    }
+    Text(text, style = MaterialTheme.typography.labelMedium, color = colour, maxLines = 1)
+    Spacer(Modifier.width(10.dp))
 }
 
 @Composable

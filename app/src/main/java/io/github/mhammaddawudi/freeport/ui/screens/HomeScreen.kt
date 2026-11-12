@@ -94,6 +94,9 @@ fun HomeScreen(
     pingMs: Long?,
     onToggle: () -> Unit,
     onSelectProtocol: (Protocol) -> Unit,
+    reach: Map<Protocol, Long>,
+    probing: Boolean,
+    onOpenProtocols: () -> Unit,
     onRegionUnlock: (Boolean) -> Unit,
     onSelectExitCountry: (String) -> Unit,
     contentPadding: PaddingValues,
@@ -139,6 +142,9 @@ fun HomeScreen(
             selected = settings.protocol,
             activity = activityOf(state),
             onSelect = onSelectProtocol,
+            reach = reach,
+            probing = probing,
+            onOpen = onOpenProtocols,
         )
         Spacer(Modifier.height(16.dp))
     }

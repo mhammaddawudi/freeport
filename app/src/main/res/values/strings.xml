@@ -146,22 +146,6 @@
 
     <!-- iPhone export -->
     <string name="section_share">Share</string>
-    <string name="iphone_row">Export for iPhone</string>
-    <string name="iphone_row_value">WireGuard</string>
-    <string name="iphone_title">Export for iPhone</string>
-    <string name="iphone_subtitle">Makes a WireGuard setup that an iPhone can import into the free WireGuard app from the App Store. It gets its own new account, so your own connection is never shared.</string>
-    <string name="iphone_same_provider">It works best on the same internet provider it was made on. If the iPhone uses a different provider or mobile network, make the config on a phone that uses that one.</string>
-    <string name="iphone_make">Make config</string>
-    <string name="iphone_make_another">Make another one</string>
-    <string name="iphone_registering">Creating a new account…</string>
-    <string name="iphone_scanning">Finding a server that works on this network…</string>
-    <string name="iphone_failed">Could not make the config: %1$s</string>
-    <string name="iphone_retry">Try again</string>
-    <string name="iphone_qr_description">QR code of the WireGuard config</string>
-    <string name="iphone_endpoint">Server %1$s · %2$d ms</string>
-    <string name="iphone_copy">Copy</string>
-    <string name="iphone_share">Share .conf file</string>
-    <string name="iphone_how_to">On the iPhone: install WireGuard from the App Store, tap +, then choose \"Create from QR code\" and scan this code, or \"Create from file or archive\" for the shared .conf file.</string>
 
     <!-- Home: protocols and speed -->
     <string name="scan_swift">Swift</string>
@@ -199,4 +183,9 @@
     <string name="update_allow_installs">Allow Freeport to install updates, then tap Install again</string>
     <string name="tunnel_auto_tune">Optimize automatically</string>
     <string name="tunnel_auto_tune_desc">Measures each network and picks the obfuscation that carries the most</string>
+    <string name="lan_share">Share on Wi-Fi</string>
+    <string name="lan_share_desc">Devices on the same Wi-Fi or this phone\'s hotspot can use the tunnel as a proxy. Anyone on that network can use it.</string>
+    <string name="lan_share_no_wifi">Not on Wi-Fi</string>
+    <string name="lan_share_hint">Set this address as the proxy on the other device. Tap to copy.</string>
+    <string name="lan_share_waiting">Starts when you connect.</string>
 </resources>

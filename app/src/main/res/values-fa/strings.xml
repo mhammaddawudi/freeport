@@ -146,22 +146,6 @@
 
     <!-- iPhone export -->
     <string name="section_share">اشتراک‌گذاری</string>
-    <string name="iphone_row">ساخت کانفیگ برای آیفون</string>
-    <string name="iphone_row_value">WireGuard</string>
-    <string name="iphone_title">ساخت کانفیگ برای آیفون</string>
-    <string name="iphone_subtitle">یک کانفیگ WireGuard می‌سازد که آیفون می‌تواند آن را در برنامهٔ رایگان WireGuard از اپ‌استور وارد کند. برای آن یک حساب تازهٔ جدا ساخته می‌شود، پس اتصال خودتان هیچ‌وقت به کسی داده نمی‌شود.</string>
-    <string name="iphone_same_provider">این کانفیگ روی همان اینترنتی که با آن ساخته شده بهتر کار می‌کند. اگر آیفون اینترنت یا اپراتور دیگری دارد، کانفیگ را با گوشی‌ای بسازید که همان اینترنت را دارد.</string>
-    <string name="iphone_make">ساخت کانفیگ</string>
-    <string name="iphone_make_another">ساخت یکی دیگر</string>
-    <string name="iphone_registering">در حال ساخت حساب تازه…</string>
-    <string name="iphone_scanning">در حال پیدا کردن سروری که روی این اینترنت کار کند…</string>
-    <string name="iphone_failed">کانفیگ ساخته نشد: %1$s</string>
-    <string name="iphone_retry">دوباره امتحان کن</string>
-    <string name="iphone_qr_description">کد QR کانفیگ WireGuard</string>
-    <string name="iphone_endpoint">سرور %1$s · %2$d میلی‌ثانیه</string>
-    <string name="iphone_copy">کپی</string>
-    <string name="iphone_share">ارسال فایل ‎.conf</string>
-    <string name="iphone_how_to">روی آیفون: WireGuard را از اپ‌استور نصب کنید، دکمهٔ + را بزنید و «Create from QR code» را انتخاب کنید و این کد را اسکن کنید؛ یا برای فایل ‎.conf گزینهٔ «Create from file or archive» را بزنید.</string>
 
     <!-- Home: protocols and speed -->
     <string name="scan_swift">چابک</string>
@@ -199,4 +183,9 @@
     <string name="update_allow_installs">اجازهٔ نصب به‌روزرسانی را به فری‌پورت بدهید و دوباره «نصب» را بزنید</string>
     <string name="tunnel_auto_tune">بهینه‌سازی خودکار</string>
     <string name="tunnel_auto_tune_desc">سرعت هر شبکه را می‌سنجد و پوششی را انتخاب می‌کند که بیشترین سرعت را دارد</string>
+    <string name="lan_share">اشتراک روی وای‌فای</string>
+    <string name="lan_share_desc">دستگاه‌های روی همین وای‌فای یا هات‌اسپات این گوشی می‌توانند از تونل به‌عنوان پروکسی استفاده کنند. هر کسی روی این شبکه به آن دسترسی دارد.</string>
+    <string name="lan_share_no_wifi">به وای‌فای وصل نیست</string>
+    <string name="lan_share_hint">این آدرس را در دستگاه دیگر به‌عنوان پروکسی وارد کنید. برای کپی لمس کنید.</string>
+    <string name="lan_share_waiting">پس از اتصال فعال می‌شود.</string>
 </resources>
