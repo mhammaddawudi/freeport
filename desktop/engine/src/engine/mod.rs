@@ -10,6 +10,7 @@ mod core;
 mod health;
 mod relay;
 pub mod tor;
+pub(crate) mod tuner;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -90,6 +91,10 @@ pub struct Engine {
     /// Edges found too slow for video this session; scans and the shared
     /// list skip them.
     pub(crate) slow: Mutex<std::collections::HashSet<std::net::SocketAddr>>,
+    /// Protocols that answered Automatic's scan this session but carried
+    /// nothing; the next round tries them last.
+    pub(crate) benched: Mutex<Vec<crate::model::Protocol>>,
+    pub(crate) tuner: tuner::Tuner,
 }
 
 impl Engine {
@@ -104,6 +109,8 @@ impl Engine {
             relay: Relay::default(),
             tor: tor::Tor::default(),
             slow: Mutex::new(Default::default()),
+            benched: Mutex::new(Vec::new()),
+            tuner: if cfg!(test) { tuner::Tuner::default() } else { tuner::Tuner::load() },
         })
     }
 
@@ -160,6 +167,7 @@ impl Engine {
         let mut fallback: usize = 0;
         let mut rotations: u32 = 0;
         self.slow.lock().clear();
+        self.benched.lock().clear();
         loop {
             let alternatives = chosen.protocol.alternatives();
             let current = match fallback {

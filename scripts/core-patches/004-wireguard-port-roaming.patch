@@ -1,0 +1,129 @@
+--- a/warp/src/wireguard.rs	2026-11-12 23:04:10
++++ b/warp/src/wireguard.rs	2026-11-12 23:04:10
+@@ -152,10 +152,14 @@
+     }
+ 
+     pub async fn run(self, mut outbound_rx: mpsc::Receiver<Vec<u8>>) -> Result<()> {
+-        let sock_r = self.sock.clone();
+-        let sock_w = self.sock.clone();
+-        let sock_t = self.sock.clone();
+-        let sock_h = self.sock.clone();
++        // The socket can be swapped for one on a fresh local port while the
++        // tunnel runs (see the health task), so every task reads the current one.
++        let (sock_tx, sock_rx) = tokio::sync::watch::channel(self.sock.clone());
++        let mut sock_rx_r = sock_rx.clone();
++        let sock_rx_w = sock_rx.clone();
++        let sock_rx_t = sock_rx.clone();
++        let mut sock_h = self.sock.clone();
++        let warpnoize_h = self.warpnoize.clone();
+         let tunn_r = self.tunn.clone();
+         let tunn_w = self.tunn.clone();
+         let tunn_t = self.tunn.clone();
+@@ -178,7 +182,17 @@
+             let mut tmp = vec![0u8; MAX_PACKET];
+             let mut transient_errors = 0u32;
+             loop {
+-                match sock_r.recv(&mut buf).await {
++                let sock_r = sock_rx_r.borrow_and_update().clone();
++                let received = tokio::select! {
++                    received = sock_r.recv(&mut buf) => received,
++                    changed = sock_rx_r.changed() => {
++                        if changed.is_err() {
++                            break;
++                        }
++                        continue;
++                    }
++                };
++                match received {
+                     Ok(0) => {}
+                     Ok(n) => {
+                         transient_errors = 0;
+@@ -233,6 +247,7 @@
+             let mut out_buf = vec![0u8; MAX_PACKET];
+             let mut post_hs_junk_sent = false;
+             while let Some(ip_packet) = outbound_rx.recv().await {
++                let sock_w = sock_rx_w.borrow().clone();
+                 let mut tunn = tunn_w.lock().await;
+ 
+                 match tunn.encapsulate(&ip_packet, &mut out_buf) {
+@@ -273,6 +288,7 @@
+             let mut tmp = vec![0u8; MAX_PACKET];
+             loop {
+                 interval.tick().await;
++                let sock_t = sock_rx_t.borrow().clone();
+                 let mut tunn = tunn_t.lock().await;
+                 if let TunnResult::WriteToNetwork(pkt) = tunn.update_timers(&mut tmp) {
+                     let mut pkt_vec = pkt.to_vec();
+@@ -288,12 +304,47 @@
+         });
+ 
+         let stale_timeout = wg_stale_timeout();
++        let roam_after = wg_roam_after();
+         let health_task = tokio::spawn(async move {
+             let mut out_buf = vec![0u8; MAX_PACKET];
++            let mut roamed_at: Option<Instant> = None;
++            // Keeps the detour of the socket in use alive once it replaces the first.
++            let mut _roamed_detour: Option<crate::upstream::DetourGuard> = None;
+             loop {
+                 tokio::time::sleep(health_check_pause()).await;
+ 
+                 let idle = last_valid_rx_h.lock().elapsed();
++                // Filters here often cut one UDP flow (one source port) after
++                // heavy use and leave the next alone. Rather than declare the
++                // tunnel dead, move to a fresh local port and handshake again:
++                // the session, its keys and every connection inside it stay.
++                let due = roamed_at.map_or(true, |at| at.elapsed() >= roam_after);
++                if idle >= roam_after && idle < stale_timeout && due {
++                    match crate::upstream::bind_via_upstream(peer).await {
++                        Ok((fresh, _, detour)) => {
++                            let fresh = Arc::new(fresh);
++                            log::warn!(
++                                "[wg] no data from peer {} in {:?}; moving to a new local port and handshaking again",
++                                peer,
++                                idle
++                            );
++                            warpnoize::apply_obfuscation(&fresh, peer, &warpnoize_h).await;
++                            let mut tunn = tunn_h.lock().await;
++                            if let TunnResult::WriteToNetwork(pkt) = tunn.format_handshake_initiation(&mut out_buf, true) {
++                                let mut pkt_vec = pkt.to_vec();
++                                inject_client_id(&mut pkt_vec, &client_id_h);
++                                drop(tunn);
++                                let _ = fresh.send(&pkt_vec).await;
++                            }
++                            sock_h = fresh.clone();
++                            _roamed_detour = Some(detour);
++                            let _ = sock_tx.send(fresh);
++                            roamed_at = Some(Instant::now());
++                            continue;
++                        }
++                        Err(e) => log::debug!("[wg] could not open a new local port: {e}"),
++                    }
++                }
+                 if idle >= stale_timeout {
+                     log::warn!(
+                         "[wg] no valid data from peer {} in {:?}; tunnel considered dead",
+@@ -358,13 +409,23 @@
+     WG_HEALTHCHECK_INTERVAL - WG_HEALTHCHECK_JITTER + Duration::from_millis(offset)
+ }
+ 
++/// How long without a valid packet before the tunnel moves to a new local port.
++fn wg_roam_after() -> Duration {
++    let secs = std::env::var("WARP_WG_ROAM_SECS")
++        .ok()
++        .and_then(|v| v.parse::<u64>().ok())
++        .filter(|&v| v > 0)
++        .unwrap_or(6);
++    Duration::from_secs(secs)
++}
++
+ fn wg_stale_timeout() -> Duration {
+     let secs = std::env::var("WARP_WG_STALE_SECS")
+         .ok()
+         .and_then(|v| v.parse::<u64>().ok())
+         .filter(|&v| v > 0)
+         .map(|v| v.min(86_400))
+-        .unwrap_or(10);
++        .unwrap_or(30);
+     Duration::from_secs(secs)
+ }
+ 

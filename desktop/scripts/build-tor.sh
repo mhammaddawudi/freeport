@@ -30,7 +30,7 @@ export GOTOOLCHAIN=local GOFLAGS=-modcacherw GOPROXY="${GOPROXY:-https://proxy.g
 MODULE=gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/v2
 SRC="$(go mod download -json "$MODULE@$SNOWFLAKE_VERSION" | awk -F'"' '/"Dir"/{print $4}')"
 rm -rf "$WORK/snowflake" && cp -R "$SRC" "$WORK/snowflake" && chmod -R u+w "$WORK/snowflake"
-(cd "$WORK/snowflake" && go mod download && CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
+(cd "$WORK/snowflake" && CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
   go build -trimpath -ldflags="-s -w -buildid= -checklinkname=0" -o "$ASSETS/snowflake-$GOOS-$GOARCH$EXT" ./client)
 
 echo "==> arti $ARTI_VERSION"

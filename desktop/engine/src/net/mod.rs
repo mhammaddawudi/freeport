@@ -5,6 +5,7 @@ pub mod http;
 pub mod ports;
 pub mod socks;
 pub mod sysproxy;
+pub mod tun;
 
 /// Tests that bind ports and tests that spawn tools such as `lsof` run one at
 /// a time: a child can inherit a listener for a moment and hold its port.

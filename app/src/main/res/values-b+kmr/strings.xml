@@ -197,4 +197,6 @@
     <string name="update_retry">Dîsa</string>
     <string name="update_notes">Çi nû ye</string>
     <string name="update_allow_installs">Destûrê bide Freeport ku nûvekirinan saz bike, paşê dîsa Saz bike bitikîne</string>
+    <string name="tunnel_auto_tune">Başkirina otomatîk</string>
+    <string name="tunnel_auto_tune_desc">Leza her torê dipîve û veşartina herî bilez hildibijêre</string>
 </resources>

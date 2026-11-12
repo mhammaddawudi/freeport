@@ -107,6 +107,7 @@ class WarpEngine(
     /** Psiphon and Tor: tunnels of their own, outside Cloudflare. See [DirectTunnel]. */
     private val direct: Map<Protocol, DirectTunnel> = emptyMap(),
     private val log: CoreLog = CoreLog,
+    private val tuner: Tuner = Tuner(MemoryTuningStore()),
 ) {
 
     interface TunnelHost {
@@ -290,8 +291,21 @@ class WarpEngine(
         val refresh: Boolean = false,
     )
 
-    private suspend fun attemptOnce(requested: WarpSettings, host: TunnelHost): Outcome {
-        if (requested.protocol == Protocol.Auto) return attemptAuto(requested, host)
+    /** [settings] with the obfuscation this network has carried fastest, when tuning is on. */
+    private fun tuned(settings: WarpSettings): WarpSettings {
+        if (!settings.autoTune || settings.protocol.noizeProfiles.isEmpty() || settings.protocol == Protocol.Auto) return settings
+        val recipe = tuner.recipeFor(network, settings.protocol, settings.effectiveNoize)
+        if (recipe != Recipe(settings.effectiveNoize)) log.info("[*] tuning: ${settings.protocol.displayName} with ${recipe.id} on this network")
+        return settings.copy(noize = recipe.noize, masqueMtu = recipe.masqueMtu)
+    }
+
+    /** What Automatic expects of [protocol] here: its measured best, or a prior. */
+    private fun expectedKbps(protocol: Protocol): Long =
+        tuner.speedOf(network, protocol) ?: if (protocol.warmsUp) UNMEASURED_WARM_KBPS else UNMEASURED_KBPS
+
+    private suspend fun attemptOnce(chosen: WarpSettings, host: TunnelHost): Outcome {
+        if (chosen.protocol == Protocol.Auto) return attemptAuto(chosen, host)
+        val requested = tuned(chosen)
         val protocol = requested.protocol
         clearGatewayCache()
         core.applyEnvironment(requested)
@@ -352,7 +366,7 @@ class WarpEngine(
         val base = withFreePort(requested)
         show(ConnectionState.Preparing(Protocol.Auto))
         val candidates = AUTO_CANDIDATES.associateWith { protocol ->
-            base.copy(protocol = protocol)
+            tuned(base.copy(protocol = protocol))
         }
         val shared = candidates.mapValues { (_, settings) -> sharedEdgesAsync(settings) }
         val now = System.currentTimeMillis()
@@ -430,7 +444,10 @@ class WarpEngine(
                 fastestKnown(candidates, shared.mapValues { it.value.await() })
                     .filter { (protocol, _) -> protocol in identities },
                 stalledAt,
-            ) { it.first }.sortedBy { (protocol, _) -> if (protocol.warmsUp && protocol !in stalled) 0 else 1 }
+            ) { it.first }.sortedWith(
+                compareBy<Pair<Protocol, SharedEdge>> { (protocol, _) -> protocol in stalled }
+                    .thenByDescending { (protocol, _) -> expectedKbps(protocol) },
+            )
             if (known.isNotEmpty()) log.info("[*] automatic: ${known.size} edge(s) known to be fast here, fastest first")
             for ((protocol, edge) in known.take(MAX_KNOWN_TRIES)) {
                 val settings = candidates.getValue(protocol)
@@ -486,17 +503,32 @@ class WarpEngine(
             lanes.forEach { it.cancel() }
         }
 
-        // WireGuard carries the most once warm, so it wins whenever it answered.
-        val best = (found.entries.firstOrNull { it.key.warmsUp && it.key !in stalled }
-            ?: found.entries.filter { it.key !in stalled }.minByOrNull { it.value.rttMs }
-            ?: found.entries.minByOrNull { stalledAt[it.key] ?: 0L })?.let { it.key to it.value }
-        if (best == null) return null
+        // WireGuard carries the most once warm, so it goes first whenever it
+        // answered; the rest follow, quickest first, stalled ones last. An
+        // answer to the scan does not mean the tunnel gets through (some
+        // networks let WireGuard's handshake by and drop its traffic), so a
+        // protocol that does not come up hands over to the next one found,
+        // and is marked so the next round tries it last.
+        val ranked = found.entries.sortedWith(
+            compareBy<Map.Entry<Protocol, Endpoint>> { it.key in stalled }
+                .thenByDescending { if (it.key in stalled) 0L else expectedKbps(it.key) }
+                .thenBy { if (it.key in stalled) stalledAt[it.key] ?: 0L else it.value.rttMs },
+        ).map { it.key to it.value }
+        if (ranked.isEmpty()) return null
 
-        val (protocol, endpoint) = best
-        val chosen = candidates.getValue(protocol)
-        log.good("[+] automatic: ${protocol.displayName} chosen (${endpoint.rttMs}ms)")
-        core.applyEnvironment(chosen)
-        return runTunnel(identities.getValue(protocol), endpoint, chosen, host, viaAuto = true)
+        var last: Outcome? = null
+        for ((protocol, endpoint) in ranked) {
+            val chosen = candidates.getValue(protocol)
+            log.good("[+] automatic: ${protocol.displayName} chosen (${endpoint.rttMs}ms)")
+            core.applyEnvironment(chosen)
+            val outcome = runTunnel(identities.getValue(protocol), endpoint, chosen, host, viaAuto = true)
+            if (outcome.connected || outcome.rotate || outcome.refresh) return outcome
+            log.warn("[-] automatic: ${protocol.displayName} answered but did not carry (${outcome.reason}), trying the next")
+            cache.markStalled(cacheKey(chosen), System.currentTimeMillis())
+            tuner.record(network, protocol, Recipe(chosen.effectiveNoize, chosen.masqueMtu), 0)
+            last = outcome
+        }
+        return last
     }
 
     /**
@@ -935,6 +967,7 @@ class WarpEngine(
             board.fetch(settings.protocol, settings.ipVersion.wire, shared, settings.socksPort)
         }
         baseline = kbps
+        tuner.record(network, settings.protocol, Recipe(settings.effectiveNoize, settings.masqueMtu), kbps)
         val bar = if (warms) WARM_SLOW_KBPS else SLOW_KBPS
         if (kbps >= bar || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
         rotations++
@@ -1196,6 +1229,10 @@ class WarpEngine(
 
         /** What automatic tries; none is preferred, speed decides. */
         val AUTO_CANDIDATES = listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
+
+        /** What Automatic assumes of a protocol not yet measured on a network; WireGuard leads until measured. */
+        const val UNMEASURED_WARM_KBPS = 1_000L
+        const val UNMEASURED_KBPS = 800L
 
         /** Tried in this order when no Cloudflare edge answers at all. */
         val AUTO_FALLBACK = listOf(Protocol.Psiphon, Protocol.Tor)

@@ -17,6 +17,10 @@ data class WarpSettings(
     val tunneledApps: Set<String> = emptySet(),
     val scanMode: ScanMode = ScanMode.Balanced,
     val noize: NoizeProfile = NoizeProfile.Firewall,
+    /** Let each network's measured speeds choose the obfuscation profile. */
+    val autoTune: Boolean = true,
+    /** MASQUE packet size the tuner is trying; 0 keeps the core's own. Not saved. */
+    val masqueMtu: Int = 0,
     val ipVersion: IpVersion = IpVersion.V4,
     val socksPort: Int = DEFAULT_SOCKS_PORT,
     val httpProxyEnabled: Boolean = false,
@@ -94,6 +98,7 @@ class SettingsRepository(context: Context) {
             httpProxyPort = prefs.getInt(KEY_HTTP_PORT, defaults.httpProxyPort),
             fetchEch = prefs.getBoolean(KEY_ECH, defaults.fetchEch),
             keepaliveSeconds = prefs.getInt(KEY_KEEPALIVE, defaults.keepaliveSeconds),
+            autoTune = prefs.getBoolean(KEY_AUTO_TUNE, defaults.autoTune),
             fragmentEnabled = prefs.getBoolean(KEY_FRAGMENT, defaults.fragmentEnabled),
             fragmentSize = prefs.getInt(KEY_FRAGMENT_SIZE, defaults.fragmentSize),
             fragmentDelayMs = prefs.getInt(KEY_FRAGMENT_DELAY, defaults.fragmentDelayMs),
@@ -135,6 +140,7 @@ class SettingsRepository(context: Context) {
             .putInt(KEY_HTTP_PORT, value.httpProxyPort)
             .putBoolean(KEY_ECH, value.fetchEch)
             .putInt(KEY_KEEPALIVE, value.keepaliveSeconds)
+            .putBoolean(KEY_AUTO_TUNE, value.autoTune)
             .putBoolean(KEY_FRAGMENT, value.fragmentEnabled)
             .putInt(KEY_FRAGMENT_SIZE, value.fragmentSize)
             .putInt(KEY_FRAGMENT_DELAY, value.fragmentDelayMs)
@@ -170,6 +176,7 @@ class SettingsRepository(context: Context) {
         const val KEY_HTTP_PORT = "http_port"
         const val KEY_ECH = "ech"
         const val KEY_KEEPALIVE = "keepalive"
+        const val KEY_AUTO_TUNE = "auto_tune"
         const val KEY_FRAGMENT = "fragment"
         const val KEY_FRAGMENT_SIZE = "fragment_size"
         const val KEY_FRAGMENT_DELAY = "fragment_delay"

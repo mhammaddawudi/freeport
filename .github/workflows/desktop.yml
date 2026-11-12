@@ -70,6 +70,11 @@ jobs:
       - name: Tor
         run: freeport/desktop/scripts/build-tor.sh ${{ matrix.target }}
 
+      # sing-box, as the TUN mode helper.
+      - name: TUN helper
+        shell: bash
+        run: freeport/desktop/scripts/build-singbox.sh ${{ matrix.target }}
+
       - name: Tests
         working-directory: freeport/desktop
         run: cargo test -p freeport-engine -p freeport-desktop

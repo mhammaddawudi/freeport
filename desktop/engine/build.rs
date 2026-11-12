@@ -35,7 +35,7 @@ fn main() {
     // Tor is optional: an empty stand-in keeps the build going without it.
     let empty = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("absent");
     std::fs::write(&empty, b"").unwrap();
-    for (var, stem) in [("FREEPORT_ARTI", "arti"), ("FREEPORT_SNOWFLAKE", "snowflake")] {
+    for (var, stem) in [("FREEPORT_ARTI", "arti"), ("FREEPORT_SNOWFLAKE", "snowflake"), ("FREEPORT_SINGBOX", "singbox")] {
         let path = find(var, stem);
         let chosen = if path.exists() { path } else { empty.clone() };
         println!("cargo:rustc-env={var}={}", chosen.display());

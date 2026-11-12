@@ -29,6 +29,18 @@ pub struct Settings {
     pub keepalive_secs: u16,
     pub fragment: bool,
     pub pinned_peer: String,
+    /// Let measured speeds choose the obfuscation profile.
+    #[serde(default = "yes")]
+    pub auto_tune: bool,
+    /// MASQUE packet size the tuner is trying; 0 keeps the core's own. Not saved.
+    #[serde(skip)]
+    pub masque_mtu: u16,
+    /// Send traffic through a TUN interface, for programs that ignore proxies.
+    #[serde(default)]
+    pub tun: bool,
+    /// In TUN mode, only the apps in `proxied_apps`.
+    #[serde(default)]
+    pub tun_per_app: bool,
     /// Apps Freeport opens through its proxy, leaving the rest of the system alone.
     #[serde(default)]
     pub proxied_apps: Vec<String>,
@@ -38,6 +50,10 @@ pub struct Settings {
     /// Which one-off upgrades of saved choices have run; 0 in older files.
     #[serde(default)]
     pub revision: u32,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// Bump with each upgrade in [`Settings::upgrade`].
@@ -59,6 +75,10 @@ impl Default for Settings {
             keepalive_secs: 5,
             fragment: false,
             pinned_peer: String::new(),
+            auto_tune: true,
+            masque_mtu: 0,
+            tun: false,
+            tun_per_app: false,
             proxied_apps: Vec::new(),
             open_apps_on_connect: false,
             revision: REVISION,

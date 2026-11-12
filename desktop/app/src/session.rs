@@ -9,6 +9,7 @@ use freeport_engine::engine::{Engine, Phase};
 use freeport_engine::net::evict;
 use freeport_engine::net::front::Front;
 use freeport_engine::net::sysproxy;
+use freeport_engine::net::tun;
 use freeport_engine::settings::Settings;
 use parking_lot::Mutex;
 use std::sync::atomic::Ordering::Relaxed;
@@ -22,6 +23,7 @@ pub struct Session {
     settings: Mutex<Settings>,
     /// Freeport set the system proxy for this session, so it puts it back.
     holds_proxy: AtomicBool,
+    tun: Arc<tun::Tun>,
 }
 
 impl Session {
@@ -44,6 +46,7 @@ impl Session {
             bind_error: Mutex::new(bind_error),
             settings: Mutex::new(settings),
             holds_proxy: AtomicBool::new(false),
+            tun: Arc::new(tun::Tun::default()),
         }
     }
 
@@ -101,7 +104,26 @@ impl Session {
             }
             self.take_proxy();
         }
+        self.retune_tun(&before);
         Ok(started)
+    }
+
+    /// Follows a change of the TUN switches while connected: on, off, or a
+    /// different set of apps (which restarts it, and so asks again).
+    fn retune_tun(&self, before: &Settings) {
+        let now = self.settings();
+        let scope_changed = (before.tun_per_app, &before.proxied_apps, before.socks_port)
+            != (now.tun_per_app, &now.proxied_apps, now.socks_port);
+        if !now.tun {
+            if self.tun.is_running() {
+                self.stop_tun();
+            }
+        } else if self.is_connected() && (!self.tun.is_running() || (scope_changed && now.tun_per_app) || before.socks_port != now.socks_port) {
+            if self.tun.is_running() {
+                self.tun.stop();
+            }
+            self.start_tun();
+        }
     }
 
     fn is_connected(&self) -> bool {
@@ -139,6 +161,37 @@ impl Session {
             Phase::Idle => self.release_proxy(),
             _ => {}
         }
+        match phase {
+            Phase::Connected if self.settings.lock().tun && !self.tun.is_running() => self.start_tun(),
+            Phase::Idle if self.tun.is_running() => self.stop_tun(),
+            _ => {}
+        }
+    }
+
+    /// Starts the interface off the status thread: it waits on a password prompt.
+    fn start_tun(&self) {
+        let settings = self.settings();
+        let scope = if settings.tun_per_app {
+            tun::Scope::Apps(settings.proxied_apps.iter().filter_map(|path| crate::apps::program_of(path)).collect())
+        } else {
+            tun::Scope::Everything
+        };
+        let tun = self.tun.clone();
+        std::thread::spawn(move || {
+            if let Err(error) = tun.start(settings.socks_port, &scope) {
+                log::warn!(target: "freeport", "[-] tun: {error:#}");
+            }
+        });
+    }
+
+    pub fn stop_tun(&self) {
+        let tun = self.tun.clone();
+        std::thread::spawn(move || tun.stop());
+    }
+
+    /// Stops the interface before the app exits.
+    pub fn stop_tun_now(&self) {
+        self.tun.stop();
     }
 
     fn take_proxy(&self) {

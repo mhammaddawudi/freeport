@@ -46,6 +46,19 @@ pub fn open(path: &str, socks: u16, http: u16) -> Result<()> {
     launch(Path::new(path), socks, http)
 }
 
+/// Where the chosen app's programs live, for TUN mode to match them by:
+/// the bundle on macOS, the shortcut's .exe on Windows.
+pub fn program_of(path: &str) -> Option<String> {
+    #[cfg(windows)]
+    {
+        return shortcut(Path::new(path)).ok().map(|(target, _, _)| target);
+    }
+    #[cfg(not(windows))]
+    {
+        Some(path.to_string()).filter(|p| Path::new(p).exists())
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn roots() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from("/Applications")];
@@ -118,10 +131,10 @@ fn scan(dir: &Path, depth: u8) -> Vec<App> {
         .collect()
 }
 
+/// A shortcut's target, arguments and working folder.
 #[cfg(windows)]
-fn launch(shortcut: &Path, socks: u16, http: u16) -> Result<()> {
+fn shortcut(shortcut: &Path) -> Result<(String, String, String)> {
     use std::os::windows::process::CommandExt;
-    // The shortcut's own target and arguments, so the proxy flag can be added.
     let script = format!(
         "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); $s.TargetPath; $s.Arguments; $s.WorkingDirectory",
         shortcut.to_string_lossy().replace('\'', "''")
@@ -139,6 +152,13 @@ fn launch(shortcut: &Path, socks: u16, http: u16) -> Result<()> {
     if target.is_empty() || !target.to_lowercase().ends_with(".exe") {
         bail!("{} cannot be opened through Freeport", stem(shortcut));
     }
+    Ok((target, args, dir))
+}
+
+#[cfg(windows)]
+fn launch(shortcut_path: &Path, socks: u16, http: u16) -> Result<()> {
+    let shortcut = shortcut_path;
+    let (target, args, dir) = self::shortcut(shortcut)?;
     let mut command = Command::new(&target);
     command.envs(proxy_env(socks, http)).args(proxy_args(socks));
     if !args.is_empty() {

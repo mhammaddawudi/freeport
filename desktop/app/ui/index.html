@@ -72,6 +72,14 @@
             <label class="switch"><input type="checkbox" data-setting="system_proxy"><span></span></label>
           </div>
           <div class="row">
+            <div class="grow"><div class="title" data-t="tun"></div><div class="hint" data-t="tun_desc"></div></div>
+            <label class="switch"><input type="checkbox" data-setting="tun"><span></span></label>
+          </div>
+          <div class="row" id="tun-per-app-row">
+            <div class="grow"><div class="title" data-t="tun_per_app"></div><div class="hint" data-t="tun_per_app_desc"></div></div>
+            <label class="switch"><input type="checkbox" data-setting="tun_per_app"><span></span></label>
+          </div>
+          <div class="row">
             <div class="grow"><div class="title" data-t="proxies"></div><div class="hint" data-t="proxies_desc"></div></div>
           </div>
           <div class="row ports">
@@ -96,7 +104,11 @@
         <div class="label" data-t="advanced"></div>
         <div class="card">
           <div class="row"><div class="grow title" data-t="scan"></div><select data-setting="scan_mode"></select></div>
-          <div class="row"><div class="grow title" data-t="noize"></div><select data-setting="noize"></select></div>
+          <div class="row">
+            <div class="grow"><div class="title" data-t="auto_tune"></div><div class="hint" data-t="auto_tune_desc"></div></div>
+            <label class="switch"><input type="checkbox" data-setting="auto_tune"><span></span></label>
+          </div>
+          <div class="row" id="noize-row"><div class="grow title" data-t="noize"></div><select data-setting="noize"></select></div>
           <div class="row"><div class="grow title" data-t="ip"></div><select data-setting="ip_version"></select></div>
           <div class="row">
             <div class="grow"><div class="title" data-t="ech"></div><div class="hint" data-t="ech_desc"></div></div>

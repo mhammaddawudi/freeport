@@ -283,6 +283,7 @@ fn main() {
             tauri::async_runtime::block_on(async move {
                 let _ = session.disconnect().await;
                 session.release_proxy();
+                session.stop_tun_now();
             });
         }
         #[cfg(target_os = "macos")]

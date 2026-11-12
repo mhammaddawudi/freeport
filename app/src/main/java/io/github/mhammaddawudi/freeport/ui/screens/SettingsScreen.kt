@@ -182,6 +182,13 @@ fun SettingsScreen(
         if (!protocol.isDirect) {
         SectionLabel(stringResource(R.string.section_tunnel), trailing = if (auto) stringResource(R.string.protocol_auto) else protocol.displayName)
         GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
+            SwitchRow(
+                title = stringResource(R.string.tunnel_auto_tune),
+                checked = settings.autoTune,
+                onCheckedChange = { on -> onUpdateSettings { it.copy(autoTune = on) } },
+                subtitle = stringResource(R.string.tunnel_auto_tune_desc),
+            )
+            RowDivider()
             InfoRow(
                 title = stringResource(R.string.tunnel_scan),
                 value = stringResource(settings.scanMode.labelRes),
@@ -191,9 +198,9 @@ fun SettingsScreen(
             RowDivider()
             InfoRow(
                 title = stringResource(R.string.tunnel_noize),
-                value = stringResource(settings.effectiveNoize.labelRes),
+                value = if (settings.autoTune) stringResource(R.string.protocol_auto) else stringResource(settings.effectiveNoize.labelRes),
                 glyph = GlyphKind.Mask,
-                onClick = { sheet = TuningSheet.Noize },
+                onClick = { if (!settings.autoTune) sheet = TuningSheet.Noize },
             )
             RowDivider()
             InfoRow(

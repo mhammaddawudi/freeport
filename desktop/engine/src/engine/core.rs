@@ -64,6 +64,8 @@ impl Core {
         set("WARP_MASQUE_VALIDATE_SECS", "20");
         set("WARP_WG_VALIDATE_SECS", "15");
         set("WARP_WG_KEEPALIVE", &settings.keepalive_secs.to_string());
+        // Always set: the variable outlives the session, and an empty one keeps the core's default.
+        set("WARP_MASQUE_MTU", &if settings.masque_mtu > 0 { settings.masque_mtu.to_string() } else { String::new() });
     }
 
     pub async fn identity(&self, protocol: Protocol) -> Result<Arc<Identity>> {

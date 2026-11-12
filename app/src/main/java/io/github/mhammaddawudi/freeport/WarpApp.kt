@@ -14,6 +14,9 @@ import io.github.mhammaddawudi.freeport.core.PrefsEndpointCache
 import io.github.mhammaddawudi.freeport.core.PsiphonDirect
 import io.github.mhammaddawudi.freeport.core.PsiphonRelay
 import io.github.mhammaddawudi.freeport.core.TorTunnel
+import io.github.mhammaddawudi.freeport.core.Tuner
+import io.github.mhammaddawudi.freeport.core.PrefsTuningStore
+import io.github.mhammaddawudi.freeport.core.MemoryTuningStore
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.core.SimulatedTrafficMeter
 import io.github.mhammaddawudi.freeport.core.TrafficMeter
@@ -89,6 +92,7 @@ class WarpApp : Application() {
             } else {
                 null
             },
+            tuner = Tuner(if (CoreProvider.isNative) PrefsTuningStore(this) else MemoryTuningStore()),
         )
         trafficMeter = if (CoreProvider.isNative) UidTrafficMeter() else SimulatedTrafficMeter()
         VpnNotifications.ensureChannel(this)

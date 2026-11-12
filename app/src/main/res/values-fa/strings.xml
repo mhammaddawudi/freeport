@@ -197,4 +197,6 @@
     <string name="update_retry">دوباره</string>
     <string name="update_notes">چه چیزی جدید است</string>
     <string name="update_allow_installs">اجازهٔ نصب به‌روزرسانی را به فری‌پورت بدهید و دوباره «نصب» را بزنید</string>
+    <string name="tunnel_auto_tune">بهینه‌سازی خودکار</string>
+    <string name="tunnel_auto_tune_desc">سرعت هر شبکه را می‌سنجد و پوششی را انتخاب می‌کند که بیشترین سرعت را دارد</string>
 </resources>

@@ -83,6 +83,8 @@ internal object CorePayloads {
         put("WARP_SCAN", scanWire(settings))
         put("WARP_NOIZE", settings.effectiveNoize.wire)
         put("WARP_IP", settings.ipVersion.wire)
+        // Always set: the variable outlives the session, and an empty one keeps the core's default.
+        put("WARP_MASQUE_MTU", if (settings.masqueMtu > 0) settings.masqueMtu.toString() else "")
         // Always rescan: see WarpEngine.clearGatewayCache.
         put("WARP_QUICK_RECONNECT", "0")
         // QUIC stalls inside the tunnel and apps such as Instagram wait on it;

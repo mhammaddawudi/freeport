@@ -197,4 +197,6 @@
     <string name="update_retry">Try again</string>
     <string name="update_notes">What\'s new</string>
     <string name="update_allow_installs">Allow Freeport to install updates, then tap Install again</string>
+    <string name="tunnel_auto_tune">Optimize automatically</string>
+    <string name="tunnel_auto_tune_desc">Measures each network and picks the obfuscation that carries the most</string>
 </resources>

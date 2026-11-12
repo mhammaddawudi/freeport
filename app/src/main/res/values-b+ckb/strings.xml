@@ -199,4 +199,6 @@
     <string name="update_retry">دووبارە</string>
     <string name="update_notes">چی نوێیە</string>
     <string name="update_allow_installs">ڕێگە بە فریپۆرت بدە نوێکردنەوە دابمەزرێنێت، پاشان دووبارە «دامەزراندن» دابگرە</string>
+    <string name="tunnel_auto_tune">باشترکردنی خۆکار</string>
+    <string name="tunnel_auto_tune_desc">خێرایی هەر تۆڕێک دەپێوێت و ئەو پۆشینە هەڵدەبژێرێت کە خێراترینە</string>
 </resources>

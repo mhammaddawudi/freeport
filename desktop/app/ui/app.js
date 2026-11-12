@@ -221,6 +221,8 @@ function renderSettings() {
   });
   if (!NOIZE[transport].includes(s.noize)) document.querySelector('[data-setting="noize"]').value = NOIZE[transport][0];
   $("unlock").checked = s.region_unlock;
+  $("noize-row").classList.toggle("muted", !!s.auto_tune);
+  $("tun-per-app-row").classList.toggle("muted", !s.tun);
   const direct = DIRECT.includes(s.protocol);
   $("unlock").disabled = direct;
   $("unlock").closest(".card, .row, label")?.classList.toggle("muted", direct);
@@ -326,6 +328,8 @@ function wire(prefs) {
   $("unlock").addEventListener("change", (e) => saveSettings({ ...state.settings, region_unlock: e.target.checked }, false));
   $("country").addEventListener("change", (e) => saveSettings({ ...state.settings, exit_country: e.target.value, region_unlock: true }, false));
   $("save").addEventListener("click", () => saveSettings(readSettings()));
+  ["tun", "tun_per_app"].forEach((key) => document.querySelector(`[data-setting="${key}"]`).addEventListener("change", () => saveSettings(readSettings(), false)));
+  document.querySelector('[data-setting="auto_tune"]').addEventListener("change", () => saveSettings(readSettings(), false));
   document.querySelector('[data-setting="system_proxy"]').addEventListener("change", () => saveSettings(readSettings(), false));
   $("copy-logs").addEventListener("click", async () => {
     await navigator.clipboard.writeText($("logs").innerText).catch(() => {});
