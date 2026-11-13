@@ -47,8 +47,8 @@ jobs:
           cd "$RUNNER_TEMP"
           rm -rf publish && mkdir publish && cd publish
           git init -q -b configs
-          cp "$RUNNER_TEMP/alive.txt" alive.txt
-          git add alive.txt
+          cp "$RUNNER_TEMP/alive.txt" "$RUNNER_TEMP/known.txt" .
+          git add alive.txt known.txt
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -qm "configs: $(wc -l < alive.txt) working, $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" configs

@@ -24,6 +24,8 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/edges") return await list(request, env, url);
       if (request.method === "POST" && url.pathname === "/v1/report") return await report(request, env);
       if (request.method === "GET" && url.pathname === "/v1/release") return await release(ctx);
+      if (request.method === "GET" && url.pathname === "/v1/configs") return await listConfigs(env, ctx);
+      if (request.method === "POST" && url.pathname === "/v1/configs") return await reportConfigs(request, env, ctx);
       return json({ error: "not found" }, 404);
     } catch (error) {
       return json({ error: "server error" }, 500);
@@ -141,4 +143,90 @@ function json(data, status, headers = {}) {
     status,
     headers: { "Content-Type": "application/json", ...headers },
   });
+}
+
+// ---- the shared pool of public V2Ray configs -------------------------------
+//
+// Every phone tests configs on its own line and reports what answered and
+// what did not; every phone starts from what everyone found. Only configs
+// from the public collections are taken (their hashes, published daily by
+// the census workflow), so nobody can slip a server of their own in.
+
+const CENSUS_BASE = "https://raw.githubusercontent.com/mhammaddawudi/freeport/configs";
+const CENSUS_TTL_S = 1800;
+const CONFIG_MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
+const MAX_POOLED = 400;
+const MAX_REPORTED = 80;
+const SCHEMES = /^(vless|vmess|trojan|ss):\/\//;
+
+async function listConfigs(env, ctx) {
+  const { results } = await env.DB.prepare(
+    `SELECT link FROM configs
+     WHERE updated > ? AND ok > fail
+     ORDER BY kbps DESC, delay ASC
+     LIMIT ?`,
+  ).bind(Date.now() - CONFIG_MAX_AGE_MS, MAX_POOLED).all();
+  const pooled = results.map((row) => row.link);
+  // The census's own list follows what people found, for networks nobody reported from yet.
+  const census = (await cachedText(`${CENSUS_BASE}/alive.txt`, ctx)) || "";
+  const seen = new Set(pooled);
+  const lines = pooled.concat(census.split("\n").map((l) => l.trim()).filter((l) => l && !seen.has(l)));
+  return new Response(lines.join("\n") + "\n", {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=300" },
+  });
+}
+
+async function reportConfigs(request, env, ctx) {
+  const body = await request.json().catch(() => null);
+  const results = body && Array.isArray(body.results) ? body.results.slice(0, MAX_REPORTED) : null;
+  if (!results) return json({ error: "bad body" }, 400);
+  const known = await knownHashes(ctx);
+  if (!known) return json({ error: "census unavailable" }, 503);
+  const now = Date.now();
+  const statements = [];
+  for (const item of results) {
+    const link = String(item && item.link || "").trim();
+    if (link.length > 4096 || !SCHEMES.test(link)) continue;
+    const key = await hash(link);
+    if (!known.has(key)) continue;
+    const ok = item.ok === true;
+    const delay = clamp(Number(item.delay) || 0, 0, 20000);
+    const kbps = clamp(Number(item.kbps) || 0, 0, 200000);
+    statements.push(env.DB.prepare(
+      `INSERT INTO configs (key, link, delay, kbps, ok, fail, updated)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+       ON CONFLICT (key) DO UPDATE SET
+         delay = CASE WHEN ?5 = 1 THEN CAST(delay * 0.6 + ?3 * 0.4 AS INTEGER) ELSE delay END,
+         kbps = CASE WHEN ?5 = 1 AND ?4 > 0 THEN CAST(kbps * 0.6 + ?4 * 0.4 AS INTEGER) ELSE kbps END,
+         ok = ok + ?5, fail = fail + ?6, updated = ?7`,
+    ).bind(key, link, Math.round(delay), Math.round(kbps), ok ? 1 : 0, ok ? 0 : 1, now));
+  }
+  if (statements.length) await env.DB.batch(statements);
+  if (Math.random() < 0.02) {
+    await env.DB.prepare("DELETE FROM configs WHERE updated < ?").bind(now - CONFIG_MAX_AGE_MS).run();
+  }
+  return new Response(null, { status: 204 });
+}
+
+async function knownHashes(ctx) {
+  const text = await cachedText(`${CENSUS_BASE}/known.txt`, ctx);
+  return text ? new Set(text.split("\n").map((l) => l.trim()).filter(Boolean)) : null;
+}
+
+async function cachedText(url, ctx) {
+  const cache = caches.default;
+  const key = new Request(url);
+  const cached = await cache.match(key);
+  if (cached) return cached.text();
+  const upstream = await fetch(url, { headers: { "User-Agent": "freeport-edge-board" } });
+  if (!upstream.ok) return null;
+  const text = await upstream.text();
+  ctx.waitUntil(cache.put(key, new Response(text, { headers: { "Cache-Control": `public, max-age=${CENSUS_TTL_S}` } })));
+  return text;
+}
+
+// The first 16 hex digits of the link's SHA-256, as the census writes them.
+async function hash(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest).slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

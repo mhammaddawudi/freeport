@@ -26,6 +26,8 @@ class ConfigCensusTest {
         val healthy = open.chunked(BATCH).flatMap { tester.probe(it) }.sortedBy { it.delayMs }.take(KEEP)
         println("census: ${healthy.size} configs work")
         out!!.writeText(healthy.joinToString("\n") { it.link.raw } + "\n")
+        // Every config in the collections, by hash: the shared pool takes reports of these only.
+        File(out.parentFile, "known.txt").writeText(links.joinToString("\n") { ShareLink.hashOf(it.raw) } + "\n")
     }
 
     private companion object {
