@@ -36,7 +36,7 @@ const LATENCY_EVERY: Duration = Duration::from_secs(15);
 const LATENCY_KEPT: usize = 60;
 
 /// Long enough for a few rounds of H2 probes on a line with 2s round trips.
-const AUTO_LANE: Duration = Duration::from_secs(10);
+const AUTO_LANE: Duration = Duration::from_secs(8);
 const AUTO_PING: Duration = Duration::from_secs(20);
 const AUTO_GRACE: Duration = Duration::from_millis(2_500);
 const MAX_KNOWN_TRIES: usize = 3;
@@ -133,20 +133,10 @@ impl Engine {
         }
         let identity_of = |p: Protocol| identities.iter().find(|(q, _)| *q == p).map(|(_, i)| i.clone());
 
-        // Until every protocol has been measured here, a known edge that is
-        // not fast does not end the search: the scan measures the others
-        // first, so the choice rests on speeds rather than a guess.
-        let benched = self.benched.lock().clone();
-        let unmeasured: Vec<Protocol> =
-            identities.iter().map(|(p, _)| *p).filter(|p| !benched.contains(p) && self.tuner.measured(*p).is_none()).collect();
-        let best_known = identities.iter().filter_map(|(p, _)| self.tuner.measured(*p)).max().unwrap_or(0);
-        let settled = unmeasured.is_empty() || best_known >= tuner::GOOD_KBPS;
-        if !settled {
-            let names: Vec<_> = unmeasured.iter().map(|p| p.name()).collect();
-            log::info!(target: "freeport", "[*] automatic: {} not measured on this network yet", names.join(", "));
-        }
-
-        if base.pinned_peer.trim().is_empty() && settled {
+        // The user waits on this: a known edge that carries ends the search
+        // at once. Protocols not measured here yet are measured by the
+        // sessions that use them, never ahead of the connection.
+        if base.pinned_peer.trim().is_empty() {
             let mut shared = Vec::new();
             for protocol in candidates {
                 shared.push((protocol, self.shared(protocol, base).await));
@@ -214,13 +204,9 @@ impl Engine {
         }
 
         let benched = self.benched.lock().clone();
-        let mut ranked = rank(found, &benched, |p| self.tuner.expected(p));
+        let ranked = rank(found, &benched, |p| self.tuner.expected(p));
         if ranked.is_empty() {
             return self.leave_cloudflare(base).await;
-        }
-        if ranked.len() > 1 && ranked.iter().any(|(p, _)| !benched.contains(p) && self.tuner.measured(*p).is_none()) {
-            self.audition(&ranked, &benched, base, &identity_of).await;
-            ranked = rank(ranked, &benched, |p| self.tuner.expected(p));
         }
         // An answer to the scan does not mean the tunnel gets through: some
         // networks let WireGuard's handshake by and drop its traffic. A
@@ -245,34 +231,6 @@ impl Engine {
         }
         let fallback = self.leave_cloudflare(base).await;
         if fallback.connected { fallback } else { last }
-    }
-
-    /// Opens each protocol not measured on this network yet and measures its
-    /// download without handing the proxy over, so Automatic picks by speed.
-    async fn audition(
-        self: &Arc<Self>,
-        found: &[(Protocol, Endpoint)],
-        benched: &[Protocol],
-        base: &Settings,
-        identity_of: &impl Fn(Protocol) -> Option<Arc<Identity>>,
-    ) {
-        let names: Vec<_> = found.iter().map(|(p, _)| p.name()).collect();
-        log::info!(target: "freeport", "[*] automatic: measuring {} to pick the fastest here", names.join(", "));
-        for (protocol, endpoint) in found {
-            if benched.contains(protocol) || self.tuner.measured(*protocol).is_some() {
-                continue;
-            }
-            let Some(identity) = identity_of(*protocol) else { continue };
-            let chosen = self.tuned(&base.with_protocol(*protocol));
-            self.core.apply_environment(&chosen);
-            self.auditioning.store(true, std::sync::atomic::Ordering::SeqCst);
-            let outcome = self.run_tunnel(identity, *endpoint, &chosen, REMEMBERED_STARTUP, true).await;
-            self.auditioning.store(false, std::sync::atomic::Ordering::SeqCst);
-            if self.tuner.measured(*protocol).is_none() {
-                log::warn!(target: "freeport", "[-] automatic: {} did not come up ({})", protocol.name(), outcome.reason);
-                self.tuner.record(*protocol, tuner::Recipe { noize: chosen.effective_noize(), masque_mtu: chosen.masque_mtu }, 0);
-            }
-        }
     }
 
     /// Cloudflare is out of reach here: the tunnels that do not go through it.
@@ -476,20 +434,6 @@ impl Engine {
         // The tunnel carried a test connection, so the edge is worth coming
         // back to even if Psiphon does not come up behind it.
         let pinned = !settings.pinned_peer.trim().is_empty();
-        if let (Some(endpoint), true) = (endpoint, self.auditioning.load(std::sync::atomic::Ordering::SeqCst)) {
-            let kbps = match board::measure(inner, JUDGE_BYTES, JUDGE_WINDOW, 0).await {
-                Ok(measured) => {
-                    if measured.kbps >= SLOW_KBPS {
-                        self.cache.remember(settings.protocol, settings.ip_version, endpoint);
-                    }
-                    measured.kbps
-                }
-                Err(_) => 0,
-            };
-            log::info!(target: "freeport", "[*] automatic: {} via {} carries {kbps} KB/s", settings.protocol.name(), endpoint.socket());
-            self.tuner.record(settings.protocol, tuner::Recipe { noize: settings.effective_noize(), masque_mtu: settings.masque_mtu }, kbps);
-            return Outcome::failed("measured");
-        }
         if let (Some(endpoint), false) = (endpoint, pinned) {
             // Speed is checked before the proxy is handed over, so a slow
             // edge is swapped while the status still says connecting.

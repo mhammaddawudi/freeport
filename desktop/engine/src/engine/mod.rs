@@ -99,8 +99,6 @@ pub struct Engine {
     /// Each protocol's last round trip on this network in ms; -1 when it did not answer.
     pub(crate) reach: Mutex<std::collections::HashMap<Protocol, i64>>,
     pub(crate) probing: std::sync::atomic::AtomicBool,
-    /// Set while Automatic measures a protocol before choosing; the proxy is not handed over.
-    pub(crate) auditioning: std::sync::atomic::AtomicBool,
 }
 
 impl Engine {
@@ -118,7 +116,6 @@ impl Engine {
             benched: Mutex::new(Vec::new()),
             reach: Mutex::new(Default::default()),
             probing: Default::default(),
-            auditioning: Default::default(),
             tuner: if cfg!(test) { tuner::Tuner::default() } else { tuner::Tuner::load() },
         })
     }

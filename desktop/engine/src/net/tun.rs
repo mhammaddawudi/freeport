@@ -103,46 +103,62 @@ fn path_pattern(path: &str) -> String {
 #[derive(Default)]
 pub struct Tun {
     running: parking_lot::Mutex<bool>,
+    /// One start or reload at a time: quick changes queue instead of each asking.
+    busy: parking_lot::Mutex<()>,
 }
 
 impl Tun {
+    /// Brings the interface to [scope]: reloads it under the watchdog already
+    /// running as administrator, so no new prompt; starts it (one prompt)
+    /// only when none runs or the reload fails.
+    pub fn apply(&self, socks_port: u16, scope: &Scope) -> Result<()> {
+        let _turn = self.busy.lock();
+        if self.is_running() {
+            match self.reload(socks_port, scope) {
+                Ok(()) => return Ok(()),
+                Err(error) => log::warn!(target: "freeport", "[-] tun: reload failed, starting again: {error:#}"),
+            }
+        }
+        self.start_locked(socks_port, scope)
+    }
+
     /// Writes the configuration, asks for administrator rights and starts the
     /// interface; returns once it is up. Blocks while the prompt is open.
     pub fn start(&self, socks_port: u16, scope: &Scope) -> Result<()> {
+        let _turn = self.busy.lock();
+        self.start_locked(socks_port, scope)
+    }
+
+    fn start_locked(&self, socks_port: u16, scope: &Scope) -> Result<()> {
         self.stop();
-        if !is_available() {
-            bail!("TUN mode is not in this build");
-        }
-        let dir = settings::sub_dir("tun")?;
-        let binary = install(&dir)?;
-        let config_path = dir.join("config.json");
-        let own = own_paths();
-        let text = serde_json::to_vec_pretty(&config(socks_port, scope, &own))?;
-        fs::write(&config_path, text).context("could not write the TUN configuration")?;
-        let check = std::process::Command::new(&binary).args(["check", "-c"]).arg(&config_path).output();
-        if let Ok(out) = check {
-            if !out.status.success() {
-                bail!("the TUN configuration was refused: {}", String::from_utf8_lossy(&out.stderr).trim());
-            }
-        }
-        let (stop, pid) = (dir.join("stop"), dir.join("pid"));
+        let (dir, binary, config_path) = prepare(socks_port, scope)?;
+        let (stop, pid, reload) = (dir.join("stop"), dir.join("pid"), dir.join("reload"));
         let _ = fs::remove_file(&stop);
         let _ = fs::remove_file(&pid);
-        elevate(&dir, &binary, &config_path, &stop, &pid)?;
-        // The watchdog writes sing-box's pid once it runs; the interface follows a moment later.
+        let _ = fs::remove_file(&reload);
+        elevate(&dir, &binary, &config_path, &stop, &pid, &reload)?;
+        wait_for_pid(&dir, 40)?;
+        *self.running.lock() = true;
+        log::info!(target: "freeport", "[+] tun: the system's traffic now goes through Freeport");
+        Ok(())
+    }
+
+    /// New configuration, same administrator watchdog: it restarts sing-box.
+    fn reload(&self, socks_port: u16, scope: &Scope) -> Result<()> {
+        let (dir, _, _) = prepare(socks_port, scope)?;
+        let reload = dir.join("reload");
+        let _ = fs::remove_file(dir.join("pid"));
+        fs::write(&reload, b"").context("could not ask the TUN helper to reload")?;
         for _ in 0..40 {
             std::thread::sleep(Duration::from_millis(250));
-            if let Some(id) = fs::read_to_string(&pid).ok().and_then(|text| text.trim().parse::<u32>().ok()) {
-                std::thread::sleep(Duration::from_millis(1500));
-                if !alive(id) {
-                    bail!("the TUN interface stopped at once; see {}", dir.join("singbox.log").display());
-                }
-                *self.running.lock() = true;
-                log::info!(target: "freeport", "[+] tun: the system's traffic now goes through Freeport");
+            if !reload.exists() {
+                wait_for_pid(&dir, 20)?;
+                log::info!(target: "freeport", "[+] tun: the chosen apps were updated");
                 return Ok(());
             }
         }
-        bail!("the TUN interface did not start (was the password prompt cancelled?)")
+        let _ = fs::remove_file(&reload);
+        bail!("the TUN helper did not answer")
     }
 
     /// Asks the watchdog to stop the interface; it needs no new prompt.
@@ -167,6 +183,41 @@ impl Tun {
     pub fn is_running(&self) -> bool {
         *self.running.lock()
     }
+}
+
+/// Writes and checks the configuration; returns the folder, sing-box and the config path.
+fn prepare(socks_port: u16, scope: &Scope) -> Result<(PathBuf, PathBuf, PathBuf)> {
+    if !is_available() {
+        bail!("TUN mode is not in this build");
+    }
+    let dir = settings::sub_dir("tun")?;
+    let binary = install(&dir)?;
+    let config_path = dir.join("config.json");
+    let text = serde_json::to_vec_pretty(&config(socks_port, scope, &own_paths()))?;
+    fs::write(&config_path, text).context("could not write the TUN configuration")?;
+    let check = std::process::Command::new(&binary).args(["check", "-c"]).arg(&config_path).output();
+    if let Ok(out) = check {
+        if !out.status.success() {
+            bail!("the TUN configuration was refused: {}", String::from_utf8_lossy(&out.stderr).trim());
+        }
+    }
+    Ok((dir, binary, config_path))
+}
+
+/// The watchdog writes sing-box's pid once it runs; the interface follows a moment later.
+fn wait_for_pid(dir: &Path, tries: u32) -> Result<()> {
+    let pid = dir.join("pid");
+    for _ in 0..tries {
+        std::thread::sleep(Duration::from_millis(250));
+        if let Some(id) = fs::read_to_string(&pid).ok().and_then(|text| text.trim().parse::<u32>().ok()) {
+            std::thread::sleep(Duration::from_millis(1500));
+            if !alive(id) {
+                bail!("the TUN interface stopped at once; see {}", dir.join("singbox.log").display());
+            }
+            return Ok(());
+        }
+    }
+    bail!("the TUN interface did not start (was the password prompt cancelled?)")
 }
 
 /// Freeport's own programs: their traffic must never loop back into the interface.
@@ -227,28 +278,32 @@ fn quote_sh(path: &Path) -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path) -> Result<()> {
+fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path, reload: &Path) -> Result<()> {
     let watchdog = dir.join("watchdog.sh");
     fs::write(
         &watchdog,
         "#!/bin/sh\n\
-         \"$1\" run -c \"$2\" >\"$5\" 2>&1 &\n\
-         P=$!\n\
-         echo $P >\"$4\"\n\
-         while kill -0 \"$6\" 2>/dev/null && [ ! -f \"$3\" ] && kill -0 $P 2>/dev/null; do sleep 1; done\n\
+         run() { \"$1\" run -c \"$2\" >\"$5\" 2>&1 & P=$!; echo $P >\"$4\"; }\n\
+         run \"$@\"\n\
+         while kill -0 \"$6\" 2>/dev/null && [ ! -f \"$3\" ]; do\n\
+           if [ -f \"$7\" ]; then kill $P 2>/dev/null; sleep 1; kill -9 $P 2>/dev/null; rm -f \"$7\"; run \"$@\"; fi\n\
+           kill -0 $P 2>/dev/null || break\n\
+           sleep 1\n\
+         done\n\
          kill $P 2>/dev/null; sleep 1; kill -9 $P 2>/dev/null\n\
-         rm -f \"$3\"\n",
+         rm -f \"$3\" \"$7\"\n",
     )?;
     let log = dir.join("singbox.log");
     let command = format!(
-        "/bin/sh {} {} {} {} {} {} {} >/dev/null 2>&1 &",
+        "/bin/sh {} {} {} {} {} {} {} {} >/dev/null 2>&1 &",
         quote_sh(&watchdog),
         quote_sh(binary),
         quote_sh(config),
         quote_sh(stop),
         quote_sh(pid),
         quote_sh(&log),
-        std::process::id()
+        std::process::id(),
+        quote_sh(reload)
     );
     let script = format!(
         "do shell script \"{}\" with prompt \"Freeport needs your password to turn on TUN mode.\" with administrator privileges",
@@ -262,28 +317,33 @@ fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path) ->
 }
 
 #[cfg(windows)]
-fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path) -> Result<()> {
+fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path, reload: &Path) -> Result<()> {
     use std::os::windows::process::CommandExt;
     let watchdog = dir.join("watchdog.ps1");
     fs::write(
         &watchdog,
-        "param($sb, $cfg, $stop, $pidfile, $log, $app)\r\n\
-         $p = Start-Process -FilePath $sb -ArgumentList @('run','-c',('\"' + $cfg + '\"')) -WindowStyle Hidden -PassThru -RedirectStandardError $log\r\n\
-         Set-Content -Path $pidfile -Value $p.Id\r\n\
-         while ((Get-Process -Id $app -ErrorAction SilentlyContinue) -and -not (Test-Path $stop) -and -not $p.HasExited) { Start-Sleep -Seconds 1 }\r\n\
+        "param($sb, $cfg, $stop, $pidfile, $log, $app, $reload)\r\n\
+         function Run { $q = Start-Process -FilePath $sb -ArgumentList @('run','-c',('\"' + $cfg + '\"')) -WindowStyle Hidden -PassThru -RedirectStandardError $log; Set-Content -Path $pidfile -Value $q.Id; $q }\r\n\
+         $p = Run\r\n\
+         while ((Get-Process -Id $app -ErrorAction SilentlyContinue) -and -not (Test-Path $stop)) {\r\n\
+           if (Test-Path $reload) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; $p.WaitForExit(5000) | Out-Null; Remove-Item -Path $reload -ErrorAction SilentlyContinue; $p = Run }\r\n\
+           if ($p.HasExited) { break }\r\n\
+           Start-Sleep -Seconds 1\r\n\
+         }\r\n\
          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue\r\n\
-         Remove-Item -Path $stop -ErrorAction SilentlyContinue\r\n",
+         Remove-Item -Path $stop, $reload -ErrorAction SilentlyContinue\r\n",
     )?;
     let arg = |p: &Path| format!("'\"{}\"'", p.to_string_lossy().replace('\'', "''"));
     let inner = format!(
-        "Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',{},{},{},{},{},{},'{}'",
+        "Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',{},{},{},{},{},{},'{}',{}",
         arg(&watchdog),
         arg(binary),
         arg(config),
         arg(stop),
         arg(pid),
         arg(&dir.join("singbox.log")),
-        std::process::id()
+        std::process::id(),
+        arg(reload)
     );
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &inner])
@@ -297,7 +357,7 @@ fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path) ->
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn elevate(_: &Path, _: &Path, _: &Path, _: &Path, _: &Path) -> Result<()> {
+fn elevate(_: &Path, _: &Path, _: &Path, _: &Path, _: &Path, _: &Path) -> Result<()> {
     bail!("TUN mode is not supported here")
 }
 

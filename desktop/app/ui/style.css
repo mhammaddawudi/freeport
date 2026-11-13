@@ -199,9 +199,6 @@ i[data-glyph] { display: inline-flex; width: 20px; height: 20px; flex: none; }
 .protocol .line { display: flex; align-items: center; gap: 6px; }
 .protocol .name { font-weight: 500; transition: color 0.22s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .protocol.lit .name { color: var(--selected); }
-.badges { display: flex; }
-.badge { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--void); box-sizing: content-box; }
-.badge + .badge { margin-inline-start: -6px; }
 .mark { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid rgba(127, 127, 160, 0.35); display: grid; place-items: center; flex: none; transition: border-color 0.22s; }
 .mark::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--selected); opacity: 0; transition: opacity 0.22s; }
 .protocol.lit .mark { border-color: var(--selected); }

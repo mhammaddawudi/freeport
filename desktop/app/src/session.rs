@@ -140,7 +140,7 @@ impl Session {
     }
 
     /// Follows a change of the TUN switches while connected: on, off, or a
-    /// different set of apps (which restarts it, and so asks again).
+    /// different set of apps, which reloads it without asking again.
     fn retune_tun(&self, before: &Settings) {
         let now = self.settings();
         let scope_changed = (before.tun_per_app, &before.proxied_apps, before.socks_port)
@@ -150,9 +150,6 @@ impl Session {
                 self.stop_tun();
             }
         } else if self.is_connected() && (!self.tun.is_running() || (scope_changed && now.tun_per_app) || before.socks_port != now.socks_port) {
-            if self.tun.is_running() {
-                self.tun.stop();
-            }
             self.start_tun();
         }
     }
@@ -209,7 +206,7 @@ impl Session {
         };
         let tun = self.tun.clone();
         std::thread::spawn(move || {
-            if let Err(error) = tun.start(settings.socks_port, &scope) {
+            if let Err(error) = tun.apply(settings.socks_port, &scope) {
                 log::warn!(target: "freeport", "[-] tun: {error:#}");
             }
         });

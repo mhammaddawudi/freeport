@@ -9,9 +9,6 @@ const Glyphs = (() => {
     const [x1, y1] = at(start + sweep);
     return `M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 ${sweep > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
   }
-  const star = (cx, cy, r) =>
-    `M${cx} ${cy - r}Q${cx} ${cy} ${cx + r} ${cy}Q${cx} ${cy} ${cx} ${cy + r}Q${cx} ${cy} ${cx - r} ${cy}Q${cx} ${cy} ${cx} ${cy - r}Z`;
-  const letterH = "M3 6V18M10 6V18M3 12H10";
 
   const PATHS = {
     chevron: "M9.5 6 15.5 12 9.5 18",
@@ -19,39 +16,67 @@ const Glyphs = (() => {
     up: "M12 19V5M6.5 10.5 12 5 17.5 10.5",
     pulse: "M2.5 12H7L9.5 6 14 18.5 16.5 12H21.5",
     clock: `${arc(12, 12, 9, 0, 359.9)}M12 7V12L15.5 14`,
-    sparkle: star(10.5, 13.5, 7.5) + star(18.5, 5.5, 3),
-    h3: letterH + arc(17, 9, 3, 200, 250) + arc(17, 15, 3, 270, 250),
-    h2: letterH + arc(17, 9, 3, 200, 205) + "M19.12 11.12 14 18H20",
-    serpent: `${arc(12, 12, 9, 0, 359.9)}M8 17C13 17.5 15.5 13 12 11.5 8.5 10 10 6 15.5 7`,
-    cloud: `M7 18A3.5 3.5 0 0 1 7 11A5 5 0 0 1 17 11A3.5 3.5 0 0 1 17 18Z${arc(12, 13.5, 2.2, 0, 359.9)}`,
     shield: "M12 2.8 19.5 5.6 19.5 11.5C19.5 16.3 16.4 19.9 12 21.4 7.6 19.9 4.5 16.3 4.5 11.5L4.5 5.6ZM8.8 12.2 11.2 14.6 15.4 9.6",
     sliders: "M4 6H13M17 6H20M4 12H7M11 12H20M4 18H11M15 18H20" + arc(15, 6, 2, 0, 359.9) + arc(9, 12, 2, 0, 359.9) + arc(13, 18, 2, 0, 359.9),
     terminal: "M6 4.5H18A3 3 0 0 1 21 7.5V16.5A3 3 0 0 1 18 19.5H6A3 3 0 0 1 3 16.5V7.5A3 3 0 0 1 6 4.5ZM7.5 9.5 10.5 12 7.5 14.5M12.5 14.5H16.5",
-    letterP: "M7.5 4V20M7.5 4H12.5" + arc(12.5, 8.75, 4.75, 270, 180).replace(/^M[^A]+/, "") + "L7.5 13.5",
-    onion: arc(12, 14, 7.5, 0, 359.9) + arc(12, 14, 4.2, 0, 359.9) + "M12 6.5C12 4.5 13 3 15 2.5",
   };
-  const DOTS = { serpent: [15.5, 9.6, 1.1], onion: [12, 14, 1.4] };
+  // Protocol marks, two-tone; the same layers as the Android Glyph.kt.
+  const LAYERS = {
+    sparkle: [
+      ["soft", "M20.5 12A8.5 8.5 0 1 1 3.5 12A8.5 8.5 0 1 1 20.5 12Z"],
+      ["stroke", "M19.4 8.2A8.5 8.5 0 1 0 20.5 12M20.6 4.8L19.4 8.2L16 7.2"],
+      ["fill", "M12 7.4Q12.69 11.31 16.6 12Q12.69 12.69 12 16.6Q11.31 12.69 7.4 12Q11.31 11.31 12 7.4Z"],
+      ["fill", "M17.6 15.1Q17.86 16.55 19.3 16.8Q17.86 17.05 17.6 18.5Q17.35 17.05 15.9 16.8Q17.35 16.55 17.6 15.1Z"],
+      ["fill", "M7.3 7.4A0.9 0.9 0 1 1 5.5 7.4A0.9 0.9 0 1 1 7.3 7.4Z"],
+    ],
+    h3: [
+      ["soft", "M3 8C3 6.2 4.8 5.5 6.8 5.5C9 5.5 10.4 7 12 7C13.6 7 15 5.5 17.2 5.5C19.2 5.5 21 6.2 21 8C21 12 19 14.5 16.5 14.5C14.5 14.5 13.5 12.5 12 12.5C10.5 12.5 9.5 14.5 7.5 14.5C5 14.5 3 12 3 8Z"],
+      ["stroke", "M3 8C3 6.2 4.8 5.5 6.8 5.5C9 5.5 10.4 7 12 7C13.6 7 15 5.5 17.2 5.5C19.2 5.5 21 6.2 21 8C21 12 19 14.5 16.5 14.5C14.5 14.5 13.5 12.5 12 12.5C10.5 12.5 9.5 14.5 7.5 14.5C5 14.5 3 12 3 8ZM3.1 7.2L1.5 6M20.9 7.2L22.5 6"],
+      ["fill", "M5.6 9.5Q7.6 7.4 9.6 9.5Q7.6 11.1 5.6 9.5ZM14.4 9.5Q16.4 7.4 18.4 9.5Q16.4 11.1 14.4 9.5Z"],
+      ["stroke", "M7 19H8.6M11.2 19H12.8M15.4 19H17"],
+    ],
+    h2: [
+      ["soft", "M3 8C3 6.2 4.8 5.5 6.8 5.5C9 5.5 10.4 7 12 7C13.6 7 15 5.5 17.2 5.5C19.2 5.5 21 6.2 21 8C21 12 19 14.5 16.5 14.5C14.5 14.5 13.5 12.5 12 12.5C10.5 12.5 9.5 14.5 7.5 14.5C5 14.5 3 12 3 8Z"],
+      ["stroke", "M3 8C3 6.2 4.8 5.5 6.8 5.5C9 5.5 10.4 7 12 7C13.6 7 15 5.5 17.2 5.5C19.2 5.5 21 6.2 21 8C21 12 19 14.5 16.5 14.5C14.5 14.5 13.5 12.5 12 12.5C10.5 12.5 9.5 14.5 7.5 14.5C5 14.5 3 12 3 8ZM3.1 7.2L1.5 6M20.9 7.2L22.5 6"],
+      ["fill", "M5.6 9.5Q7.6 7.4 9.6 9.5Q7.6 11.1 5.6 9.5ZM14.4 9.5Q16.4 7.4 18.4 9.5Q16.4 11.1 14.4 9.5Z"],
+      ["stroke", "M9.1 19H10.7M13.3 19H14.9"],
+    ],
+    serpent: [
+      ["soft", "M12 2.8L20 7.4V16.6L12 21.2L4 16.6V7.4Z"],
+      ["stroke", "M12 2.8L20 7.4V16.6L12 21.2L4 16.6V7.4ZM14.8 8.6C12.6 7.4 9.4 8.2 9.6 10.2C9.8 12.2 14.4 11.6 14.4 14C14.4 16 11.4 16.6 9.2 15.3"],
+      ["fill", "M16.5 8.9A1.2 1.2 0 1 1 14.1 8.9A1.2 1.2 0 1 1 16.5 8.9ZM9.9 15A1.2 1.2 0 1 1 7.5 15A1.2 1.2 0 1 1 9.9 15Z"],
+    ],
+    cloud: [
+      ["soft", "M12 2.5L21.5 12L12 21.5L2.5 12Z"],
+      ["stroke", "M12 2.5L21.5 12L12 21.5L2.5 12ZM12 7.2L16.8 12L12 16.8L7.2 12Z"],
+      ["fill", "M12 10L14 12L12 14L10 12Z"],
+    ],
+    v2ray: [
+      ["soft", "M4 8.5H8.6L12 14.6L15.4 8.5H20L12 21Z"],
+      ["stroke", "M4 8.5H8.6L12 14.6L15.4 8.5H20L12 21ZM4.6 3.8L6 5.2M19.4 3.8L18 5.2"],
+      ["fill", "M12 1.8Q12.48 4.52 15.2 5Q12.48 5.48 12 8.2Q11.52 5.48 8.8 5Q11.52 4.52 12 1.8Z"],
+    ],
+    letterP: [
+      ["soft", "M21 12A9 9 0 1 1 3 12A9 9 0 1 1 21 12Z"],
+      ["stroke", "M21 12A9 9 0 1 1 3 12A9 9 0 1 1 21 12ZM9.6 17.2V6.8H13.2A3.1 3.1 0 0 1 13.2 13H9.6"],
+      ["soft", "M9.6 6.8H13.2A3.1 3.1 0 0 1 13.2 13H9.6Z"],
+      ["fill", "M18.9 17.8A1.1 1.1 0 1 1 16.7 17.8A1.1 1.1 0 1 1 18.9 17.8Z"],
+    ],
+    onion: [
+      ["soft", "M12 4.2C12.3 5.8 13.3 6.9 15 8C17.6 9.7 19.3 12 19.3 15C19.3 18.7 16.1 21.2 12 21.2C7.9 21.2 4.7 18.7 4.7 15C4.7 12 6.4 9.7 9 8C10.7 6.9 11.7 5.8 12 4.2Z"],
+      ["stroke", "M12 4.2C12.3 5.8 13.3 6.9 15 8C17.6 9.7 19.3 12 19.3 15C19.3 18.7 16.1 21.2 12 21.2C7.9 21.2 4.7 18.7 4.7 15C4.7 12 6.4 9.7 9 8C10.7 6.9 11.7 5.8 12 4.2ZM12 10C10.1 11.5 8.9 13.2 8.9 15.2C8.9 17.4 10.3 18.6 12 18.6C13.7 18.6 15.1 17.4 15.1 15.2C15.1 13.2 13.9 11.5 12 10Z"],
+      ["fill", "M12 4.2C12.4 2.6 14 1.6 16 1.9C15.4 3.6 13.8 4.6 12 4.2ZM12 13.2C11.2 14 10.9 14.7 10.9 15.4C10.9 16.2 11.4 16.7 12 16.7C12.6 16.7 13.1 16.2 13.1 15.4C13.1 14.7 12.8 14 12 13.2Z"],
+    ],
+  };
 
   function svg(kind, width = 1.8) {
-    const dot = DOTS[kind] ? `<circle cx="${DOTS[kind][0]}" cy="${DOTS[kind][1]}" r="${DOTS[kind][2]}" fill="currentColor" stroke="none"/>` : "";
-    return `<svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${PATHS[kind]}"/>${dot}</svg>`;
+    const open = `<svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`;
+    if (!LAYERS[kind]) return `${open}<path d="${PATHS[kind]}"/></svg>`;
+    const body = LAYERS[kind].map(([layer, d]) =>
+      layer === "stroke" ? `<path d="${d}"/>`
+        : `<path d="${d}" fill="currentColor" stroke="none"${layer === "soft" ? ' fill-opacity=".35"' : ""}/>`).join("");
+    return `${open}${body}</svg>`;
   }
 
-  // Brand-coloured round badges for the apps a protocol suits.
-  const BADGES = {
-    Telegram: `<rect width="24" height="24" fill="#2AABEE"/><path d="M5 11.6 18.4 6.4 16.1 17.6 11.7 14.5 9.7 16.6 9.5 13.4 15.2 8.7 8.6 12.9Z" fill="#fff"/>`,
-    YouTube: `<rect width="24" height="24" fill="#FF0033"/><path d="M9.6 7.8 16.6 12 9.6 16.2Z" fill="#fff"/>`,
-    Instagram: `<defs><linearGradient id="ig" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#FEDA75"/><stop offset=".3" stop-color="#FA7E1E"/><stop offset=".55" stop-color="#D62976"/><stop offset=".8" stop-color="#962FBF"/><stop offset="1" stop-color="#4F5BD5"/></linearGradient></defs><rect width="24" height="24" fill="url(#ig)"/><rect x="6.2" y="6.2" width="11.6" height="11.6" rx="3.6" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="12" cy="12" r="2.8" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="15.4" cy="8.6" r=".8" fill="#fff"/>`,
-    TikTok: `<rect width="24" height="24" fill="#111"/><g fill="none" stroke-width="2" stroke-linecap="round"><path d="M12.6 5.2V14.2A2.4 2.4 0 1 1 10.2 11.8M12.6 5.2C13.2 7 14.6 8.2 16.6 8.4" stroke="#25F4EE"/><path d="M13.6 6V15A2.4 2.4 0 1 1 11.2 12.6M13.6 6C14.2 7.8 15.6 9 17.6 9.2" stroke="#FE2C55"/><path d="M13.1 5.6V14.6A2.4 2.4 0 1 1 10.7 12.2M13.1 5.6C13.7 7.4 15.1 8.6 17.1 8.8" stroke="#fff"/></g>`,
-    WhatsApp: `<rect width="24" height="24" fill="#25D366"/><path d="M6.4 17.8 7.3 14.9A6 6 0 1 1 9.4 17Z" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>`,
-    Chrome: `<circle cx="12" cy="12" r="12" fill="#DB4437"/><path d="M12 12 1.6 18A12 12 0 0 0 12 24Z" fill="#0F9D58"/><path d="M12 12H24A12 12 0 0 1 12 24Z" fill="#F4B400"/><path d="M12 12 1.6 18A12 12 0 0 1 1.6 6Z" fill="#0F9D58"/><circle cx="12" cy="12" r="5" fill="#fff"/><circle cx="12" cy="12" r="3.8" fill="#4285F4"/>`,
-    X: `<rect width="24" height="24" fill="#000"/><path d="M7 6.5 17 17.5M17 6.5 7 17.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`,
-    Games: `<rect width="24" height="24" fill="#7C4DFF"/><rect x="5" y="8.5" width="14" height="8" rx="4" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M8.5 11V14M7 12.5H10" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><circle cx="15" cy="11.8" r=".9" fill="#fff"/><circle cx="16.4" cy="13.6" r=".9" fill="#fff"/>`,
-  };
-
-  function badge(app) {
-    return `<svg class="badge" viewBox="0 0 24 24" role="img" aria-label="${app}"><clipPath id="c-${app}"><circle cx="12" cy="12" r="12"/></clipPath><g clip-path="url(#c-${app})">${BADGES[app]}</g></svg>`;
-  }
-
-  return { svg, badge };
+  return { svg };
 })();

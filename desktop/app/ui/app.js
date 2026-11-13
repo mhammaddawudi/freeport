@@ -6,13 +6,13 @@ const { listen } = window.__TAURI__.event;
 
 // Android's order: Automatic, then Cloudflare's carriers.
 const PROTOCOLS = [
-  { id: "auto", name: "auto", desc: "auto_desc", glyph: "sparkle", apps: [] },
-  { id: "masque-h3", name: "MASQUE", desc: "h3_desc", glyph: "h3", apps: ["WhatsApp", "Chrome"] },
-  { id: "masque-h2", name: "MASQUE H2", desc: "h2_desc", glyph: "h2", apps: ["Instagram", "TikTok"] },
-  { id: "wire-guard", name: "WireGuard", desc: "wg_desc", glyph: "serpent", apps: ["Games", "X"] },
-  { id: "gool", name: "Warp in Warp", desc: "gool_desc", glyph: "cloud", apps: ["Telegram", "YouTube"] },
-  { id: "psiphon", name: "Psiphon", desc: "psiphon_desc", glyph: "letterP", apps: ["Telegram", "Chrome"] },
-  { id: "tor", name: "Tor", desc: "tor_desc", glyph: "onion", apps: ["Chrome", "X"] },
+  { id: "auto", name: "auto", desc: "auto_desc", glyph: "sparkle" },
+  { id: "masque-h3", name: "MASQUE", desc: "h3_desc", glyph: "h3" },
+  { id: "masque-h2", name: "MASQUE H2", desc: "h2_desc", glyph: "h2" },
+  { id: "wire-guard", name: "WireGuard", desc: "wg_desc", glyph: "serpent" },
+  { id: "gool", name: "Warp in Warp", desc: "gool_desc", glyph: "cloud" },
+  { id: "psiphon", name: "Psiphon", desc: "psiphon_desc", glyph: "letterP" },
+  { id: "tor", name: "Tor", desc: "tor_desc", glyph: "onion" },
 ];
 // Psiphon and Tor leave on their own: region unlock has nothing to ride on.
 const DIRECT = ["psiphon", "tor"];
@@ -172,8 +172,7 @@ function renderProtocols() {
       row.setAttribute("role", "radio");
       row.setAttribute("aria-checked", String(p.id === chosen.id));
       row.title = t(p.desc);
-      const badges = p.apps.length ? `<span class="badges">${p.apps.map((a) => Glyphs.badge(a)).join("")}</span>` : "";
-      row.innerHTML = `${glyphTile(p)}<span class="grow line"><span class="name"></span>${active === p.id ? statusDot(live) : ""}</span>${pingLabel(p.id)}${badges}<span class="mark"></span>`;
+      row.innerHTML = `${glyphTile(p)}<span class="grow line"><span class="name"></span>${active === p.id ? statusDot(live) : ""}</span>${pingLabel(p.id)}<span class="mark"></span>`;
       row.querySelector(".name").textContent = protocolName(p);
       row.addEventListener("click", () => { setPicker(false); chooseProtocol(p.id); });
       return row;
