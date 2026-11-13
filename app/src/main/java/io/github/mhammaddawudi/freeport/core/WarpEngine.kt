@@ -153,8 +153,6 @@ class WarpEngine(
     @Volatile private var reachNetwork = ""
     private var probeJob: Job? = null
 
-    /** Set while Automatic measures a protocol it has not measured here, before choosing. */
-    @Volatile private var auditioning = false
 
     private val _identity = MutableStateFlow<Identity?>(null)
     val identity: StateFlow<Identity?> = _identity.asStateFlow()
@@ -212,8 +210,12 @@ class WarpEngine(
     }
 
     /**
-     * Pings every WARP protocol on this network while nothing is connected,
-     * the way Automatic scans, so each one's round trip can be shown.
+     * Shows each protocol's round trip on this network while nothing is
+     * connected: at once from what was measured here before, then fresh —
+     * MASQUE over HTTP/2 by a TCP connect (a second or two), MASQUE over
+     * HTTP/3 and WireGuard by a scan, the way Automatic finds them. A scan
+     * that runs out of time keeps the earlier figure; only a refusal with
+     * nothing known shows as no answer.
      */
     fun probe() {
         if (session?.isActive == true || probeJob?.isActive == true) return
@@ -223,32 +225,49 @@ class WarpEngine(
                 network = networkOf()
                 val base = settings.current()
                 val tries = AUTO_CANDIDATES.associateWith { tuned(base.copy(protocol = it)) }
+                val known = tries.mapValues { (_, chosen) -> knownEdges(chosen) }
+                known.forEach { (protocol, edges) -> edges.minOfOrNull { it.rttMs }?.let { noteReach(protocol, it) } }
+                direct[Protocol.Configs]?.lastRttMs()?.let { noteReach(Protocol.Configs, it) }
+
                 // One at a time: MASQUE and WireGuard keep sibling identity files.
                 val opened = tries.mapValues { (_, chosen) -> (identityFor(chosen) as? CoreResult.Ok)?.value }
-                suspend fun one(protocol: Protocol) {
+                suspend fun scanned(protocol: Protocol) {
                     val chosen = tries.getValue(protocol)
-                    val identity = opened[protocol] ?: return noteReach(protocol, NO_ANSWER)
-                    if (protocol.transport == "masque") core.applyEnvironment(chosen)
-                    val rtt = withTimeoutOrNull(AUTO_LANE_MS) {
-                        when (val scanned = core.scan(identity, chosen, emptySet(), onRunnersUp = { pool(chosen, it) }) {}) {
-                            is CoreResult.Ok -> scanned.value.rttMs
-                            is CoreResult.Err -> null
+                    val identity = opened[protocol]
+                    val rtt = identity?.let {
+                        if (protocol.transport == "masque") core.applyEnvironment(chosen)
+                        withTimeoutOrNull(AUTO_SLOW_LANE_MS) {
+                            when (val result = core.scan(it, chosen, emptySet(), onRunnersUp = { found -> pool(chosen, found) }) {}) {
+                                is CoreResult.Ok -> result.value.rttMs
+                                is CoreResult.Err -> NO_ANSWER
+                            }
                         }
                     }
-                    noteReach(protocol, rtt ?: NO_ANSWER)
+                    when {
+                        rtt != null && rtt > 0 -> noteReach(protocol, rtt)
+                        known.getValue(protocol).isEmpty() && (rtt == NO_ANSWER || identity == null) -> noteReach(protocol, NO_ANSWER)
+                    }
                 }
                 coroutineScope {
                     launch {
-                        one(Protocol.MasqueH2)
-                        one(Protocol.MasqueH3)
+                        val edges = known.getValue(Protocol.MasqueH2).ifEmpty { MASQUE_EDGES }
+                        EdgeReach.quickest(edges)?.let { noteReach(Protocol.MasqueH2, it) }
                     }
-                    launch { one(Protocol.WireGuard) }
+                    launch {
+                        scanned(Protocol.MasqueH3)
+                        scanned(Protocol.MasqueH2)
+                    }
+                    launch { scanned(Protocol.WireGuard) }
                 }
             } finally {
                 _probing.value = false
             }
         }
     }
+
+    /** Edges this phone found for [settings] on this network, measured or not. */
+    private fun knownEdges(settings: WarpSettings): List<Endpoint> =
+        cache.pool(cacheKey(settings)).map { it.edge.endpoint }.filter { it.rttMs > 0 }
 
     private fun noteReach(protocol: Protocol, rttMs: Long) {
         val here = network
@@ -354,8 +373,6 @@ class WarpEngine(
         val rotate: Boolean = false,
         /** The session slowed down; a fresh tunnel replaces it under the same capture. */
         val refresh: Boolean = false,
-        /** An audition's measured speed; the device was never handed over. */
-        val measuredKbps: Long? = null,
     )
 
     /** [settings] with the obfuscation this network has carried fastest, when tuning is on. */
@@ -472,7 +489,7 @@ class WarpEngine(
                 log.info("[*] automatic: nothing answered; looking once more before leaving Cloudflare")
                 delay(AUTO_RECHECK_MS)
             }
-            findWarp(base, host, candidates, shared, identities, stalledAt, scan = !returning)?.let { outcome ->
+            findWarp(base, host, candidates, shared, identities, stalledAt, scan = !returning, round = round)?.let { outcome ->
                 if (outcome.connected) warpReturnMs = WARP_RETURN_MS
                 return outcome
             }
@@ -486,13 +503,19 @@ class WarpEngine(
         // that do not go through it. Warp in warp is left to whoever
         // picks it by hand.
         for (protocol in AUTO_FALLBACK) {
-            if (direct[protocol]?.isAvailable != true) continue
+            val tunnel = direct[protocol]
+            if (tunnel?.isAvailable != true) continue
+            // A config pool still to be built takes minutes; it fills in the background instead.
+            if (!tunnel.isReady) {
+                log.info("[*] automatic: ${protocol.displayName} has no tested configs on this network yet, skipped for now")
+                continue
+            }
             log.info("[*] automatic: nothing answered on MASQUE or WireGuard, trying ${protocol.displayName}")
             val outcome = runDirect(base.copy(protocol = protocol), host, viaAuto = true)
             if (outcome.connected) return outcome
             log.warn("[-] ${outcome.reason}")
         }
-        return Outcome("automatic: nothing answered on MASQUE, WireGuard, Psiphon or Tor")
+        return Outcome("automatic: nothing answered on MASQUE, WireGuard, V2Ray, Psiphon or Tor")
     }
 
     /**
@@ -508,16 +531,13 @@ class WarpEngine(
         identities: Map<Protocol, Identity>,
         stalledAt: Map<Protocol, Long>,
         scan: Boolean,
+        round: Int = 1,
     ): Outcome? {
         val stalled = stalledAt.keys
-        // Until every protocol has been measured on this network, a known
-        // edge that is not fast does not end the search: the scan measures
-        // the others first, so the choice rests on speeds, not on a guess.
-        val unmeasured = identities.keys.filter { it !in stalled && tuner.speedOf(network, it) == null }
-        val bestKnown = identities.keys.maxOfOrNull { tuner.speedOf(network, it) ?: 0L } ?: 0L
-        val settled = !scan || unmeasured.isEmpty() || bestKnown >= Tuner.GOOD_KBPS
-        if (!settled) log.info("[*] automatic: ${unmeasured.joinToString { it.displayName }} not measured on this network yet")
-        if (base.pinnedPeer.isBlank() && settled) {
+        // The user waits on this: a known edge that carries ends the search at
+        // once. Protocols not measured here yet are measured by the sessions
+        // that use them, never ahead of the connection.
+        suspend fun tryKnownEdges(): Outcome? {
             val known = StallMemory.stalledLast(
                 fastestKnown(candidates, shared.mapValues { it.value.await() })
                     .filter { (protocol, _) -> protocol in identities },
@@ -533,6 +553,10 @@ class WarpEngine(
                 val outcome = tryRemembered(identities.getValue(protocol), edge.endpoint, settings, host, viaAuto = true)
                 if (outcome.connected) return outcome
             }
+            return null
+        }
+        if (base.pinnedPeer.isBlank()) {
+            tryKnownEdges()?.let { return it }
             if (scan) cache.forgetAuto()
         }
         if (!scan) return null
@@ -540,6 +564,14 @@ class WarpEngine(
         log.info("[*] automatic: scanning every protocol")
         carryOver = null
         val found = ConcurrentHashMap<Protocol, Endpoint>()
+        // Protocols whose scan finished without an edge, as opposed to ones cut short.
+        val refused = ConcurrentHashMap.newKeySet<Protocol>()
+        // A slow line needs longer to find a MASQUE edge than the first look
+        // gives it; the second look waits as long as a manual connection would.
+        val laneMs = if (round > 1) AUTO_SLOW_LANE_MS else AUTO_LANE_MS
+        // The first answer wins after a short grace; the second look, on a
+        // slow line, lets MASQUE finish its turn.
+        val graceMs = if (round > 1) laneMs else AUTO_GRACE_MS
         show(ConnectionState.Scanning(Protocol.Auto, ScanProgress(ScanProgress.Phase.Probing)))
 
         suspend fun ping(protocol: Protocol) {
@@ -553,6 +585,7 @@ class WarpEngine(
                     log.info("[+] ${protocol.displayName} answered in ${scanned.value.rttMs}ms")
                 }
                 is CoreResult.Err -> {
+                    refused += protocol
                     noteReach(protocol, NO_ANSWER)
                     log.warn("[-] ${protocol.displayName}: ${scanned.message}")
                 }
@@ -565,17 +598,17 @@ class WarpEngine(
             // turns, each with a bounded slot, while WireGuard runs beside them.
             val lanes = listOf(
                 launch {
-                    withTimeoutOrNull(AUTO_LANE_MS) { ping(Protocol.MasqueH2) }
-                    withTimeoutOrNull(AUTO_LANE_MS) { ping(Protocol.MasqueH3) }
+                    withTimeoutOrNull(laneMs) { ping(Protocol.MasqueH2) }
+                    withTimeoutOrNull(laneMs) { ping(Protocol.MasqueH3) }
                 },
                 launch { ping(Protocol.WireGuard) },
             )
             val all = launch { lanes.joinAll() }
-            withTimeoutOrNull(AUTO_PING_MS) {
+            withTimeoutOrNull(laneMs * 2 + AUTO_GRACE_MS) {
                 while (all.isActive) {
                     // Something answered: give the rest a moment to beat it.
                     if (found.isNotEmpty()) {
-                        withTimeoutOrNull(AUTO_GRACE_MS) { all.join() }
+                        withTimeoutOrNull(graceMs) { all.join() }
                         break
                     }
                     delay(100)
@@ -596,27 +629,20 @@ class WarpEngine(
                 .thenByDescending { if (it.key in stalled) 0L else expectedKbps(it.key) }
                 .thenBy { if (it.key in stalled) stalledAt[it.key] ?: 0L else it.value.rttMs },
         ).map { it.key to it.value }
-        if (ranked.isEmpty()) return null
-        // What did not answer counts as measured, for a while, so it does not
-        // hold every later connection back from the edges known here.
-        for (protocol in identities.keys - found.keys) {
+        if (ranked.isEmpty()) {
+            return null
+        }
+        // A scan that ran to its end without an edge counts as measured, for
+        // a while, so it does not hold later connections back from the known
+        // edges. One cut short by the clock says nothing and is not held against it.
+        for (protocol in refused - found.keys) {
             if (tuner.speedOf(network, protocol) == null) {
                 val missed = candidates.getValue(protocol)
                 tuner.record(network, protocol, Recipe(missed.effectiveNoize, missed.masqueMtu), 0)
             }
         }
-        val order = if (ranked.size > 1 && ranked.any { (protocol, _) -> protocol !in stalled && tuner.speedOf(network, protocol) == null }) {
-            audition(ranked.filter { (protocol, _) -> protocol !in stalled }, candidates, identities, host)
-            ranked.sortedWith(
-                compareBy<Pair<Protocol, Endpoint>> { (protocol, _) -> protocol in stalled }
-                    .thenByDescending { (protocol, _) -> expectedKbps(protocol) },
-            )
-        } else {
-            ranked
-        }
-
         var last: Outcome? = null
-        for ((protocol, endpoint) in order) {
+        for ((protocol, endpoint) in ranked) {
             val chosen = candidates.getValue(protocol)
             log.good("[+] automatic: ${protocol.displayName} chosen (${endpoint.rttMs}ms)")
             core.applyEnvironment(chosen)
@@ -628,51 +654,6 @@ class WarpEngine(
             last = outcome
         }
         return last
-    }
-
-    /**
-     * Opens each protocol not measured on this network yet and measures its
-     * download, without handing the device over, so Automatic picks by speed.
-     */
-    private suspend fun audition(
-        found: List<Pair<Protocol, Endpoint>>,
-        candidates: Map<Protocol, WarpSettings>,
-        identities: Map<Protocol, Identity>,
-        host: TunnelHost,
-    ) {
-        log.info("[*] automatic: measuring ${found.joinToString { it.first.displayName }} to pick the fastest here")
-        for ((protocol, endpoint) in found) {
-            if (tuner.speedOf(network, protocol) != null) continue
-            val chosen = candidates.getValue(protocol)
-            core.applyEnvironment(chosen)
-            auditioning = true
-            val outcome = try {
-                runTunnel(identities.getValue(protocol), endpoint, chosen, host, REMEMBERED_STARTUP_MS, viaAuto = true)
-            } finally {
-                auditioning = false
-            }
-            if (outcome.measuredKbps == null) {
-                log.warn("[-] automatic: ${protocol.displayName} did not come up (${outcome.reason})")
-                tuner.record(network, protocol, Recipe(chosen.effectiveNoize, chosen.masqueMtu), 0)
-            }
-        }
-    }
-
-    /** Measures an auditioned tunnel and keeps the result for this network. */
-    private suspend fun measureAudition(settings: WarpSettings, endpoint: Endpoint): Long {
-        val warms = settings.protocol.warmsUp
-        val measured = ThroughputProbe.measure(
-            settings.socksPort,
-            if (warms) WARM_JUDGE_BYTES else JUDGE_BYTES,
-            if (warms) WARM_JUDGE_WINDOW_MS else JUDGE_WINDOW_MS,
-        )
-        val kbps = measured?.kbps ?: 0L
-        log.info("[*] automatic: ${settings.protocol.displayName} via ${endpoint.socket} carries $kbps KB/s")
-        tuner.record(network, settings.protocol, Recipe(settings.effectiveNoize, settings.masqueMtu), kbps)
-        if (measured != null && kbps >= SLOW_KBPS) {
-            cache.addToPool(cacheKey(settings), listOf(SharedEdge(endpoint.copy(rttMs = measured.firstByteMs), kbps)))
-        }
-        return kbps
     }
 
     /**
@@ -835,7 +816,7 @@ class WarpEngine(
         show(ConnectionState.Connecting(protocol, null, viaAuto))
         val startup = when (protocol) {
             Protocol.Tor -> TOR_STARTUP_MS
-            Protocol.Configs -> CONFIGS_STARTUP_MS
+            Protocol.Configs -> if (viaAuto) CONFIGS_AUTO_STARTUP_MS else CONFIGS_STARTUP_MS
             else -> PSIPHON_STARTUP_MS
         }
         // Closed however this ends, a disconnect while it is still starting
@@ -958,10 +939,6 @@ class WarpEngine(
         // Speed is checked before the device is handed over, so a slow edge
         // is swapped while the button still says connecting — the person
         // never sees a connection drop and come back.
-        if (endpoint != null && auditioning) {
-            val kbps = measureAudition(settings, endpoint)
-            return@coroutineScope Outcome("measured", measuredKbps = kbps)
-        }
         if (endpoint != null) {
             judge(settings, endpoint, viaAuto)?.let { reason ->
                 return@coroutineScope Outcome(reason, rotate = true)
@@ -1344,10 +1321,10 @@ class WarpEngine(
         const val RELAY_STARTUP_MS = 75_000L
 
         /** How long a remembered edge gets before the engine scans instead. */
-        const val REMEMBERED_STARTUP_MS = 7_000L
+        const val REMEMBERED_STARTUP_MS = 6_000L
 
         /** Known edges tried before scanning; each costs up to [REMEMBERED_STARTUP_MS]. */
-        const val MAX_KNOWN_TRIES = 3
+        const val MAX_KNOWN_TRIES = 2
 
         /**
          * The shared list is a head start, never worth waiting long for. Above
@@ -1400,18 +1377,23 @@ class WarpEngine(
         const val NO_ANSWER = -1L
         val AUTO_CANDIDATES = listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
 
+        /** Cloudflare's published MASQUE edges, for the quick ping when none is known here. */
+        val MASQUE_EDGES = listOf(Endpoint("162.159.198.1", 443, 0), Endpoint("162.159.198.2", 443, 0))
+
         /** What Automatic assumes of a protocol not yet measured on a network; WireGuard leads until measured. */
         const val UNMEASURED_WARM_KBPS = 1_000L
         const val UNMEASURED_KBPS = 800L
 
         /** Tried in this order when no Cloudflare edge answers at all. */
-        val AUTO_FALLBACK = listOf(Protocol.Psiphon, Protocol.Tor)
+        val AUTO_FALLBACK = listOf(Protocol.Configs, Protocol.Psiphon, Protocol.Tor)
 
         /** Psiphon usually connects in 10–30 s; Tor through Snowflake can take two minutes. */
         const val PSIPHON_STARTUP_MS = 60_000L
         const val TOR_STARTUP_MS = 150_000L
         /** The first connection on a network fetches and tests the public configs. */
         const val CONFIGS_STARTUP_MS = 150_000L
+        /** Through Automatic the pool is already built: only its configs are tried. */
+        const val CONFIGS_AUTO_STARTUP_MS = 45_000L
         /** A session settles before the config lists are fetched through it. */
         const val CONFIGS_WARM_DELAY_MS = 30_000L
         /** How often a long session looks again; the pool itself decides whether it is old. */
@@ -1419,12 +1401,10 @@ class WarpEngine(
         const val DIRECT_PROBE_MS = 30_000L
         const val DIRECT_MISSES = 3
 
-        /** The whole automatic ping round. */
-        const val AUTO_PING_MS = 20_000L
 
         /** Looks for WARP before Automatic falls back to Psiphon or Tor. */
         const val AUTO_ROUNDS = 2
-        const val AUTO_RECHECK_MS = 3_000L
+        const val AUTO_RECHECK_MS = 1_000L
 
         /** On Psiphon or Tor through Automatic, how often to look for WARP again, and the most it backs off to. */
         const val WARP_RETURN_MS = 3 * 60_000L
@@ -1432,7 +1412,9 @@ class WarpEngine(
         const val WARP_LOOK_EDGES = 4
 
         /** Each MASQUE carrier's scan slot; they cannot scan at the same time. */
-        const val AUTO_LANE_MS = 10_000L
+        const val AUTO_LANE_MS = 8_000L
+        /** The second look, on a line too slow for the first: what a manual scan gets. */
+        const val AUTO_SLOW_LANE_MS = 20_000L
 
         /** How long the others may still beat the first edge that answered. */
         const val AUTO_GRACE_MS = 2_500L

@@ -157,10 +157,8 @@
     <string name="protocol_trait_psiphon">Derveyî Cloudflare · bê sînor</string>
     <string name="protocol_trait_configs">Konfîgên giştî · li vê torê hatine ceribandin, ya herî bilez</string>
     <string name="protocol_trait_tor">Snowflake · riya dawî, hêdî</string>
-    <string name="protocol_best_for">Ji bo %1$s baş e</string>
     <string name="protocol_live">Çalak</string>
     <string name="auto_via">Otomatîk %1$s hilbijart</string>
-    <string name="app_games">Lîstik</string>
 
     <!-- Region unlock -->
     <string name="region_unlock">Rakirina sînorê herêmê</string>

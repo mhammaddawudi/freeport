@@ -5,25 +5,85 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 enum class GlyphKind {
     Power, Shield, Sliders, Terminal,
     Signal, Stack, Wave, Nested,
     Check, Chevron, Down, Up, Pulse, Radar, Mask, Globe,
     Copy, Trash, Clock, Key, Close, Bolt, Plug, Code,
-    Sparkle, H3, H2, Serpent, CloudNested, LetterP, Onion,
+    Sparkle, H3, H2, Serpent, CloudNested, LetterP, Onion, V2Ray,
+}
+
+/**
+ * The protocol marks, two-tone: a soft tinted body, the outline over it and
+ * solid accents. SVG path data on the 24 grid, shared verbatim with the
+ * desktop app (desktop/app/ui/glyphs.js, generated from the same table).
+ */
+private enum class Layer { Soft, Stroke, Fill }
+
+private val PROTOCOL_LAYERS: Map<GlyphKind, List<Pair<Layer, String>>> = mapOf(
+    GlyphKind.Sparkle to listOf(
+        Layer.Soft to "M20.5 12A8.5 8.5 0 1 1 3.5 12A8.5 8.5 0 1 1 20.5 12Z",
+        Layer.Stroke to "M19.4 8.2A8.5 8.5 0 1 0 20.5 12M20.6 4.8L19.4 8.2L16 7.2",
+        Layer.Fill to "M12 7.4Q12.69 11.31 16.6 12Q12.69 12.69 12 16.6Q11.31 12.69 7.4 12Q11.31 11.31 12 7.4Z",
+        Layer.Fill to "M17.6 15.1Q17.86 16.55 19.3 16.8Q17.86 17.05 17.6 18.5Q17.35 17.05 15.9 16.8Q17.35 16.55 17.6 15.1Z",
+        Layer.Fill to "M7.3 7.4A0.9 0.9 0 1 1 5.5 7.4A0.9 0.9 0 1 1 7.3 7.4Z",
+    ),
+    GlyphKind.H3 to listOf(
+        Layer.Soft to "M3 8C3 6.2 4.8 5.5 6.8 5.5C9 5.5 10.4 7 12 7C13.6 7 15 5.5 17.2 5.5C19.2 5.5 21 6.2 21 8C21 12 19 14.5 16.5 14.5C14.5 14.5 13.5 12.5 12 12.5C10.5 12.5 9.5 14.5 7.5 14.5C5 14.5 3 12 3 8Z",
+        Layer.Stroke to "M3 8C3 6.2 4.8 5.5 6.8 5.5C9 5.5 10.4 7 12 7C13.6 7 15 5.5 17.2 5.5C19.2 5.5 21 6.2 21 8C21 12 19 14.5 16.5 14.5C14.5 14.5 13.5 12.5 12 12.5C10.5 12.5 9.5 14.5 7.5 14.5C5 14.5 3 12 3 8ZM3.1 7.2L1.5 6M20.9 7.2L22.5 6",
+        Layer.Fill to "M5.6 9.5Q7.6 7.4 9.6 9.5Q7.6 11.1 5.6 9.5ZM14.4 9.5Q16.4 7.4 18.4 9.5Q16.4 11.1 14.4 9.5Z",
+        Layer.Stroke to "M7 19H8.6M11.2 19H12.8M15.4 19H17",
+    ),
+    GlyphKind.H2 to listOf(
+        Layer.Soft to "M3 8C3 6.2 4.8 5.5 6.8 5.5C9 5.5 10.4 7 12 7C13.6 7 15 5.5 17.2 5.5C19.2 5.5 21 6.2 21 8C21 12 19 14.5 16.5 14.5C14.5 14.5 13.5 12.5 12 12.5C10.5 12.5 9.5 14.5 7.5 14.5C5 14.5 3 12 3 8Z",
+        Layer.Stroke to "M3 8C3 6.2 4.8 5.5 6.8 5.5C9 5.5 10.4 7 12 7C13.6 7 15 5.5 17.2 5.5C19.2 5.5 21 6.2 21 8C21 12 19 14.5 16.5 14.5C14.5 14.5 13.5 12.5 12 12.5C10.5 12.5 9.5 14.5 7.5 14.5C5 14.5 3 12 3 8ZM3.1 7.2L1.5 6M20.9 7.2L22.5 6",
+        Layer.Fill to "M5.6 9.5Q7.6 7.4 9.6 9.5Q7.6 11.1 5.6 9.5ZM14.4 9.5Q16.4 7.4 18.4 9.5Q16.4 11.1 14.4 9.5Z",
+        Layer.Stroke to "M9.1 19H10.7M13.3 19H14.9",
+    ),
+    GlyphKind.Serpent to listOf(
+        Layer.Soft to "M12 2.8L20 7.4V16.6L12 21.2L4 16.6V7.4Z",
+        Layer.Stroke to "M12 2.8L20 7.4V16.6L12 21.2L4 16.6V7.4ZM14.8 8.6C12.6 7.4 9.4 8.2 9.6 10.2C9.8 12.2 14.4 11.6 14.4 14C14.4 16 11.4 16.6 9.2 15.3",
+        Layer.Fill to "M16.5 8.9A1.2 1.2 0 1 1 14.1 8.9A1.2 1.2 0 1 1 16.5 8.9ZM9.9 15A1.2 1.2 0 1 1 7.5 15A1.2 1.2 0 1 1 9.9 15Z",
+    ),
+    GlyphKind.CloudNested to listOf(
+        Layer.Soft to "M12 2.5L21.5 12L12 21.5L2.5 12Z",
+        Layer.Stroke to "M12 2.5L21.5 12L12 21.5L2.5 12ZM12 7.2L16.8 12L12 16.8L7.2 12Z",
+        Layer.Fill to "M12 10L14 12L12 14L10 12Z",
+    ),
+    GlyphKind.V2Ray to listOf(
+        Layer.Soft to "M4 8.5H8.6L12 14.6L15.4 8.5H20L12 21Z",
+        Layer.Stroke to "M4 8.5H8.6L12 14.6L15.4 8.5H20L12 21ZM4.6 3.8L6 5.2M19.4 3.8L18 5.2",
+        Layer.Fill to "M12 1.8Q12.48 4.52 15.2 5Q12.48 5.48 12 8.2Q11.52 5.48 8.8 5Q11.52 4.52 12 1.8Z",
+    ),
+    GlyphKind.LetterP to listOf(
+        Layer.Soft to "M21 12A9 9 0 1 1 3 12A9 9 0 1 1 21 12Z",
+        Layer.Stroke to "M21 12A9 9 0 1 1 3 12A9 9 0 1 1 21 12ZM9.6 17.2V6.8H13.2A3.1 3.1 0 0 1 13.2 13H9.6",
+        Layer.Soft to "M9.6 6.8H13.2A3.1 3.1 0 0 1 13.2 13H9.6Z",
+        Layer.Fill to "M18.9 17.8A1.1 1.1 0 1 1 16.7 17.8A1.1 1.1 0 1 1 18.9 17.8Z",
+    ),
+    GlyphKind.Onion to listOf(
+        Layer.Soft to "M12 4.2C12.3 5.8 13.3 6.9 15 8C17.6 9.7 19.3 12 19.3 15C19.3 18.7 16.1 21.2 12 21.2C7.9 21.2 4.7 18.7 4.7 15C4.7 12 6.4 9.7 9 8C10.7 6.9 11.7 5.8 12 4.2Z",
+        Layer.Stroke to "M12 4.2C12.3 5.8 13.3 6.9 15 8C17.6 9.7 19.3 12 19.3 15C19.3 18.7 16.1 21.2 12 21.2C7.9 21.2 4.7 18.7 4.7 15C4.7 12 6.4 9.7 9 8C10.7 6.9 11.7 5.8 12 4.2ZM12 10C10.1 11.5 8.9 13.2 8.9 15.2C8.9 17.4 10.3 18.6 12 18.6C13.7 18.6 15.1 17.4 15.1 15.2C15.1 13.2 13.9 11.5 12 10Z",
+        Layer.Fill to "M12 4.2C12.4 2.6 14 1.6 16 1.9C15.4 3.6 13.8 4.6 12 4.2ZM12 13.2C11.2 14 10.9 14.7 10.9 15.4C10.9 16.2 11.4 16.7 12 16.7C12.6 16.7 13.1 16.2 13.1 15.4C13.1 14.7 12.8 14 12 13.2Z",
+    ),
+)
+
+private const val SOFT_ALPHA = 0.35f
+
+private val parsedLayers = PROTOCOL_LAYERS.mapValues { (_, layers) ->
+    layers.map { (layer, d) -> layer to PathParser().parsePathString(d).toPath() }
 }
 
 /**
@@ -70,22 +130,20 @@ fun Glyph(
             tint, start, sweep, useCenter = false,
             topLeft = pt(cx - r, cy - r), size = Size(2 * r * u, 2 * r * u), style = stroke,
         )
-        fun circle(cx: Float, cy: Float, r: Float) = Rect(pt(cx - r, cy - r), Size(2 * r * u, 2 * r * u))
-        /** A four-pointed star with concave sides. */
-        fun star(cx: Float, cy: Float, r: Float) {
-            val p = Path().apply {
-                moveTo(ox + cx * u, oy + (cy - r) * u)
-                quadraticTo(ox + cx * u, oy + cy * u, ox + (cx + r) * u, oy + cy * u)
-                quadraticTo(ox + cx * u, oy + cy * u, ox + cx * u, oy + (cy + r) * u)
-                quadraticTo(ox + cx * u, oy + cy * u, ox + (cx - r) * u, oy + cy * u)
-                quadraticTo(ox + cx * u, oy + cy * u, ox + cx * u, oy + (cy - r) * u)
-                close()
+        parsedLayers[kind]?.let { layers ->
+            translate(ox, oy) {
+                scale(u, u, pivot = Offset.Zero) {
+                    val line = Stroke(stroke.width / u, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    layers.forEach { (layer, path) ->
+                        when (layer) {
+                            Layer.Soft -> drawPath(path, tint.copy(alpha = tint.alpha * SOFT_ALPHA))
+                            Layer.Stroke -> drawPath(path, tint, style = line)
+                            Layer.Fill -> drawPath(path, tint)
+                        }
+                    }
+                }
             }
-            drawPath(p, tint, style = stroke)
-        }
-        /** The H of an HTTP version monogram. */
-        fun letterH() {
-            line(3f, 6f, 3f, 18f); line(10f, 6f, 10f, 18f); line(3f, 12f, 10f, 12f)
+            return@Canvas
         }
 
         when (kind) {
@@ -212,61 +270,8 @@ fun Glyph(
                 poly(14.5f, 7.5f, 19f, 12f, 14.5f, 16.5f)
                 line(13.2f, 6f, 10.8f, 18f)
             }
-            GlyphKind.Sparkle -> {
-                star(10.5f, 13.5f, 7.5f)
-                star(18.5f, 5.5f, 3f)
-            }
-            GlyphKind.H3 -> {
-                letterH()
-                arc(17f, 9f, 3f, 200f, 250f)
-                arc(17f, 15f, 3f, 270f, 250f)
-            }
-            GlyphKind.H2 -> {
-                letterH()
-                arc(17f, 9f, 3f, 200f, 205f)
-                poly(19.12f, 11.12f, 14f, 18f, 20f, 18f)
-            }
-            GlyphKind.Serpent -> {
-                ring(12f, 12f, 9f)
-                val p = Path().apply {
-                    moveTo(ox + 8f * u, oy + 17f * u)
-                    cubicTo(ox + 13f * u, oy + 17.5f * u, ox + 15.5f * u, oy + 13f * u, ox + 12f * u, oy + 11.5f * u)
-                    cubicTo(ox + 8.5f * u, oy + 10f * u, ox + 10f * u, oy + 6f * u, ox + 15.5f * u, oy + 7f * u)
-                }
-                drawPath(p, tint, style = stroke)
-                dot(15.5f, 9.6f, 1.1f)
-            }
-            GlyphKind.CloudNested -> {
-                val p = Path().apply {
-                    moveTo(ox + 7f * u, oy + 18f * u)
-                    arcTo(circle(7f, 14.5f, 3.5f), 90f, 180f, false)
-                    arcTo(circle(12f, 11f, 5f), 180f, 180f, false)
-                    arcTo(circle(17f, 14.5f, 3.5f), 270f, 180f, false)
-                    close()
-                }
-                drawPath(p, tint, style = stroke)
-                ring(12f, 13.5f, 2.2f)
-            }
-            GlyphKind.LetterP -> {
-                line(7.5f, 4f, 7.5f, 20f)
-                val p = Path().apply {
-                    moveTo(ox + 7.5f * u, oy + 4f * u)
-                    lineTo(ox + 12.5f * u, oy + 4f * u)
-                    arcTo(circle(12.5f, 8.75f, 4.75f), 270f, 180f, false)
-                    lineTo(ox + 7.5f * u, oy + 13.5f * u)
-                }
-                drawPath(p, tint, style = stroke)
-            }
-            GlyphKind.Onion -> {
-                ring(12f, 14f, 7.5f)
-                ring(12f, 14f, 4.2f)
-                dot(12f, 14f, 1.4f)
-                val p = Path().apply {
-                    moveTo(ox + 12f * u, oy + 6.5f * u)
-                    cubicTo(ox + 12f * u, oy + 4.5f * u, ox + 13f * u, oy + 3f * u, ox + 15f * u, oy + 2.5f * u)
-                }
-                drawPath(p, tint, style = stroke)
-            }
+            GlyphKind.Sparkle, GlyphKind.H3, GlyphKind.H2, GlyphKind.Serpent, GlyphKind.CloudNested,
+            GlyphKind.LetterP, GlyphKind.Onion, GlyphKind.V2Ray -> Unit
             GlyphKind.Close -> {
                 line(6f, 6f, 18f, 18f)
                 line(18f, 6f, 6f, 18f)

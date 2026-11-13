@@ -85,7 +85,7 @@ class WarpApp : Application() {
                 mapOf(
                     Protocol.Psiphon to PsiphonDirect(this),
                     Protocol.Tor to TorTunnel(this),
-                    Protocol.Configs to io.github.mhammaddawudi.freeport.core.ConfigsTunnel(this),
+                    Protocol.Configs to io.github.mhammaddawudi.freeport.core.ConfigsTunnel(this, BuildConfig.EDGE_BOARD_URL),
                 )
             } else {
                 emptyMap()

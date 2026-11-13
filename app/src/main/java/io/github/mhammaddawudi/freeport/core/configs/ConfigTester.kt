@@ -84,13 +84,14 @@ class ConfigTester(private val xray: Xray, private val log: CoreLog = CoreLog) {
     }
 
     /** Measures the download through each of [healthy], one at a time so they do not share the line. */
-    suspend fun measure(healthy: List<Healthy>): List<Healthy> {
+    /** Each config's download, one after another; [windowMs] each, long enough to see a reel's pace. */
+    suspend fun measure(healthy: List<Healthy>, windowMs: Long = SPEED_WINDOW_MS): List<Healthy> {
         if (healthy.isEmpty()) return emptyList()
         val routes = freePorts(healthy.size).zip(healthy) { port, h -> Xray.Route(h.link, port) }
         val running = xray.start(routes, "speed").getOrElse { return healthy }
         return running.use {
             routes.zip(healthy) { route, h ->
-                val kbps = ThroughputProbe.measure(route.port, SPEED_BYTES, SPEED_WINDOW_MS)?.kbps ?: 0
+                val kbps = ThroughputProbe.measure(route.port, SPEED_BYTES, windowMs)?.kbps ?: 0
                 log.info("[*] configs: ${h.link.label} carries $kbps KB/s (${h.delayMs}ms)")
                 h.copy(kbps = kbps)
             }
@@ -130,7 +131,7 @@ class ConfigTester(private val xray: Xray, private val log: CoreLog = CoreLog) {
         private const val KNOCK_PARALLEL = 256
         private const val KNOCK_TIMEOUT_MS = 2_000
         private const val PROBE_TIMEOUT_MS = 8_000
-        private const val SPEED_BYTES = 1_500_000
+        private const val SPEED_BYTES = 3_000_000
         private const val SPEED_WINDOW_MS = 3_000L
 
         /** [count] ports nothing listens on right now. */

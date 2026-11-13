@@ -23,7 +23,12 @@ class ConfigFeed(
     private val log: CoreLog = CoreLog,
     /** Try the daily tested list first; off for the census that makes it. */
     private val includeCensus: Boolean = true,
+    /** The edge board (server/edge-board), which keeps the pool every phone's tests feed; empty for none. */
+    private val board: String = "",
 ) {
+    /** One config's test on this phone, for the shared pool. */
+    data class Report(val link: ShareLink, val ok: Boolean, val delayMs: Long = 0, val kbps: Long = 0)
+
 
     /** A file in a public repository. */
     data class Source(val repo: String, val branch: String, val path: String) {
@@ -85,11 +90,54 @@ class ConfigFeed(
      * The census first: a short list tested daily, enough on its own. The
      * collections themselves, megabytes each, only when it is out of reach.
      */
+    /**
+     * Best first: the shared pool on the board (what Freeport users found,
+     * then the census), else the census from GitHub, else the collections
+     * themselves, shuffled so phones do not all knock on the same few.
+     */
     private suspend fun fetchVia(route: Int?): List<String> {
         if (includeCensus) {
+            if (board.isNotEmpty()) {
+                val shared = runCatching { get("$board/v1/configs", route) }.getOrNull()
+                    ?.let { body -> ShareLink.parseAll(body).joinToString("\n") { it.raw } }
+                if (shared != null && shared.lines().size >= MIN_CENSUS) {
+                    log.info("[+] configs: the shared pool${if (route == null) "" else " through port $route"}")
+                    return listOf(shared)
+                }
+            }
             fetch(CENSUS, route)?.takeIf { it.lines().size >= MIN_CENSUS }?.let { return listOf(it) }
         }
-        return coroutineScope { SOURCES.map { source -> async { fetch(source, route) } }.awaitAll().filterNotNull() }
+        val bodies = coroutineScope { SOURCES.map { source -> async { fetch(source, route) } }.awaitAll().filterNotNull() }
+        return if (bodies.isEmpty()) bodies else listOf(bodies.flatMap { it.lines() }.shuffled().joinToString("\n"))
+    }
+
+    /** Sends this phone's results to the shared pool; false when the board was out of reach. */
+    suspend fun share(reports: List<Report>, socksPort: Int? = null): Boolean = withContext(Dispatchers.IO) {
+        if (board.isEmpty() || reports.isEmpty()) return@withContext true
+        val body = org.json.JSONObject().put(
+            "results",
+            org.json.JSONArray(
+                reports.take(MAX_REPORT).map {
+                    org.json.JSONObject().put("link", it.link.raw).put("ok", it.ok).put("delay", it.delayMs).put("kbps", it.kbps)
+                },
+            ),
+        ).toString()
+        runCatching {
+            val proxy = socksPort?.let { Proxy(Proxy.Type.SOCKS, InetSocketAddress.createUnresolved("127.0.0.1", it)) } ?: Proxy.NO_PROXY
+            val connection = (URL("$board/v1/configs").openConnection(proxy) as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = CONNECT_TIMEOUT_MS
+                setRequestProperty("Content-Type", "application/json")
+            }
+            try {
+                connection.outputStream.use { it.write(body.toByteArray()) }
+                connection.responseCode in 200..299
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrDefault(false)
     }
 
     private fun fetch(source: Source, socksPort: Int?): String? {
@@ -133,6 +181,7 @@ class ConfigFeed(
         )
         const val MAX_AGE_MS = 3 * 3_600_000L
         private const val MIN_BODY = 200
+        private const val MAX_REPORT = 80
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val BARE_CONNECT_TIMEOUT_MS = 4_000
         private const val READ_TIMEOUT_MS = 25_000

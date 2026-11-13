@@ -23,7 +23,7 @@ class ConfigPoolLiveTest {
         val pool = ConfigPool(folder, ConfigFeed(folder), tester)
         val started = System.currentTimeMillis()
         val via = System.getenv("FEED_SOCKS")?.toIntOrNull()
-        val count = pool.refresh("live", 120_000) { listOfNotNull(via) }
+        val count = pool.refresh("live", 120_000, via = { listOfNotNull(via) })
         CoreLog.lines.value.forEach { println(it.text) }
         println("pooled $count in ${(System.currentTimeMillis() - started) / 1000}s")
         assertTrue(count > 0)

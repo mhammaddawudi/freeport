@@ -20,12 +20,17 @@ import java.io.File
  * These servers belong to strangers: what crosses them unencrypted can be
  * read there. HTTPS, which is nearly everything, stays private.
  */
-class ConfigsTunnel(private val context: Context, private val log: CoreLog = CoreLog) : DirectTunnel {
+class ConfigsTunnel(
+    private val context: Context,
+    /** The edge board, where every phone's tests meet; empty for none. */
+    board: String = "",
+    private val log: CoreLog = CoreLog,
+) : DirectTunnel {
 
     private val folder = File(context.filesDir, "configs")
     private val xray = Xray(File(context.applicationInfo.nativeLibraryDir, "libxray.so"), folder)
     private val tester = ConfigTester(xray, log)
-    private val feed = ConfigFeed(folder, log)
+    private val feed = ConfigFeed(folder, log, board = board)
     private val pool = ConfigPool(folder, feed, tester, log)
 
     /** Fetches the lists when GitHub is filtered and nothing else is up: Psiphon, briefly. */
@@ -34,6 +39,7 @@ class ConfigsTunnel(private val context: Context, private val log: CoreLog = Cor
     @Volatile private var running: Xray.Running? = null
     @Volatile private var current: ShareLink? = null
     @Volatile private var openedAt = 0L
+    @Volatile private var deepAt = 0L
 
     override val name = "V2Ray configs"
     override val isAvailable: Boolean get() = xray.isAvailable
@@ -56,7 +62,7 @@ class ConfigsTunnel(private val context: Context, private val log: CoreLog = Cor
             log.info("[*] configs: building the pool for this network")
             val helpers = mutableListOf<AutoCloseable>()
             try {
-                pool.refresh(network, timeoutMs - TRY_RESERVE_MS) { routesToGitHub(network, helpers) }
+                pool.refresh(network, timeoutMs - TRY_RESERVE_MS, via = { routesToGitHub(network, helpers) })
             } finally {
                 helpers.forEach { runCatching { it.close() } }
             }
@@ -103,12 +109,20 @@ class ConfigsTunnel(private val context: Context, private val log: CoreLog = Cor
     override suspend fun warm(socksPort: Int) {
         if (!isAvailable || running != null) return
         feed.refreshThrough(socksPort)
+        pool.share(socksPort)
         val network = NetworkKey.current(context)
-        if (pool.isStale(network)) {
-            log.info("[*] configs: refreshing this network's pool in the background")
-            pool.refresh(network, BACKGROUND_BUDGET_MS)
+        // A deep sieve downloads a few megabytes per config: at most every few hours.
+        val due = System.currentTimeMillis() - deepAt > DEEP_EVERY_MS
+        if (pool.isStale(network) || (due && pool.isShallow())) {
+            deepAt = System.currentTimeMillis()
+            log.info("[*] configs: a deep sieve of the public configs in the background")
+            pool.refresh(network, BACKGROUND_BUDGET_MS, deep = true)
         }
     }
+
+    override val isReady: Boolean get() = !pool.isStale(NetworkKey.current(context))
+
+    override fun lastRttMs(): Long? = pool.bestDelay(NetworkKey.current(context))
 
     private suspend fun tryLink(link: ShareLink, socksPort: Int): Boolean {
         val started = xray.start(listOf(Xray.Route(link, socksPort)), "session", udp = true).getOrElse {
@@ -123,6 +137,9 @@ class ConfigsTunnel(private val context: Context, private val log: CoreLog = Cor
         }
         running = started
         log.good("[+] configs: carrying through ${link.label}, ${delay}ms")
+        pool.markGood(link, delay)
+        // The board is often filtered on the bare line; this session reaches it.
+        Thread({ kotlinx.coroutines.runBlocking { pool.share(socksPort) } }, "configs-share").apply { isDaemon = true }.start()
         return true
     }
 
@@ -136,6 +153,7 @@ class ConfigsTunnel(private val context: Context, private val log: CoreLog = Cor
         const val TRY_RESERVE_MS = 20_000L
         const val QUICK_DROP_MS = 5 * 60_000L
         const val BOOTSTRAP_MS = 60_000L
-        const val BACKGROUND_BUDGET_MS = 120_000L
+        const val BACKGROUND_BUDGET_MS = 300_000L
+        const val DEEP_EVERY_MS = 6 * 3_600_000L
     }
 }

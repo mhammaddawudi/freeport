@@ -148,6 +148,11 @@ data class ShareLink(
         private val REALITY_KEY = Regex("^[A-Za-z0-9_-]{43}$")
         private val SHORT_ID = Regex("^[0-9a-fA-F]{0,16}$")
 
+        /** The first 16 hex digits of the link's SHA-256: how the shared pool names a config. */
+        fun hashOf(raw: String): String =
+            java.security.MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+                .take(8).joinToString("") { "%02x".format(it) }
+
         /** Every config in a subscription body: plain lines, or the whole of it in base64. */
         fun parseAll(body: String): List<ShareLink> {
             val text = if (body.contains("://")) body else decodeBase64(body.trim().replace("\n", "")) ?: return emptyList()

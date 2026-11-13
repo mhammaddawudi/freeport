@@ -159,10 +159,8 @@
     <string name="protocol_trait_psiphon">دەرەوەی کلاودفلێر · بێ سنوور</string>
     <string name="protocol_trait_configs">کانفیگە گشتییەکان · تاقیکراوە لەم تۆڕەدا، خێراترین</string>
     <string name="protocol_trait_tor">سنۆفلەیک · دوایین ڕێگە، خاو</string>
-    <string name="protocol_best_for">گونجاو بۆ %1$s</string>
     <string name="protocol_live">چالاک</string>
     <string name="auto_via">ئۆتۆماتیک %1$s ی هەڵبژارد</string>
-    <string name="app_games">یارییەکان</string>
 
     <!-- Region unlock -->
     <string name="region_unlock">لابردنی سنووری ناوچە</string>

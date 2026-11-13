@@ -21,6 +21,12 @@ interface DirectTunnel {
 
     /** Lets it use a tunnel that is up anyway, such as fetching what it needs later. */
     suspend fun warm(socksPort: Int) {}
+
+    /** Whether it can connect within a normal wait; false while it still has to prepare. */
+    val isReady: Boolean get() = true
+
+    /** The last round trip measured on this network, shown before any new test; null when none. */
+    fun lastRttMs(): Long? = null
 }
 
 /** Psiphon on its own, straight over the line, every protocol it knows. */

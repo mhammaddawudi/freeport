@@ -85,7 +85,7 @@ private val Protocol.glyph: GlyphKind
         Protocol.MasqueH2 -> GlyphKind.H2
         Protocol.WireGuard -> GlyphKind.Serpent
         Protocol.Gool -> GlyphKind.CloudNested
-        Protocol.Configs -> GlyphKind.Stack
+        Protocol.Configs -> GlyphKind.V2Ray
         Protocol.Psiphon -> GlyphKind.LetterP
         Protocol.Tor -> GlyphKind.Onion
     }
@@ -202,11 +202,9 @@ private fun ProtocolRow(
 ) {
     val lit by animateFloatAsState(if (selected) 1f else 0f, tween(220), label = "rowLit")
     val accent = protocol.accent
-    val apps = protocol.suitedApps
     val described = listOfNotNull(
         protocol.label(),
         protocol.traitRes?.let { stringResource(it) },
-        apps.takeIf { it.isNotEmpty() }?.let { list -> stringResource(R.string.protocol_best_for, list.map { it.label() }.joinToString(", ")) },
     ).joinToString(". ")
 
     Row(
@@ -223,7 +221,7 @@ private fun ProtocolRow(
         GlyphTile(protocol.glyph, accent, lit)
         Spacer(Modifier.width(12.dp))
         // The name and its dot take the free width as one block, so the
-        // badges and the selection ring end up at the same edge on every row.
+        // ping and the selection ring end up at the same edge on every row.
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 protocol.label(),
@@ -239,10 +237,6 @@ private fun ProtocolRow(
             }
         }
         PingLabel(rttMs, probing)
-        if (apps.isNotEmpty()) {
-            AppBadgeRow(apps, size = 22.dp)
-            Spacer(Modifier.width(12.dp))
-        }
         SelectionMark(lit, accent)
     }
 }

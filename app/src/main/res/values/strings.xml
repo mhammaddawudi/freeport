@@ -157,10 +157,8 @@
     <string name="protocol_trait_psiphon">Outside Cloudflare · no cap</string>
     <string name="protocol_trait_configs">Public configs · tested here, fastest used</string>
     <string name="protocol_trait_tor">Snowflake · last resort, slow</string>
-    <string name="protocol_best_for">Best for %1$s</string>
     <string name="protocol_live">Live</string>
     <string name="auto_via">Automatic chose %1$s</string>
-    <string name="app_games">Games</string>
 
     <!-- Region unlock -->
     <string name="region_unlock">Region unlock</string>
