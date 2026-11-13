@@ -155,6 +155,7 @@
     <string name="protocol_trait_wireguard">UDP · کمترین تأخیر</string>
     <string name="protocol_trait_gool">دو لایه · بیشترین حریم خصوصی</string>
     <string name="protocol_trait_psiphon">بیرون از کلودفلر · بدون سقف</string>
+    <string name="protocol_trait_configs">کانفیگ‌های عمومی · تست‌شده روی همین شبکه، سریع‌ترین</string>
     <string name="protocol_trait_tor">اسنوفلیک · آخرین راه، کند</string>
     <string name="protocol_best_for">مناسب برای %1$s</string>
     <string name="protocol_live">فعال</string>

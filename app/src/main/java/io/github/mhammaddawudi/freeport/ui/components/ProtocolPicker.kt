@@ -73,6 +73,7 @@ private val Protocol.traitRes: Int?
         Protocol.MasqueH2 -> R.string.protocol_trait_masque_h2
         Protocol.WireGuard -> R.string.protocol_trait_wireguard
         Protocol.Gool -> R.string.protocol_trait_gool
+        Protocol.Configs -> R.string.protocol_trait_configs
         Protocol.Psiphon -> R.string.protocol_trait_psiphon
         Protocol.Tor -> R.string.protocol_trait_tor
     }
@@ -84,6 +85,7 @@ private val Protocol.glyph: GlyphKind
         Protocol.MasqueH2 -> GlyphKind.H2
         Protocol.WireGuard -> GlyphKind.Serpent
         Protocol.Gool -> GlyphKind.CloudNested
+        Protocol.Configs -> GlyphKind.Stack
         Protocol.Psiphon -> GlyphKind.LetterP
         Protocol.Tor -> GlyphKind.Onion
     }
@@ -95,7 +97,7 @@ private fun Protocol.label(): String =
 /** Automatic first, then Cloudflare's carriers, then the two networks outside it, Tor last. */
 private val ORDER = listOf(
     Protocol.Auto, Protocol.MasqueH3, Protocol.MasqueH2, Protocol.WireGuard, Protocol.Gool,
-    Protocol.Psiphon, Protocol.Tor,
+    Protocol.Configs, Protocol.Psiphon, Protocol.Tor,
 )
 
 /**

@@ -157,6 +157,7 @@
     <string name="protocol_trait_wireguard">UDP · کەمترین دواکەوتن</string>
     <string name="protocol_trait_gool">دوو چین · زۆرترین تایبەتمەندی</string>
     <string name="protocol_trait_psiphon">دەرەوەی کلاودفلێر · بێ سنوور</string>
+    <string name="protocol_trait_configs">کانفیگە گشتییەکان · تاقیکراوە لەم تۆڕەدا، خێراترین</string>
     <string name="protocol_trait_tor">سنۆفلەیک · دوایین ڕێگە، خاو</string>
     <string name="protocol_best_for">گونجاو بۆ %1$s</string>
     <string name="protocol_live">چالاک</string>

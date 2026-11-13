@@ -833,7 +833,11 @@ class WarpEngine(
         val tunnel = direct[protocol]?.takeIf { it.isAvailable }
             ?: return Outcome("${protocol.displayName} is not in this build")
         show(ConnectionState.Connecting(protocol, null, viaAuto))
-        val startup = if (protocol == Protocol.Tor) TOR_STARTUP_MS else PSIPHON_STARTUP_MS
+        val startup = when (protocol) {
+            Protocol.Tor -> TOR_STARTUP_MS
+            Protocol.Configs -> CONFIGS_STARTUP_MS
+            else -> PSIPHON_STARTUP_MS
+        }
         // Closed however this ends, a disconnect while it is still starting
         // included: a client left running would hold the port and the line.
         return try {
@@ -860,9 +864,23 @@ class WarpEngine(
         val connected = ConnectionState.Connected(settings.protocol, null, since, mode, viaAuto, settings.socksPort)
         _state.value = connected
         launch { reportExit(connected) }
+        if (settings.protocol != Protocol.Configs) launch { warmConfigs(settings.socksPort) }
         log.good("[+] connected through ${tunnel.name}")
         log.info("[*] SOCKS5 listening on 127.0.0.1:${settings.socksPort}")
         watchDirect(tunnel, settings, since, viaAuto)
+    }
+
+    /**
+     * GitHub, where the public V2Ray configs live, is filtered on many
+     * networks: a session that is up fetches them, so the V2Ray protocol
+     * has a fresh list to test when it is chosen.
+     */
+    private suspend fun warmConfigs(socksPort: Int) {
+        delay(CONFIGS_WARM_DELAY_MS)
+        while (true) {
+            runCatching { direct[Protocol.Configs]?.warm(socksPort) }
+            delay(CONFIGS_WARM_EVERY_MS)
+        }
     }
 
     /** Watches a running Psiphon or Tor until it stops carrying traffic. */
@@ -970,6 +988,7 @@ class WarpEngine(
             )
             _state.value = connected
             launch { reportExit(connected) }
+            launch { warmConfigs(carried.socksPort) }
             if (endpoint != null && settings.pinnedPeer.isBlank() && scout != null) {
                 launch {
                     scout.watch(
@@ -1257,6 +1276,7 @@ class WarpEngine(
         // When the network outside Cloudflare will not answer, Cloudflare may.
         Protocol.Psiphon -> listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard, Protocol.Tor)
         Protocol.Tor -> listOf(Protocol.Psiphon, Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
+        Protocol.Configs -> listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard, Protocol.Psiphon)
     }
 
     /** Picks a local port nothing is sitting on, starting from the chosen one. */
@@ -1390,6 +1410,12 @@ class WarpEngine(
         /** Psiphon usually connects in 10–30 s; Tor through Snowflake can take two minutes. */
         const val PSIPHON_STARTUP_MS = 60_000L
         const val TOR_STARTUP_MS = 150_000L
+        /** The first connection on a network fetches and tests the public configs. */
+        const val CONFIGS_STARTUP_MS = 150_000L
+        /** A session settles before the config lists are fetched through it. */
+        const val CONFIGS_WARM_DELAY_MS = 30_000L
+        /** How often a long session looks again; the pool itself decides whether it is old. */
+        const val CONFIGS_WARM_EVERY_MS = 30 * 60_000L
         const val DIRECT_PROBE_MS = 30_000L
         const val DIRECT_MISSES = 3
 

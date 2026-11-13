@@ -1,0 +1,55 @@
+# The daily census of public V2Ray configs: every config in the collections
+# the app reads is tested through Xray, and those that answer are published,
+# quickest first, as alive.txt on the `configs` branch. The app fetches that
+# short list before the collections themselves.
+name: configs
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: configs
+  cancel-in-progress: true
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Xray
+        run: |
+          curl -fsSL -o xray.zip https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip
+          mkdir -p "$RUNNER_TEMP/xray" && unzip -q xray.zip -d "$RUNNER_TEMP/xray" && chmod +x "$RUNNER_TEMP/xray/xray"
+          "$RUNNER_TEMP/xray/xray" version | head -1
+
+      - name: Census
+        env:
+          XRAY_BIN: ${{ runner.temp }}/xray/xray
+          CENSUS_OUT: ${{ runner.temp }}/alive.txt
+        run: |
+          ./gradlew :app:testReleaseUnitTest --tests '*ConfigCensusTest*' -i | grep -E "census:|FAILED" || true
+          test "$(wc -l < "$CENSUS_OUT")" -ge 50
+
+      - name: Publish
+        run: |
+          cd "$RUNNER_TEMP"
+          rm -rf publish && mkdir publish && cd publish
+          git init -q -b configs
+          cp "$RUNNER_TEMP/alive.txt" alive.txt
+          git add alive.txt
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "configs: $(wc -l < alive.txt) working, $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" configs
+          curl -fsS -m 20 "https://purge.jsdelivr.net/gh/${{ github.repository }}@configs/alive.txt" > /dev/null || true

@@ -9,10 +9,10 @@ import org.junit.Test
 class DirectProtocolTest {
 
     @Test
-    fun `psiphon and tor are tunnels of their own, the rest ride cloudflare`() {
-        assertTrue(Protocol.Psiphon.isDirect)
-        assertTrue(Protocol.Tor.isDirect)
-        Protocol.entries.filter { it != Protocol.Psiphon && it != Protocol.Tor }.forEach { assertFalse(it.isDirect) }
+    fun `psiphon, tor and the v2ray configs are tunnels of their own, the rest ride cloudflare`() {
+        val own = setOf(Protocol.Psiphon, Protocol.Tor, Protocol.Configs)
+        own.forEach { assertTrue(it.isDirect) }
+        Protocol.entries.filter { it !in own }.forEach { assertFalse(it.isDirect) }
     }
 
     @Test

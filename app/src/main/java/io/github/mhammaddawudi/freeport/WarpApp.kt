@@ -82,7 +82,11 @@ class WarpApp : Application() {
             networkOf = { NetworkKey.current(this) },
             traffic = TunnelTraffic(if (CoreProvider.isNative) UidTrafficMeter() else null),
             direct = if (CoreProvider.isNative) {
-                mapOf(Protocol.Psiphon to PsiphonDirect(this), Protocol.Tor to TorTunnel(this))
+                mapOf(
+                    Protocol.Psiphon to PsiphonDirect(this),
+                    Protocol.Tor to TorTunnel(this),
+                    Protocol.Configs to io.github.mhammaddawudi.freeport.core.ConfigsTunnel(this),
+                )
             } else {
                 emptyMap()
             },

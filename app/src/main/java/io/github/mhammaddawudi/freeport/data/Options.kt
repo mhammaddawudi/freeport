@@ -81,6 +81,19 @@ enum class Protocol(
         defaultNoize = "amnezia",
     ),
 
+    /**
+     * The public V2Ray configs shared on GitHub: those that work on this
+     * network are pooled and the fastest carries the session, through Xray.
+     */
+    Configs(
+        id = "configs",
+        displayName = "V2Ray",
+        transport = "xray",
+        coreArguments = emptyList(),
+        defaultPort = 0,
+        defaultNoize = "",
+    ),
+
     /** Psiphon's own network, outside Cloudflare: free, no cap, picks its own servers. */
     Psiphon(
         id = "psiphon",
@@ -102,7 +115,7 @@ enum class Protocol(
     );
 
     /** A whole tunnel of its own, outside Cloudflare, with no edge to scan or tune. */
-    val isDirect: Boolean get() = this == Psiphon || this == Tor
+    val isDirect: Boolean get() = this == Psiphon || this == Tor || this == Configs
 
     /** True when the transport rides TCP, which is what the fragment options need. */
     val isTcp: Boolean get() = this == MasqueH2
@@ -112,7 +125,7 @@ enum class Protocol(
         get() = when (this) {
             Auto, MasqueH3, MasqueH2 -> NoizeProfile.masqueProfiles
             WireGuard, Gool -> NoizeProfile.wireguardProfiles
-            Psiphon, Tor -> emptyList()
+            Psiphon, Tor, Configs -> emptyList()
         }
 
     /** Plain WireGuard: slow to reach full speed, then the fastest. Automatic gives it time. */

@@ -18,6 +18,9 @@ interface DirectTunnel {
     suspend fun open(socksPort: Int, timeoutMs: Long): String?
 
     fun close()
+
+    /** Lets it use a tunnel that is up anyway, such as fetching what it needs later. */
+    suspend fun warm(socksPort: Int) {}
 }
 
 /** Psiphon on its own, straight over the line, every protocol it knows. */

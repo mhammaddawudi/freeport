@@ -155,6 +155,7 @@
     <string name="protocol_trait_wireguard">UDP · derengmayîna herî kêm</string>
     <string name="protocol_trait_gool">Du qat · herî taybet</string>
     <string name="protocol_trait_psiphon">Derveyî Cloudflare · bê sînor</string>
+    <string name="protocol_trait_configs">Konfîgên giştî · li vê torê hatine ceribandin, ya herî bilez</string>
     <string name="protocol_trait_tor">Snowflake · riya dawî, hêdî</string>
     <string name="protocol_best_for">Ji bo %1$s baş e</string>
     <string name="protocol_live">Çalak</string>
