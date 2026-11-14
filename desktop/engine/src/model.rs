@@ -16,6 +16,9 @@ pub enum Protocol {
     WireGuard,
     /// Warp in warp, run end to end by the core.
     Gool,
+    /// The fastest of the public V2Ray configs, carried by Xray.
+    #[serde(rename = "v2ray")]
+    Configs,
     /// Psiphon on its own, outside Cloudflare.
     Psiphon,
     /// Tor through Snowflake: the last resort.
@@ -23,12 +26,13 @@ pub enum Protocol {
 }
 
 impl Protocol {
-    pub const ALL: [Protocol; 7] = [
+    pub const ALL: [Protocol; 8] = [
         Protocol::Auto,
         Protocol::MasqueH2,
         Protocol::MasqueH3,
         Protocol::WireGuard,
         Protocol::Gool,
+        Protocol::Configs,
         Protocol::Psiphon,
         Protocol::Tor,
     ];
@@ -40,6 +44,7 @@ impl Protocol {
             Protocol::MasqueH3 => "MASQUE",
             Protocol::WireGuard => "WireGuard",
             Protocol::Gool => "Warp in Warp",
+            Protocol::Configs => "V2Ray",
             Protocol::Psiphon => "Psiphon",
             Protocol::Tor => "Tor",
         }
@@ -52,6 +57,7 @@ impl Protocol {
             Protocol::MasqueH3 => "HTTP/3 over QUIC",
             Protocol::WireGuard => "classic WARP over UDP",
             Protocol::Gool => "two WireGuard hops, the most cover",
+            Protocol::Configs => "public configs, tested here, fastest used",
             Protocol::Psiphon => "outside Cloudflare, no cap",
             Protocol::Tor => "Snowflake, last resort, slow",
         }
@@ -67,7 +73,7 @@ impl Protocol {
 
     /// Psiphon and Tor leave from abroad on their own, without Cloudflare.
     pub fn is_direct(self) -> bool {
-        matches!(self, Protocol::Psiphon | Protocol::Tor)
+        matches!(self, Protocol::Configs | Protocol::Psiphon | Protocol::Tor)
     }
 
     pub fn is_tcp(self) -> bool {
@@ -96,6 +102,7 @@ impl Protocol {
             Protocol::MasqueH3 => &[Protocol::WireGuard, Protocol::MasqueH2, Protocol::Gool],
             Protocol::MasqueH2 => &[Protocol::MasqueH3, Protocol::WireGuard, Protocol::Gool],
             Protocol::WireGuard => &[Protocol::MasqueH3, Protocol::MasqueH2, Protocol::Gool],
+            Protocol::Configs => &[Protocol::MasqueH2, Protocol::MasqueH3, Protocol::WireGuard, Protocol::Psiphon],
             Protocol::Psiphon => &[Protocol::MasqueH2, Protocol::MasqueH3, Protocol::WireGuard, Protocol::Tor],
             Protocol::Tor => &[Protocol::Psiphon, Protocol::MasqueH2],
         }
@@ -108,6 +115,7 @@ impl Protocol {
             "h3" | "masque" | "masque-h3" => Some(Protocol::MasqueH3),
             "wg" | "wireguard" | "warp" => Some(Protocol::WireGuard),
             "gool" | "wiw" | "warp-in-warp" => Some(Protocol::Gool),
+            "v2ray" | "configs" => Some(Protocol::Configs),
             "psiphon" => Some(Protocol::Psiphon),
             "tor" | "snowflake" => Some(Protocol::Tor),
             _ => None,
@@ -275,7 +283,7 @@ mod tests {
 
     #[test]
     fn cycling_wraps_around() {
-        assert_eq!(cycle(&Protocol::ALL, Protocol::Gool), Protocol::Psiphon);
+        assert_eq!(cycle(&Protocol::ALL, Protocol::Gool), Protocol::Configs);
         assert_eq!(cycle(&Protocol::ALL, Protocol::Tor), Protocol::Auto);
         assert_eq!(cycle(&EXIT_COUNTRIES, "SG"), "");
     }

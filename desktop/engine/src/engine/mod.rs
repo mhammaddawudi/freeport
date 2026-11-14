@@ -10,6 +10,7 @@ mod core;
 mod health;
 mod probe;
 mod relay;
+pub mod configs;
 pub mod tor;
 pub(crate) mod tuner;
 
@@ -89,6 +90,7 @@ pub struct Engine {
     pub(crate) cache: cache::EndpointCache,
     pub(crate) relay: Relay,
     pub(crate) tor: tor::Tor,
+    pub(crate) configs: configs::Configs,
     /// Edges found too slow for video this session; scans and the shared
     /// list skip them.
     pub(crate) slow: Mutex<std::collections::HashSet<std::net::SocketAddr>>,
@@ -112,6 +114,7 @@ impl Engine {
             cache: cache::EndpointCache::load(),
             relay: Relay::default(),
             tor: tor::Tor::default(),
+            configs: configs::Configs::default(),
             slow: Mutex::new(Default::default()),
             benched: Mutex::new(Vec::new()),
             reach: Mutex::new(Default::default()),
@@ -165,6 +168,7 @@ impl Engine {
         // stopped here rather than left to the drop.
         self.relay.stop().await;
         self.tor.stop().await;
+        self.configs.stop().await;
         self.front.point_at(0);
         self.status.send_replace(Status::default());
     }

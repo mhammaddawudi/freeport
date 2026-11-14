@@ -75,6 +75,11 @@ jobs:
         shell: bash
         run: freeport/desktop/scripts/build-singbox.sh ${{ matrix.target }}
 
+      # Xray, for the V2Ray protocol (public configs).
+      - name: V2Ray helper
+        shell: bash
+        run: freeport/desktop/scripts/build-xray.sh ${{ matrix.target }}
+
       - name: Tests
         working-directory: freeport/desktop
         run: cargo test -p freeport-engine -p freeport-desktop

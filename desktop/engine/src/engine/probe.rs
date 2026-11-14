@@ -36,6 +36,9 @@ impl Engine {
             return;
         }
         let engine = self.clone();
+        if let Some(ms) = self.configs.last_rtt_ms() {
+            self.note_reach(Protocol::Configs, ms as i64);
+        }
         tokio::spawn(async move {
             let quick = {
                 let engine = engine.clone();

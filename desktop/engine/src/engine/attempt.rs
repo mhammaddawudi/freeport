@@ -28,6 +28,14 @@ const REMEMBERED_STARTUP: Duration = Duration::from_secs(15);
 const MANAGED_STARTUP: Duration = Duration::from_secs(90);
 /// Psiphon's first start downloads its server list; later ones take ~20s.
 const RELAY_STARTUP: Duration = Duration::from_secs(75);
+/// The first V2Ray connection fetches and tests the public configs.
+const CONFIGS_STARTUP: Duration = Duration::from_secs(150);
+/// Through Automatic the pool is already built: only its configs are tried.
+const CONFIGS_AUTO_STARTUP: Duration = Duration::from_secs(45);
+/// A session settles before the config lists are fetched through it.
+const CONFIGS_WARM_DELAY: Duration = Duration::from_secs(30);
+/// How often a long session looks again; the pool itself decides whether it is old.
+const CONFIGS_WARM_EVERY: Duration = Duration::from_secs(30 * 60);
 /// Snowflake finds a volunteer and Tor builds its circuits; often minutes.
 const TOR_STARTUP: Duration = Duration::from_secs(240);
 const PORT_RELEASE: Duration = Duration::from_millis(1_500);
@@ -235,18 +243,23 @@ impl Engine {
 
     /// Cloudflare is out of reach here: the tunnels that do not go through it.
     async fn leave_cloudflare(self: &Arc<Self>, base: &Settings) -> Outcome {
-        for protocol in [Protocol::Psiphon, Protocol::Tor] {
+        for protocol in [Protocol::Configs, Protocol::Psiphon, Protocol::Tor] {
             if protocol == Protocol::Tor && !super::tor::is_available() {
                 continue;
             }
+            if protocol == Protocol::Configs && !(super::configs::is_available() && self.configs.is_ready()) {
+                // A pool still to be built takes minutes; it fills in the background instead.
+                log::info!(target: "freeport", "[*] automatic: V2Ray has no tested configs yet, skipped for now");
+                continue;
+            }
             log::info!(target: "freeport", "[*] automatic: nothing carried on MASQUE or WireGuard, trying {}", protocol.name());
-            let outcome = self.run_direct(&base.with_protocol(protocol)).await;
+            let outcome = self.run_direct_via(&base.with_protocol(protocol), true).await;
             if outcome.connected {
                 return outcome;
             }
             log::warn!(target: "freeport", "[-] {}", outcome.reason);
         }
-        Outcome::failed("automatic: nothing answered on MASQUE, WireGuard, Psiphon or Tor")
+        Outcome::failed("automatic: nothing answered on MASQUE, WireGuard, V2Ray, Psiphon or Tor")
     }
 
     /// `settings` with the obfuscation that has carried fastest here, when tuning is on.
@@ -381,6 +394,10 @@ impl Engine {
     /// Psiphon or Tor on its own: no scan and no Cloudflare edge, just the
     /// program's own SOCKS port behind the front ones for as long as it runs.
     async fn run_direct(self: &Arc<Self>, settings: &Settings) -> Outcome {
+        self.run_direct_via(settings, false).await
+    }
+
+    async fn run_direct_via(self: &Arc<Self>, settings: &Settings, via_auto: bool) -> Outcome {
         let protocol = settings.protocol;
         self.set_phase(Phase::Connecting, Some(protocol));
         let Some(port) = ports::free_from(RELAY_BASE) else {
@@ -388,6 +405,7 @@ impl Engine {
         };
         let started = match protocol {
             Protocol::Tor => self.tor.start(port, TOR_STARTUP).await,
+            Protocol::Configs => self.start_configs(port, if via_auto { CONFIGS_AUTO_STARTUP } else { CONFIGS_STARTUP }).await,
             _ => {
                 let country = if settings.region_unlock { settings.exit_country.as_str() } else { "" };
                 self.relay.start(0, port, country, RELAY_STARTUP).await
@@ -406,10 +424,12 @@ impl Engine {
         });
         log::info!(target: "freeport", "[+] connected through {}", protocol.name());
         let _checks = Helper(tokio::spawn(self.clone().watch_exit(settings.clone(), port, None)));
+        let _warm = (protocol != Protocol::Configs).then(|| Helper(tokio::spawn(self.clone().warm_configs(port))));
         let reason = loop {
             tokio::time::sleep(POLL).await;
             let alive = match protocol {
                 Protocol::Tor => self.tor.is_alive(),
+                Protocol::Configs => self.configs.is_alive(),
                 _ => self.relay.is_alive(),
             };
             if !alive {
@@ -419,9 +439,42 @@ impl Engine {
         self.front.point_at(0);
         match protocol {
             Protocol::Tor => self.tor.stop().await,
+            Protocol::Configs => self.configs.stop().await,
             _ => self.relay.stop().await,
         }
         Outcome { reason, held: since.elapsed(), connected: true, rotate: false }
+    }
+
+    /// While another session is up, keeps V2Ray's pool fresh through it, so
+    /// the fastest configs are ready when V2Ray is chosen or Automatic falls back.
+    async fn warm_configs(self: Arc<Self>, port: u16) {
+        if !super::configs::is_available() {
+            return;
+        }
+        tokio::time::sleep(CONFIGS_WARM_DELAY).await;
+        loop {
+            self.configs.warm(port).await;
+            tokio::time::sleep(CONFIGS_WARM_EVERY).await;
+        }
+    }
+
+    /// V2Ray, with Psiphon briefly beside it when the lists can only be
+    /// fetched from outside: nothing kept and no config known to fetch through.
+    async fn start_configs(self: &Arc<Self>, port: u16, within: Duration) -> anyhow::Result<()> {
+        let mut via = Vec::new();
+        if self.configs.needs_bootstrap() {
+            if let Some(helper) = ports::free_from(port + 1) {
+                log::info!(target: "freeport", "[*] configs: fetching the lists through Psiphon");
+                if self.relay.start(0, helper, "", RELAY_STARTUP).await.is_ok() {
+                    via.push(helper);
+                }
+            }
+        }
+        let started = self.configs.start(port, within, &via).await;
+        if !via.is_empty() {
+            self.relay.stop().await;
+        }
+        started
     }
 
     async fn hold(
@@ -460,6 +513,7 @@ impl Engine {
         log::info!(target: "freeport", "[*] SOCKS5 127.0.0.1:{} · HTTP 127.0.0.1:{}", self.front.ports().0, self.front.ports().1);
 
         let _checks = Helper(tokio::spawn(self.clone().watch_exit(settings.clone(), inner, relayed)));
+        let _warm = Helper(tokio::spawn(self.clone().warm_configs(inner)));
         let _scout = (endpoint.is_some() && !pinned)
             .then(|| Helper(tokio::spawn(self.clone().scout(settings.clone(), endpoint.unwrap(), inner))));
 

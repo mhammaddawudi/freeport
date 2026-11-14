@@ -11,11 +11,12 @@ const PROTOCOLS = [
   { id: "masque-h2", name: "MASQUE H2", desc: "h2_desc", glyph: "h2" },
   { id: "wire-guard", name: "WireGuard", desc: "wg_desc", glyph: "serpent" },
   { id: "gool", name: "Warp in Warp", desc: "gool_desc", glyph: "cloud" },
+  { id: "v2ray", name: "V2Ray", desc: "v2ray_desc", glyph: "v2ray" },
   { id: "psiphon", name: "Psiphon", desc: "psiphon_desc", glyph: "letterP" },
   { id: "tor", name: "Tor", desc: "tor_desc", glyph: "onion" },
 ];
-// Psiphon and Tor leave on their own: region unlock has nothing to ride on.
-const DIRECT = ["psiphon", "tor"];
+// V2Ray, Psiphon and Tor leave on their own: region unlock has nothing to ride on.
+const DIRECT = ["v2ray", "psiphon", "tor"];
 const COUNTRIES = ["", "DE", "NL", "US", "GB", "FR", "CA", "SE", "CH", "JP", "SG"];
 const SCAN_MODES = ["swift", "turbo", "balanced", "thorough", "stealth", "ironclad"];
 const NOIZE = {
@@ -189,7 +190,7 @@ function pingLabel(id) {
   return `<span class="ping ${ms <= 400 ? "good" : "slow"}">${ms} ms</span>`;
 }
 
-const PINGED = ["masque-h3", "masque-h2", "wire-guard"];
+const PINGED = ["masque-h3", "masque-h2", "wire-guard", "v2ray"];
 
 async function pollReach() {
   try {

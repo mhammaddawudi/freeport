@@ -18,7 +18,7 @@ use warp::api::Endpoint;
 use crate::model::{IpVersion, Protocol};
 use crate::settings;
 
-const BOARD: &str = "https://freeport-edge-board.freeport-mhd.workers.dev";
+pub(crate) const BOARD: &str = "https://freeport-edge-board.freeport-mhd.workers.dev";
 const DIRECT_TIMEOUT: Duration = Duration::from_millis(1_500);
 const TUNNEL_TIMEOUT: Duration = Duration::from_secs(5);
 const KEEP: Duration = Duration::from_secs(3 * 24 * 3600);
@@ -92,7 +92,7 @@ fn kept_file(proto: &str, ip: IpVersion) -> Option<PathBuf> {
     settings::sub_dir("shared").ok().map(|dir| dir.join(format!("{proto}.{}.json", fam(ip))))
 }
 
-fn client(socks: Option<u16>, timeout: Duration) -> Result<reqwest::Client> {
+pub(crate) fn client(socks: Option<u16>, timeout: Duration) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder().timeout(timeout).connect_timeout(timeout);
     builder = match socks {
         Some(port) => builder.proxy(reqwest::Proxy::all(format!("socks5h://127.0.0.1:{port}"))?),

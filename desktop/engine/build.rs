@@ -1,7 +1,8 @@
 //! Picks the helper programs built for the target and hands their paths to
 //! the engine, which embeds them: Psiphon's console client (required), and
 //! Arti with Snowflake for Tor (optional; without them Tor is reported as
-//! missing from the build). CI builds them into assets/; locally,
+//! missing from the build), sing-box for TUN and Xray for V2Ray (both optional
+//! the same way). CI builds them into assets/; locally,
 //! FREEPORT_PSIPHON, FREEPORT_ARTI and FREEPORT_SNOWFLAKE may point anywhere.
 
 use std::path::PathBuf;
@@ -35,7 +36,7 @@ fn main() {
     // Tor is optional: an empty stand-in keeps the build going without it.
     let empty = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("absent");
     std::fs::write(&empty, b"").unwrap();
-    for (var, stem) in [("FREEPORT_ARTI", "arti"), ("FREEPORT_SNOWFLAKE", "snowflake"), ("FREEPORT_SINGBOX", "singbox")] {
+    for (var, stem) in [("FREEPORT_ARTI", "arti"), ("FREEPORT_SNOWFLAKE", "snowflake"), ("FREEPORT_SINGBOX", "singbox"), ("FREEPORT_XRAY", "xray")] {
         let path = find(var, stem);
         let chosen = if path.exists() { path } else { empty.clone() };
         println!("cargo:rustc-env={var}={}", chosen.display());
