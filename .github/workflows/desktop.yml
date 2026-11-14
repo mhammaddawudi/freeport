@@ -14,6 +14,8 @@ permissions:
 jobs:
   build:
     name: ${{ matrix.name }}
+    # Android releases (v*) publish too; only desktop-* tags are built here.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'desktop-')
     strategy:
       fail-fast: false
       matrix:
