@@ -47,7 +47,14 @@ const LATENCY_KEPT: usize = 60;
 const AUTO_LANE: Duration = Duration::from_secs(8);
 const AUTO_PING: Duration = Duration::from_secs(20);
 const AUTO_GRACE: Duration = Duration::from_millis(2_500);
-const MAX_KNOWN_TRIES: usize = 3;
+const MAX_KNOWN_TRIES: usize = 2;
+/// Through Automatic a remembered edge either carries at once or is passed over.
+const AUTO_REMEMBERED_STARTUP: Duration = Duration::from_secs(8);
+/// An edge that answered the scan but carries nothing within this is passed
+/// over: some networks let WireGuard's handshake by and drop the rest.
+const AUTO_TUNNEL_STARTUP: Duration = Duration::from_secs(20);
+/// The second look at protocols the first round cut short.
+const AUTO_SECOND_LANE: Duration = Duration::from_secs(15);
 const SHARED_FETCH: Duration = Duration::from_secs(4);
 
 /// Enough to see whether an edge carries video, cheap enough for every connection.
@@ -161,7 +168,7 @@ impl Engine {
                 let chosen = self.tuned(&base.with_protocol(protocol));
                 self.core.apply_environment(&chosen);
                 let outcome = self.try_remembered(identity, edge.endpoint(), &chosen, true).await;
-                if outcome.connected || outcome.rotate {
+                if outcome.connected {
                     return outcome;
                 }
             }
@@ -169,33 +176,7 @@ impl Engine {
 
         log::info!(target: "freeport", "[*] automatic: scanning every protocol");
         self.set_phase(Phase::Scanning, Some(Protocol::Auto));
-        let wg_lane = identity_of(Protocol::WireGuard)
-            .map(|identity| self.spawn_scan(identity, self.tuned(&base.with_protocol(Protocol::WireGuard))));
-        // The two MASQUE carriers read HTTP/2 or HTTP/3 from one process-wide
-        // variable, so they take turns while WireGuard scans beside them.
-        let masque = identity_of(Protocol::MasqueH2).map(|identity| {
-            let engine = self.clone();
-            let base = base.clone();
-            tokio::spawn(async move {
-                let mut found = Vec::new();
-                for protocol in [Protocol::MasqueH2, Protocol::MasqueH3] {
-                    let settings = engine.tuned(&base.with_protocol(protocol));
-                    engine.core.apply_environment(&settings);
-                    let skip = engine.slow.lock().clone();
-                    match timeout(AUTO_LANE, engine.core.scan(&identity, &settings, &skip, &Cancel::new())).await {
-                        Ok(Ok(endpoint)) => {
-                            log::info!(target: "freeport", "[+] {} answered in {}ms", protocol.name(), endpoint.rtt_ms);
-                            engine.note_reach(protocol, endpoint.rtt_ms as i64);
-                            found.push((protocol, endpoint));
-                        }
-                        Ok(Err(e)) => log::warn!(target: "freeport", "[-] {}: {e:#}", protocol.name()),
-                        Err(_) => log::warn!(target: "freeport", "[-] {}: no edge within {}s", protocol.name(), AUTO_LANE.as_secs()),
-                    }
-                }
-                found
-            })
-        });
-        let found = race([wg_lane, masque]).await;
+        let found = self.scan_lanes(&identities, base, &[], AUTO_LANE).await;
         for (protocol, _) in &identities {
             match found.iter().find(|(p, _)| p == protocol) {
                 Some((_, endpoint)) => self.note_reach(*protocol, endpoint.rtt_ms as i64),
@@ -211,34 +192,105 @@ impl Engine {
             }
         }
 
-        let benched = self.benched.lock().clone();
-        let ranked = rank(found, &benched, |p| self.tuner.expected(p));
-        if ranked.is_empty() {
-            return self.leave_cloudflare(base).await;
+        let mut tried: Vec<Protocol> = Vec::new();
+        if let Some(outcome) = self.carry_first(&identities, found, base, &mut tried).await {
+            return outcome;
         }
-        // An answer to the scan does not mean the tunnel gets through: some
-        // networks let WireGuard's handshake by and drop its traffic. A
-        // protocol that does not come up hands over to the next one found.
-        let mut last = Outcome::failed("automatic: nothing carried");
-        for (protocol, endpoint) in ranked {
-            let Some(identity) = identity_of(protocol) else { continue };
+        // The first answer cut the other lanes short: a WireGuard handshake
+        // that came back first but carried nothing must not hide MASQUE.
+        let untried: Vec<Protocol> = identities.iter().map(|(p, _)| *p).filter(|p| !tried.contains(p)).collect();
+        if !untried.is_empty() {
+            log::info!(target: "freeport", "[*] automatic: looking again at {}", names(&untried));
+            self.set_phase(Phase::Scanning, Some(Protocol::Auto));
+            let found = self.scan_lanes(&identities, base, &tried, AUTO_SECOND_LANE).await;
+            if let Some(outcome) = self.carry_first(&identities, found, base, &mut tried).await {
+                return outcome;
+            }
+        }
+        self.leave_cloudflare(base).await
+    }
+
+    /// Scans WireGuard beside the two MASQUE carriers, which take turns: the
+    /// core reads HTTP/2 or HTTP/3 from one process-wide variable.
+    async fn scan_lanes(
+        self: &Arc<Self>,
+        identities: &[(Protocol, Arc<Identity>)],
+        base: &Settings,
+        skip: &[Protocol],
+        lane: Duration,
+    ) -> Vec<(Protocol, Endpoint)> {
+        let identity_of = |p: Protocol| identities.iter().find(|(q, _)| *q == p && !skip.contains(&p)).map(|(_, i)| i.clone());
+        let wg_lane = identity_of(Protocol::WireGuard)
+            .map(|identity| self.spawn_scan(identity, self.tuned(&base.with_protocol(Protocol::WireGuard))));
+        let masque_protocols: Vec<Protocol> = [Protocol::MasqueH2, Protocol::MasqueH3].into_iter().filter(|p| !skip.contains(p)).collect();
+        let masque = identity_of(Protocol::MasqueH2)
+            .or_else(|| identity_of(Protocol::MasqueH3))
+            .filter(|_| !masque_protocols.is_empty())
+            .map(|identity| {
+                let engine = self.clone();
+                let base = base.clone();
+                tokio::spawn(async move {
+                    let mut found = Vec::new();
+                    for protocol in masque_protocols {
+                        let settings = engine.tuned(&base.with_protocol(protocol));
+                        engine.core.apply_environment(&settings);
+                        let skip = engine.slow.lock().clone();
+                        match timeout(lane, engine.core.scan(&identity, &settings, &skip, &Cancel::new())).await {
+                            Ok(Ok(endpoint)) => {
+                                log::info!(target: "freeport", "[+] {} answered in {}ms", protocol.name(), endpoint.rtt_ms);
+                                engine.note_reach(protocol, endpoint.rtt_ms as i64);
+                                found.push((protocol, endpoint));
+                            }
+                            Ok(Err(e)) => log::warn!(target: "freeport", "[-] {}: {e:#}", protocol.name()),
+                            Err(_) => log::warn!(target: "freeport", "[-] {}: no edge within {}s", protocol.name(), lane.as_secs()),
+                        }
+                    }
+                    found
+                })
+            });
+        race([wg_lane, masque], lane + AUTO_PING - AUTO_LANE).await
+    }
+
+    /// Opens the protocols found, best first, until one carries. A protocol
+    /// that answered but did not carry, or carried too slowly, is benched
+    /// for the session and the next one is tried at once.
+    async fn carry_first(
+        self: &Arc<Self>,
+        identities: &[(Protocol, Arc<Identity>)],
+        found: Vec<(Protocol, Endpoint)>,
+        base: &Settings,
+        tried: &mut Vec<Protocol>,
+    ) -> Option<Outcome> {
+        let benched = self.benched.lock().clone();
+        let mut seen = Vec::new();
+        for (protocol, endpoint) in rank(found, &benched, |p| self.tuner.expected(p)) {
+            // One edge per protocol per round: the next edge of a protocol
+            // that failed would most likely fail the same way.
+            if seen.contains(&protocol) {
+                continue;
+            }
+            seen.push(protocol);
+            let Some(identity) = identities.iter().find(|(p, _)| *p == protocol).map(|(_, i)| i.clone()) else { continue };
+            if !tried.contains(&protocol) {
+                tried.push(protocol);
+            }
             log::info!(target: "freeport", "[+] automatic: {} chosen ({}ms)", protocol.name(), endpoint.rtt_ms);
             let chosen = self.tuned(&base.with_protocol(protocol));
             self.core.apply_environment(&chosen);
-            let outcome = self.run_tunnel(identity, endpoint, &chosen, TUNNEL_STARTUP, true).await;
-            if outcome.connected || outcome.rotate {
-                return outcome;
+            let outcome = self.run_tunnel(identity, endpoint, &chosen, AUTO_TUNNEL_STARTUP, true).await;
+            if outcome.connected {
+                return Some(outcome);
             }
             log::warn!(target: "freeport", "[-] automatic: {} answered but did not carry ({}), trying the next", protocol.name(), outcome.reason);
-            self.tuner.record(protocol, tuner::Recipe { noize: chosen.effective_noize(), masque_mtu: chosen.masque_mtu }, 0);
+            if !outcome.rotate {
+                self.tuner.record(protocol, tuner::Recipe { noize: chosen.effective_noize(), masque_mtu: chosen.masque_mtu }, 0);
+            }
             let mut benched = self.benched.lock();
             if !benched.contains(&protocol) {
                 benched.push(protocol);
             }
-            last = outcome;
         }
-        let fallback = self.leave_cloudflare(base).await;
-        if fallback.connected { fallback } else { last }
+        None
     }
 
     /// Cloudflare is out of reach here: the tunnels that do not go through it.
@@ -325,7 +377,8 @@ impl Engine {
         via_auto: bool,
     ) -> Outcome {
         log::info!(target: "freeport", "[*] trying the last good {} edge {} first", settings.protocol.name(), endpoint.socket());
-        let outcome = self.run_tunnel(identity, endpoint, settings, REMEMBERED_STARTUP, via_auto).await;
+        let startup = if via_auto { AUTO_REMEMBERED_STARTUP } else { REMEMBERED_STARTUP };
+        let outcome = self.run_tunnel(identity, endpoint, settings, startup, via_auto).await;
         if !outcome.connected {
             log::warn!(target: "freeport", "[-] {} did not come back ({}), scanning instead", endpoint.socket(), outcome.reason);
         }
@@ -642,6 +695,10 @@ impl Engine {
 
 /// Waits for the lanes; once one finds an edge, the rest get a short grace
 /// to beat it.
+fn names(protocols: &[Protocol]) -> String {
+    protocols.iter().map(|p| p.name()).collect::<Vec<_>>().join(", ")
+}
+
 /// Automatic's order: protocols that already failed to carry this session
 /// last, the rest by the speed they have shown here, then quickest answer.
 fn rank(found: Vec<(Protocol, Endpoint)>, benched: &[Protocol], expected: impl Fn(Protocol) -> u64) -> Vec<(Protocol, Endpoint)> {
@@ -652,10 +709,10 @@ fn rank(found: Vec<(Protocol, Endpoint)>, benched: &[Protocol], expected: impl F
     ranked
 }
 
-async fn race<const N: usize>(lanes: [Option<JoinHandle<Vec<(Protocol, Endpoint)>>>; N]) -> Vec<(Protocol, Endpoint)> {
+async fn race<const N: usize>(lanes: [Option<JoinHandle<Vec<(Protocol, Endpoint)>>>; N], within: Duration) -> Vec<(Protocol, Endpoint)> {
     let mut pending: Vec<JoinHandle<Vec<(Protocol, Endpoint)>>> = lanes.into_iter().flatten().collect();
     let mut found = Vec::new();
-    let deadline = tokio::time::Instant::now() + AUTO_PING;
+    let deadline = tokio::time::Instant::now() + within;
     let mut grace_until: Option<tokio::time::Instant> = None;
 
     while !pending.is_empty() {

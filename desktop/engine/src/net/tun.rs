@@ -28,15 +28,20 @@ pub enum Scope {
     Everything,
     /// Only programs under these paths (an app bundle, or an .exe).
     Apps(Vec<String>),
+    /// Everything except programs under these paths.
+    AllBut(Vec<String>),
 }
 
 /// sing-box's configuration: the interface, DNS answered through the tunnel,
 /// Freeport's own traffic and the local network left direct.
 pub fn config(socks_port: u16, scope: &Scope, own: &[String]) -> Value {
     let own_rule: Vec<String> = own.iter().map(|path| path_pattern(path)).collect();
-    let proxied = match scope {
-        Scope::Everything => None,
-        Scope::Apps(paths) => Some(paths.iter().map(|path| path_pattern(path)).collect::<Vec<_>>()),
+    let patterns = |paths: &[String]| paths.iter().map(|path| path_pattern(path)).collect::<Vec<_>>();
+    let (proxied, skipped) = match scope {
+        Scope::Everything => (None, None),
+        Scope::Apps(paths) => (Some(patterns(paths)), None),
+        Scope::AllBut(paths) if paths.is_empty() => (None, None),
+        Scope::AllBut(paths) => (None, Some(patterns(paths))),
     };
     let mut rules = vec![
         json!({ "action": "sniff" }),
@@ -50,6 +55,10 @@ pub fn config(socks_port: u16, scope: &Scope, own: &[String]) -> Value {
     if let Some(apps) = &proxied {
         rules.push(json!({ "process_path_regex": apps, "outbound": "proxy" }));
         dns_rules.push(json!({ "process_path_regex": apps, "server": "remote" }));
+    }
+    if let Some(apps) = &skipped {
+        rules.push(json!({ "process_path_regex": apps, "outbound": "direct" }));
+        dns_rules.push(json!({ "process_path_regex": apps, "server": "local" }));
     }
     let everything = proxied.is_none();
     json!({
@@ -108,81 +117,118 @@ pub struct Tun {
 }
 
 impl Tun {
-    /// Brings the interface to [scope]: reloads it under the watchdog already
-    /// running as administrator, so no new prompt; starts it (one prompt)
-    /// only when none runs or the reload fails.
+    /// Brings the interface to [scope]. The administrator watchdog stays
+    /// up from the first prompt until Freeport quits, so a reload, a
+    /// reconnect or a new set of apps never asks again.
     pub fn apply(&self, socks_port: u16, scope: &Scope) -> Result<()> {
         let _turn = self.busy.lock();
-        if self.is_running() {
-            match self.reload(socks_port, scope) {
-                Ok(()) => return Ok(()),
-                Err(error) => log::warn!(target: "freeport", "[-] tun: reload failed, starting again: {error:#}"),
-            }
-        }
         self.start_locked(socks_port, scope)
     }
 
-    /// Writes the configuration, asks for administrator rights and starts the
-    /// interface; returns once it is up. Blocks while the prompt is open.
+    /// Writes the configuration and starts the interface; returns once it is
+    /// up. Asks for administrator rights only when no watchdog runs yet, and
+    /// blocks while that prompt is open.
     pub fn start(&self, socks_port: u16, scope: &Scope) -> Result<()> {
         let _turn = self.busy.lock();
         self.start_locked(socks_port, scope)
     }
 
     fn start_locked(&self, socks_port: u16, scope: &Scope) -> Result<()> {
-        self.stop();
+        let was = self.is_running();
         let (dir, binary, config_path) = prepare(socks_port, scope)?;
-        let (stop, pid, reload) = (dir.join("stop"), dir.join("pid"), dir.join("reload"));
-        let _ = fs::remove_file(&stop);
-        let _ = fs::remove_file(&pid);
-        let _ = fs::remove_file(&reload);
-        elevate(&dir, &binary, &config_path, &stop, &pid, &reload)?;
-        wait_for_pid(&dir, 40)?;
+        let files = Files::in_dir(&dir);
+        let _ = fs::remove_file(&files.pid);
+        if helper_alive(&files) {
+            kick(&files)?;
+        } else {
+            for file in [&files.stop, &files.reload, &files.helper, &files.quit] {
+                let _ = fs::remove_file(file);
+            }
+            elevate(&dir, &binary, &config_path, &files)?;
+            wait_for_pid(&dir, 40)?;
+        }
         *self.running.lock() = true;
-        log::info!(target: "freeport", "[+] tun: the system's traffic now goes through Freeport");
+        match was {
+            true => log::info!(target: "freeport", "[+] tun: the chosen apps were updated"),
+            false => log::info!(target: "freeport", "[+] tun: the system's traffic now goes through Freeport"),
+        }
         Ok(())
     }
 
-    /// New configuration, same administrator watchdog: it restarts sing-box.
-    fn reload(&self, socks_port: u16, scope: &Scope) -> Result<()> {
-        let (dir, _, _) = prepare(socks_port, scope)?;
-        let reload = dir.join("reload");
-        let _ = fs::remove_file(dir.join("pid"));
-        fs::write(&reload, b"").context("could not ask the TUN helper to reload")?;
-        for _ in 0..40 {
-            std::thread::sleep(Duration::from_millis(250));
-            if !reload.exists() {
-                wait_for_pid(&dir, 20)?;
-                log::info!(target: "freeport", "[+] tun: the chosen apps were updated");
-                return Ok(());
-            }
-        }
-        let _ = fs::remove_file(&reload);
-        bail!("the TUN helper did not answer")
-    }
-
-    /// Asks the watchdog to stop the interface; it needs no new prompt.
+    /// Asks the watchdog to stop the interface. The watchdog itself stays,
+    /// ready to start it again without a prompt.
     pub fn stop(&self) {
         let was = std::mem::replace(&mut *self.running.lock(), false);
         let Ok(dir) = settings::sub_dir("tun") else { return };
-        if was || dir.join("pid").exists() {
-            let _ = fs::write(dir.join("stop"), b"");
-            for _ in 0..20 {
-                std::thread::sleep(Duration::from_millis(200));
-                if !dir.join("stop").exists() {
-                    break;
-                }
-            }
-            let _ = fs::remove_file(dir.join("pid"));
+        let files = Files::in_dir(&dir);
+        if was || files.pid.exists() {
+            let _ = fs::write(&files.stop, b"");
+            wait_gone(&files.stop, 25);
+            let _ = fs::remove_file(&files.pid);
             if was {
                 log::info!(target: "freeport", "[*] tun: stopped");
             }
         }
     }
 
+    /// Stops the interface and lets the watchdog go, as Freeport quits.
+    pub fn quit(&self) {
+        *self.running.lock() = false;
+        let Ok(dir) = settings::sub_dir("tun") else { return };
+        let files = Files::in_dir(&dir);
+        if helper_alive(&files) {
+            let _ = fs::write(&files.quit, b"");
+            wait_gone(&files.helper, 25);
+        }
+        let _ = fs::remove_file(&files.pid);
+    }
+
     pub fn is_running(&self) -> bool {
         *self.running.lock()
     }
+}
+
+/// The files Freeport and the watchdog talk through.
+struct Files {
+    stop: PathBuf,
+    pid: PathBuf,
+    reload: PathBuf,
+    /// The watchdog's own pid, while it runs.
+    helper: PathBuf,
+    quit: PathBuf,
+}
+
+impl Files {
+    fn in_dir(dir: &Path) -> Files {
+        Files { stop: dir.join("stop"), pid: dir.join("pid"), reload: dir.join("reload"), helper: dir.join("helper"), quit: dir.join("quit") }
+    }
+}
+
+fn helper_alive(files: &Files) -> bool {
+    fs::read_to_string(&files.helper).ok().and_then(|text| text.trim().parse::<u32>().ok()).is_some_and(alive)
+}
+
+/// Starts sing-box again under the running watchdog with the new configuration.
+fn kick(files: &Files) -> Result<()> {
+    let _ = fs::remove_file(&files.stop);
+    fs::write(&files.reload, b"").context("could not ask the TUN helper to start")?;
+    if !wait_gone(&files.reload, 40) {
+        let _ = fs::remove_file(&files.reload);
+        bail!("the TUN helper did not answer");
+    }
+    let dir = files.pid.parent().unwrap_or(Path::new("."));
+    wait_for_pid(dir, 20)
+}
+
+/// Waits up to `tries` × 200ms for the watchdog to take `file` away.
+fn wait_gone(file: &Path, tries: u32) -> bool {
+    for _ in 0..tries {
+        if !file.exists() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    !file.exists()
 }
 
 /// Writes and checks the configuration; returns the folder, sing-box and the config path.
@@ -278,24 +324,30 @@ fn quote_sh(path: &Path) -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path, reload: &Path) -> Result<()> {
+fn elevate(dir: &Path, binary: &Path, config: &Path, files: &Files) -> Result<()> {
+    let (stop, pid, reload) = (&files.stop, &files.pid, &files.reload);
     let watchdog = dir.join("watchdog.sh");
+    // Lives until Freeport quits: `stop` halts sing-box, `reload` starts it
+    // again with the current configuration, `quit` ends the watchdog.
     fs::write(
         &watchdog,
         "#!/bin/sh\n\
          run() { \"$1\" run -c \"$2\" >\"$5\" 2>&1 & P=$!; echo $P >\"$4\"; }\n\
+         halt() { if [ -n \"$P\" ]; then kill $P 2>/dev/null; sleep 1; kill -9 $P 2>/dev/null; fi; P=; rm -f \"$4\"; }\n\
+         echo $$ >\"$8\"\n\
          run \"$@\"\n\
-         while kill -0 \"$6\" 2>/dev/null && [ ! -f \"$3\" ]; do\n\
-           if [ -f \"$7\" ]; then kill $P 2>/dev/null; sleep 1; kill -9 $P 2>/dev/null; rm -f \"$7\"; run \"$@\"; fi\n\
-           kill -0 $P 2>/dev/null || break\n\
+         while kill -0 \"$6\" 2>/dev/null && [ ! -f \"$9\" ]; do\n\
+           if [ -f \"$7\" ]; then halt; rm -f \"$7\" \"$3\"; run \"$@\"; fi\n\
+           if [ -f \"$3\" ]; then halt; rm -f \"$3\"; fi\n\
+           if [ -n \"$P\" ] && ! kill -0 $P 2>/dev/null; then P=; rm -f \"$4\"; fi\n\
            sleep 1\n\
          done\n\
-         kill $P 2>/dev/null; sleep 1; kill -9 $P 2>/dev/null\n\
-         rm -f \"$3\" \"$7\"\n",
+         halt\n\
+         rm -f \"$3\" \"$7\" \"$8\" \"$9\"\n",
     )?;
     let log = dir.join("singbox.log");
     let command = format!(
-        "/bin/sh {} {} {} {} {} {} {} {} >/dev/null 2>&1 &",
+        "/bin/sh {} {} {} {} {} {} {} {} {} {} >/dev/null 2>&1 &",
         quote_sh(&watchdog),
         quote_sh(binary),
         quote_sh(config),
@@ -303,7 +355,9 @@ fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path, re
         quote_sh(pid),
         quote_sh(&log),
         std::process::id(),
-        quote_sh(reload)
+        quote_sh(reload),
+        quote_sh(&files.helper),
+        quote_sh(&files.quit)
     );
     let script = format!(
         "do shell script \"{}\" with prompt \"Freeport needs your password to turn on TUN mode.\" with administrator privileges",
@@ -317,25 +371,31 @@ fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path, re
 }
 
 #[cfg(windows)]
-fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path, reload: &Path) -> Result<()> {
+fn elevate(dir: &Path, binary: &Path, config: &Path, files: &Files) -> Result<()> {
     use std::os::windows::process::CommandExt;
+    let (stop, pid, reload) = (&files.stop, &files.pid, &files.reload);
     let watchdog = dir.join("watchdog.ps1");
+    // Lives until Freeport quits: `stop` halts sing-box, `reload` starts it
+    // again with the current configuration, `quit` ends the watchdog.
     fs::write(
         &watchdog,
-        "param($sb, $cfg, $stop, $pidfile, $log, $app, $reload)\r\n\
+        "param($sb, $cfg, $stop, $pidfile, $log, $app, $reload, $helper, $quit)\r\n\
          function Run { $q = Start-Process -FilePath $sb -ArgumentList @('run','-c',('\"' + $cfg + '\"')) -WindowStyle Hidden -PassThru -RedirectStandardError $log; Set-Content -Path $pidfile -Value $q.Id; $q }\r\n\
-         $p = Run\r\n\
-         while ((Get-Process -Id $app -ErrorAction SilentlyContinue) -and -not (Test-Path $stop)) {\r\n\
-           if (Test-Path $reload) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; $p.WaitForExit(5000) | Out-Null; Remove-Item -Path $reload -ErrorAction SilentlyContinue; $p = Run }\r\n\
-           if ($p.HasExited) { break }\r\n\
+         function Halt { if ($script:p) { Stop-Process -Id $script:p.Id -Force -ErrorAction SilentlyContinue; $script:p.WaitForExit(5000) | Out-Null }; $script:p = $null; Remove-Item -Path $pidfile -ErrorAction SilentlyContinue }\r\n\
+         Set-Content -Path $helper -Value $PID\r\n\
+         $script:p = Run\r\n\
+         while ((Get-Process -Id $app -ErrorAction SilentlyContinue) -and -not (Test-Path $quit)) {\r\n\
+           if (Test-Path $reload) { Halt; Remove-Item -Path $reload, $stop -ErrorAction SilentlyContinue; $script:p = Run }\r\n\
+           if (Test-Path $stop) { Halt; Remove-Item -Path $stop -ErrorAction SilentlyContinue }\r\n\
+           if ($script:p -and $script:p.HasExited) { $script:p = $null; Remove-Item -Path $pidfile -ErrorAction SilentlyContinue }\r\n\
            Start-Sleep -Seconds 1\r\n\
          }\r\n\
-         Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue\r\n\
-         Remove-Item -Path $stop, $reload -ErrorAction SilentlyContinue\r\n",
+         Halt\r\n\
+         Remove-Item -Path $stop, $reload, $helper, $quit -ErrorAction SilentlyContinue\r\n",
     )?;
     let arg = |p: &Path| format!("'\"{}\"'", p.to_string_lossy().replace('\'', "''"));
     let inner = format!(
-        "Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',{},{},{},{},{},{},'{}',{}",
+        "Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',{},{},{},{},{},{},'{}',{},{},{}",
         arg(&watchdog),
         arg(binary),
         arg(config),
@@ -343,7 +403,9 @@ fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path, re
         arg(pid),
         arg(&dir.join("singbox.log")),
         std::process::id(),
-        arg(reload)
+        arg(reload),
+        arg(&files.helper),
+        arg(&files.quit)
     );
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &inner])
@@ -357,7 +419,7 @@ fn elevate(dir: &Path, binary: &Path, config: &Path, stop: &Path, pid: &Path, re
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn elevate(_: &Path, _: &Path, _: &Path, _: &Path, _: &Path, _: &Path) -> Result<()> {
+fn elevate(_: &Path, _: &Path, _: &Path, _: &Files) -> Result<()> {
     bail!("TUN mode is not supported here")
 }
 
@@ -385,6 +447,16 @@ mod tests {
     }
 
     #[test]
+    fn all_but_leaves_the_chosen_apps_direct() {
+        let value = config(1819, &Scope::AllBut(vec!["/Applications/Telegram.app".into()]), &[]);
+        assert_eq!(value["route"]["final"], "proxy");
+        assert_eq!(value["dns"]["final"], "remote");
+        let rules = value["route"]["rules"].as_array().unwrap();
+        assert_eq!(rules.last().unwrap()["outbound"], "direct");
+        assert_eq!(value["dns"]["rules"][0]["server"], "local");
+    }
+
+    #[test]
     fn paths_become_anchored_literal_patterns() {
         let pattern = path_pattern("/Applications/A (1).app/");
         assert!(pattern.ends_with("/Applications/A \\(1\\)\\.app"));
@@ -400,7 +472,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("freeport-tun-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let binary = install(&dir).unwrap();
-        for scope in [Scope::Everything, Scope::Apps(vec!["/Applications/Safari.app".into()])] {
+        for scope in [Scope::Everything, Scope::Apps(vec!["/Applications/Safari.app".into()]), Scope::AllBut(vec!["/Applications/Safari.app".into()])] {
             let path = dir.join("config.json");
             fs::write(&path, serde_json::to_vec(&config(1819, &scope, &["/Applications/Freeport.app".into()])).unwrap()).unwrap();
             let out = std::process::Command::new(&binary).args(["check", "-c"]).arg(&path).output().unwrap();

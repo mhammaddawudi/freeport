@@ -47,6 +47,13 @@ pub struct Settings {
     /// Apps Freeport opens through its proxy, leaving the rest of the system alone.
     #[serde(default)]
     pub proxied_apps: Vec<String>,
+    /// The per-app list steers the proxy: those apps open pointed at
+    /// Freeport, or, with `per_app_except`, away from it.
+    #[serde(default = "yes")]
+    pub proxy_per_app: bool,
+    /// The per-app list names the apps to leave out, not the ones to send.
+    #[serde(default)]
+    pub per_app_except: bool,
     /// Open those apps as soon as a session comes up.
     #[serde(default)]
     pub open_apps_on_connect: bool,
@@ -84,6 +91,8 @@ impl Default for Settings {
             tun_per_app: false,
             lan_share: false,
             proxied_apps: Vec::new(),
+            proxy_per_app: true,
+            per_app_except: false,
             open_apps_on_connect: false,
             revision: REVISION,
         }
@@ -180,5 +189,7 @@ mod tests {
         assert_eq!(settings.protocol, Protocol::WireGuard);
         assert_eq!(settings.socks_port, 1819);
         assert!(settings.region_unlock);
+        assert!(settings.proxy_per_app);
+        assert!(!settings.per_app_except);
     }
 }

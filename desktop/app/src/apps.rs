@@ -1,6 +1,7 @@
-//! Per-app proxy: opens chosen apps pointed at Freeport, so only they use
-//! the tunnel. Each app gets the proxy in its environment and, since
-//! Chromium and Electron apps ignore that, as `--proxy-server` too.
+//! Per-app: opens chosen apps pointed at Freeport, so only they use the
+//! tunnel, or pointed away from it, so they skip it. Each app gets the
+//! choice in its environment and, since Chromium and Electron apps ignore
+//! that, as `--proxy-server` / `--no-proxy-server` too.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -38,12 +39,41 @@ pub fn proxy_env(socks: u16, http: u16) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Opens `path` through Freeport. A known app only: anything else is refused.
-pub fn open(path: &str, socks: u16, http: u16) -> Result<()> {
+/// How a chosen app is opened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Route {
+    /// Pointed at Freeport's proxies.
+    Proxy { socks: u16, http: u16 },
+    /// Told to skip any proxy, the system's included.
+    Direct,
+    /// As it would open anyway; TUN decides where it goes.
+    Plain,
+}
+
+impl Route {
+    fn env(self) -> Vec<(String, String)> {
+        match self {
+            Route::Proxy { socks, http } => proxy_env(socks, http),
+            Route::Direct => ["NO_PROXY", "no_proxy"].iter().map(|key| (key.to_string(), "*".to_string())).collect(),
+            Route::Plain => Vec::new(),
+        }
+    }
+
+    fn args(self) -> Vec<String> {
+        match self {
+            Route::Proxy { socks, .. } => proxy_args(socks),
+            Route::Direct => vec!["--no-proxy-server".into()],
+            Route::Plain => Vec::new(),
+        }
+    }
+}
+
+/// Opens `path` the way `route` says. A known app only: anything else is refused.
+pub fn open(path: &str, route: Route) -> Result<()> {
     if !installed().iter().any(|app| app.path == path) {
         bail!("{path} is not an installed app");
     }
-    launch(Path::new(path), socks, http)
+    launch(Path::new(path), route)
 }
 
 /// Where the chosen app's programs live, for TUN mode to match them by:
@@ -56,6 +86,15 @@ pub fn program_of(path: &str) -> Option<String> {
     #[cfg(not(windows))]
     {
         Some(path.to_string()).filter(|p| Path::new(p).exists())
+    }
+}
+
+/// How the per-app choices open a chosen app.
+pub fn route_for(settings: &freeport_engine::settings::Settings) -> Route {
+    match (settings.proxy_per_app, settings.per_app_except) {
+        (false, _) => Route::Plain,
+        (true, false) => Route::Proxy { socks: settings.socks_port, http: settings.http_port },
+        (true, true) => Route::Direct,
     }
 }
 
@@ -87,14 +126,17 @@ fn scan(dir: &Path, depth: u8) -> Vec<App> {
 }
 
 #[cfg(target_os = "macos")]
-fn launch(app: &Path, socks: u16, http: u16) -> Result<()> {
-    // A second instance, so an app already open without the proxy gets one with it.
+fn launch(app: &Path, route: Route) -> Result<()> {
+    // A second instance, so an app already open with other settings gets these.
     let mut command = Command::new("open");
     command.arg("-n").arg("-a").arg(app);
-    for (key, value) in proxy_env(socks, http) {
+    for (key, value) in route.env() {
         command.arg("--env").arg(format!("{key}={value}"));
     }
-    command.arg("--args").args(proxy_args(socks));
+    let args = route.args();
+    if !args.is_empty() {
+        command.arg("--args").args(args);
+    }
     let status = command.status().context("could not run open")?;
     if !status.success() {
         bail!("{} did not open", stem(app));
@@ -156,12 +198,12 @@ fn shortcut(shortcut: &Path) -> Result<(String, String, String)> {
 }
 
 #[cfg(windows)]
-fn launch(shortcut_path: &Path, socks: u16, http: u16) -> Result<()> {
+fn launch(shortcut_path: &Path, route: Route) -> Result<()> {
     use std::os::windows::process::CommandExt;
     let shortcut = shortcut_path;
     let (target, args, dir) = self::shortcut(shortcut)?;
     let mut command = Command::new(&target);
-    command.envs(proxy_env(socks, http)).args(proxy_args(socks));
+    command.envs(route.env()).args(route.args());
     if !args.is_empty() {
         command.raw_arg(&args);
     }
@@ -183,7 +225,7 @@ fn scan(_dir: &Path, _depth: u8) -> Vec<App> {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn launch(_app: &Path, _socks: u16, _http: u16) -> Result<()> {
+fn launch(_app: &Path, _route: Route) -> Result<()> {
     bail!("per-app proxy is not supported here")
 }
 
@@ -205,6 +247,23 @@ mod tests {
 
     #[test]
     fn unknown_paths_are_refused() {
-        assert!(open("/bin/sh", 1819, 1820).is_err());
+        assert!(open("/bin/sh", Route::Plain).is_err());
+    }
+
+    #[test]
+    fn excepted_apps_skip_every_proxy() {
+        assert_eq!(Route::Direct.args(), vec!["--no-proxy-server".to_string()]);
+        assert!(Route::Direct.env().contains(&("NO_PROXY".into(), "*".into())));
+        assert!(Route::Plain.args().is_empty() && Route::Plain.env().is_empty());
+    }
+
+    #[test]
+    fn the_route_follows_the_per_app_choices() {
+        let base = freeport_engine::settings::Settings::default();
+        assert_eq!(route_for(&base), Route::Proxy { socks: 1819, http: 1820 });
+        let except = freeport_engine::settings::Settings { per_app_except: true, ..base.clone() };
+        assert_eq!(route_for(&except), Route::Direct);
+        let tun_only = freeport_engine::settings::Settings { proxy_per_app: false, ..base };
+        assert_eq!(route_for(&tun_only), Route::Plain);
     }
 }

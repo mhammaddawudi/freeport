@@ -75,10 +75,6 @@
             <div class="grow"><div class="title" data-t="tun"></div><div class="hint" data-t="tun_desc"></div></div>
             <label class="switch"><input type="checkbox" data-setting="tun"><span></span></label>
           </div>
-          <div class="row" id="tun-per-app-row">
-            <div class="grow"><div class="title" data-t="tun_per_app"></div><div class="hint" data-t="tun_per_app_desc"></div></div>
-            <label class="switch"><input type="checkbox" data-setting="tun_per_app"><span></span></label>
-          </div>
           <div class="row">
             <div class="grow"><div class="title" data-t="proxies"></div><div class="hint" data-t="proxies_desc"></div></div>
           </div>
@@ -86,6 +82,7 @@
             <label>SOCKS5 <input type="number" min="1024" max="65535" data-setting="socks_port"></label>
             <label>HTTP <input type="number" min="1024" max="65535" data-setting="http_port"></label>
           </div>
+          <button id="apply-network" class="primary inline" data-t="apply"></button>
           <div class="row">
             <div class="grow"><div class="title" data-t="lan_share"></div><div class="hint" data-t="lan_share_desc"></div></div>
             <label class="switch"><input type="checkbox" data-setting="lan_share"><span></span></label>
@@ -98,6 +95,8 @@
           <div class="row">
             <div class="grow"><div class="title" data-t="per_app"></div><div class="hint" data-t="per_app_desc"></div></div>
           </div>
+          <div class="row"><div class="grow title" data-t="per_app_target"></div><select id="per-app-target"></select></div>
+          <div class="row"><div class="grow title" data-t="per_app_mode"></div><select id="per-app-mode"></select></div>
           <div class="row">
             <div class="grow"><div class="title" data-t="open_on_connect"></div></div>
             <label class="switch"><input type="checkbox" id="open-on-connect"><span></span></label>
@@ -105,6 +104,7 @@
           <div id="app-list" class="app-list"></div>
           <input id="app-search" class="app-search" type="search" autocomplete="off" data-t-placeholder="add_app">
           <div id="app-results" class="app-list"></div>
+          <button id="apply-per-app" class="primary inline" data-t="apply" disabled></button>
         </div>
         <div class="label" data-t="advanced"></div>
         <div class="card">

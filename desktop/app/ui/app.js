@@ -266,7 +266,6 @@ function renderSettings() {
   if (!NOIZE[transport].includes(s.noize)) document.querySelector('[data-setting="noize"]').value = NOIZE[transport][0];
   $("unlock").checked = s.region_unlock;
   $("noize-row").classList.toggle("muted", !!s.auto_tune);
-  $("tun-per-app-row").classList.toggle("muted", !s.tun);
   const direct = DIRECT.includes(s.protocol);
   $("unlock").disabled = direct;
   $("unlock").closest(".card, .row, label")?.classList.toggle("muted", direct);
@@ -283,6 +282,16 @@ function readSettings() {
     else next[key] = input.value.trim();
   });
   return next;
+}
+
+// Settings the session reads at connect: a change reconnects a live session.
+const SESSION_KEYS = ["scan_mode", "noize", "ip_version", "fetch_ech", "fragment", "keepalive_secs", "pinned_peer", "auto_tune"];
+
+async function applySettings(next) {
+  const before = state.settings;
+  await saveSettings(next);
+  const changed = SESSION_KEYS.some((key) => before[key] !== state.settings[key]);
+  if (changed && state.status.phase === "connected") await invoke("connect").catch((e) => toast(String(e)));
 }
 
 async function saveSettings(next, announce = true) {
@@ -371,8 +380,9 @@ function wire(prefs) {
   document.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () => invoke("open_link", { url: b.dataset.link }).catch((e) => toast(String(e)))));
   $("unlock").addEventListener("change", (e) => saveSettings({ ...state.settings, region_unlock: e.target.checked }, false));
   $("country").addEventListener("change", (e) => saveSettings({ ...state.settings, exit_country: e.target.value, region_unlock: true }, false));
-  $("save").addEventListener("click", () => saveSettings(readSettings()));
-  ["tun", "tun_per_app"].forEach((key) => document.querySelector(`[data-setting="${key}"]`).addEventListener("change", () => saveSettings(readSettings(), false)));
+  $("save").addEventListener("click", () => applySettings(readSettings()));
+  $("apply-network").addEventListener("click", () => applySettings(readSettings()));
+  document.querySelector('[data-setting="tun"]').addEventListener("change", () => saveSettings(readSettings(), false));
   document.querySelector('[data-setting="lan_share"]').addEventListener("change", async () => { await saveSettings(readSettings(), false); renderLan(); });
   document.querySelector('[data-setting="auto_tune"]').addEventListener("change", () => saveSettings(readSettings(), false));
   document.querySelector('[data-setting="system_proxy"]').addEventListener("change", () => saveSettings(readSettings(), false));
@@ -384,6 +394,7 @@ function wire(prefs) {
     savePrefs({ ...loadPrefs(), language: e.target.value });
     applyLanguage(e.target.value);
     fillStaticSelects();
+    PerApp.render();
     renderStatus();
   });
   $("theme").addEventListener("change", (e) => {
@@ -420,7 +431,7 @@ async function start() {
   state.settings = snapshot.settings;
   state.status = snapshot.status;
   $("version").textContent = `v${snapshot.version}`;
-  PerApp.init({ invoke, toast, settings: () => state.settings, save: (next) => saveSettings(next, false) });
+  PerApp.init({ invoke, toast, settings: () => state.settings, save: (next) => saveSettings(next, false), connected: () => state.status.phase === "connected" });
   if (snapshot.bind_error) {
     const box = $("bind-error");
     box.hidden = false;

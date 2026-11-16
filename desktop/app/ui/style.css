@@ -271,3 +271,5 @@ i[data-glyph] { display: inline-flex; width: 20px; height: 20px; flex: none; }
 .row.lan { width: 100%; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: start; }
 .row.lan .ping { font-family: ui-monospace, monospace; margin: 0; }
 #lan-rows .row { margin-top: 12px; }
+.primary.inline { margin-top: 10px; }
+.primary:disabled { opacity: 0.35; cursor: default; }

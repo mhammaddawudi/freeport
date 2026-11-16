@@ -84,12 +84,14 @@ fn protocol_reach(session: State<'_, Shared>) -> (Vec<(freeport_engine::model::P
     session.engine().map(|engine| engine.reach()).unwrap_or_default()
 }
 
-/// Pings the protocols while nothing is connected.
+/// Pings the protocols while nothing is connected. Async, so it runs on the
+/// runtime: the ping spawns tasks, which panic on the window's own thread.
 #[tauri::command]
-fn probe_protocols(session: State<'_, Shared>) {
+async fn probe_protocols(session: State<'_, Shared>) -> Result<(), String> {
     if let Ok(engine) = session.engine() {
         engine.probe(session.settings());
     }
+    Ok(())
 }
 
 /// Where devices on the same Wi-Fi point their proxy, while sharing is on.
@@ -134,9 +136,9 @@ fn open_chosen_apps(session: &Shared) {
     if !settings.open_apps_on_connect {
         return;
     }
-    let (socks, http) = (settings.socks_port, settings.http_port);
+    let route = apps::route_for(&settings);
     for path in settings.proxied_apps {
-        if let Err(error) = apps::open(&path, socks, http) {
+        if let Err(error) = apps::open(&path, route) {
             log::warn!(target: "freeport", "[-] {error:#}");
         }
     }
@@ -149,9 +151,8 @@ async fn installed_apps() -> Vec<apps::App> {
 
 #[tauri::command]
 async fn open_app(session: State<'_, Shared>, path: String) -> Result<(), String> {
-    let settings = session.settings();
-    let (socks, http) = (settings.socks_port, settings.http_port);
-    tauri::async_runtime::spawn_blocking(move || apps::open(&path, socks, http))
+    let route = apps::route_for(&session.settings());
+    tauri::async_runtime::spawn_blocking(move || apps::open(&path, route))
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| format!("{error:#}"))

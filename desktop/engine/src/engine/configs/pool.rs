@@ -37,8 +37,8 @@ pub struct Depth {
     speed_reserve: Duration,
 }
 
-pub const QUICK: Depth = Depth { knock: 600, healthy: 30, speed_tested: 8, window: Duration::from_millis(3_500), speed_reserve: Duration::from_secs(35) };
-pub const DEEP: Depth = Depth { knock: 1_200, healthy: 60, speed_tested: 12, window: Duration::from_secs(5), speed_reserve: Duration::from_secs(70) };
+pub const QUICK: Depth = Depth { knock: 800, healthy: 40, speed_tested: 12, window: Duration::from_millis(3_000), speed_reserve: Duration::from_secs(45) };
+pub const DEEP: Depth = Depth { knock: 2_000, healthy: 100, speed_tested: 24, window: Duration::from_millis(4_500), speed_reserve: Duration::from_secs(120) };
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Entry {
@@ -59,6 +59,14 @@ struct Saved {
 pub struct Pool {
     saved: Mutex<Saved>,
     pending: Mutex<Vec<Report>>,
+}
+
+/// The newer reading counts most: a config's line changes through the day.
+fn blend(known: u64, fresh: u64) -> u64 {
+    match known {
+        0 => fresh,
+        known => (known + 2 * fresh) / 3,
+    }
 }
 
 fn now() -> u64 {
@@ -122,8 +130,20 @@ impl Pool {
         self.save();
     }
 
-    pub fn mark_good(&self, link: &ShareLink, delay_ms: u64) {
-        self.pending.lock().push(Report { link: link.clone(), ok: true, delay_ms, kbps: 0 });
+    pub fn mark_good(&self, link: &ShareLink, delay_ms: u64, kbps: u64) {
+        self.pending.lock().push(Report { link: link.clone(), ok: true, delay_ms, kbps });
+    }
+
+    /// A fresh download through `link`, blended into what the pool knew, so
+    /// the order follows how each config carries now, not hours ago.
+    pub fn note_speed(&self, link: &ShareLink, kbps: u64) {
+        let key = link.key();
+        {
+            let mut saved = self.saved.lock();
+            let Some(entry) = saved.entries.iter_mut().find(|e| link::parse(&e.link).is_some_and(|l| l.key() == key)) else { return };
+            entry.kbps = blend(entry.kbps, kbps);
+        }
+        self.save();
     }
 
     /// Sends what waits to the shared pool, over the bare line or through `route`.
@@ -209,5 +229,17 @@ impl Pool {
         self.share(None).await;
         log::info!(target: "freeport", "[+] configs: {} working configs pooled, best {} KB/s", measured.len(), measured[0].kbps);
         measured.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fresh_reading_outweighs_the_old_one() {
+        assert_eq!(blend(0, 900), 900);
+        assert_eq!(blend(900, 0), 300);
+        assert_eq!(blend(300, 900), 700);
     }
 }

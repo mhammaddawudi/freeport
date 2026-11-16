@@ -20,7 +20,12 @@ use parking_lot::Mutex;
 use self::link::ShareLink;
 use crate::net::ports;
 
-const MAX_TRIES: usize = 6;
+const MAX_TRIES: usize = 8;
+/// A config is checked for video speed before it carries the session.
+const CHECK_BYTES: usize = 1_500_000;
+const CHECK_WINDOW: Duration = Duration::from_millis(2_500);
+/// Fast enough for reels; a config below this is passed over while others remain.
+const GOOD_KBPS: u64 = 400;
 const TRY_RESERVE: Duration = Duration::from_secs(20);
 const QUICK_DROP: Duration = Duration::from_secs(5 * 60);
 const BACKGROUND_BUDGET: Duration = Duration::from_secs(300);
@@ -94,15 +99,33 @@ impl Configs {
                 self.pool.refresh(within.saturating_sub(TRY_RESERVE), &via, pool::QUICK).await;
             }
         }
+        // The quickest config that carries video now; a slower one that
+        // works is kept in hand in case nothing better turns up.
+        let mut fallback: Option<(ShareLink, u64)> = None;
         for (link, _) in self.pool.candidates().into_iter().take(MAX_TRIES) {
-            if started.elapsed() > within {
+            if started.elapsed() > within.saturating_sub(TRY_RESERVE / 2) {
                 break;
             }
-            if self.try_link(&link, port).await {
+            match self.try_link(&link, port).await {
+                Some(kbps) if kbps >= GOOD_KBPS => {
+                    *self.current.lock() = Some((link, Instant::now()));
+                    return Ok(());
+                }
+                Some(kbps) => {
+                    log::info!(target: "freeport", "[*] configs: {} carries only {kbps} KB/s, looking for a quicker one", link.label());
+                    self.stop().await;
+                    if fallback.as_ref().is_none_or(|(_, best)| kbps > *best) {
+                        fallback = Some((link, kbps));
+                    }
+                }
+                None => self.pool.mark_failed(&link),
+            }
+        }
+        if let Some((link, _)) = fallback {
+            if self.try_link(&link, port).await.is_some() {
                 *self.current.lock() = Some((link, Instant::now()));
                 return Ok(());
             }
-            self.pool.mark_failed(&link);
         }
         bail!("no working V2Ray config on this network")
     }
@@ -116,23 +139,27 @@ impl Configs {
         Some((port, running))
     }
 
-    async fn try_link(&self, link: &ShareLink, port: u16) -> bool {
+    /// Serves `link` on `port` and measures its download there; the speed
+    /// when it carries, None when it does not.
+    async fn try_link(&self, link: &ShareLink, port: u16) -> Option<u64> {
         let running = match xray::start(&[xray::Route { link: link.clone(), port }], "session", true).await {
             Ok(running) => running,
             Err(e) => {
                 log::warn!(target: "freeport", "[-] configs: xray refused {}: {e:#}", link.label());
-                return false;
+                return None;
             }
         };
         let Some(delay) = tester::answers(port).await else {
             log::warn!(target: "freeport", "[-] configs: {} did not answer", link.label());
-            return false;
+            return None;
         };
+        let kbps = super::board::measure(port, CHECK_BYTES, CHECK_WINDOW, 0).await.map(|m| m.kbps).unwrap_or(0);
+        self.pool.note_speed(link, kbps);
         *self.running.lock() = Some(running);
-        log::info!(target: "freeport", "[+] configs: carrying through {}, {delay}ms", link.label());
-        self.pool.mark_good(link, delay);
+        log::info!(target: "freeport", "[+] configs: {} answers in {delay}ms, {kbps} KB/s", link.label());
+        self.pool.mark_good(link, delay, kbps);
         self.pool.share(Some(port)).await;
-        true
+        Some(kbps)
     }
 
     /// While another session is up: refreshes the lists through it and,

@@ -143,13 +143,13 @@ impl Session {
     /// different set of apps, which reloads it without asking again.
     fn retune_tun(&self, before: &Settings) {
         let now = self.settings();
-        let scope_changed = (before.tun_per_app, &before.proxied_apps, before.socks_port)
-            != (now.tun_per_app, &now.proxied_apps, now.socks_port);
+        let scope_changed = (before.tun_per_app, before.per_app_except, &before.proxied_apps)
+            != (now.tun_per_app, now.per_app_except, &now.proxied_apps);
         if !now.tun {
             if self.tun.is_running() {
                 self.stop_tun();
             }
-        } else if self.is_connected() && (!self.tun.is_running() || (scope_changed && now.tun_per_app) || before.socks_port != now.socks_port) {
+        } else if self.is_connected() && (!self.tun.is_running() || scope_changed || before.socks_port != now.socks_port) {
             self.start_tun();
         }
     }
@@ -199,11 +199,7 @@ impl Session {
     /// Starts the interface off the status thread: it waits on a password prompt.
     fn start_tun(&self) {
         let settings = self.settings();
-        let scope = if settings.tun_per_app {
-            tun::Scope::Apps(settings.proxied_apps.iter().filter_map(|path| crate::apps::program_of(path)).collect())
-        } else {
-            tun::Scope::Everything
-        };
+        let scope = tun_scope(&settings);
         let tun = self.tun.clone();
         std::thread::spawn(move || {
             if let Err(error) = tun.apply(settings.socks_port, &scope) {
@@ -217,9 +213,9 @@ impl Session {
         std::thread::spawn(move || tun.stop());
     }
 
-    /// Stops the interface before the app exits.
+    /// Stops the interface and its administrator watchdog before the app exits.
     pub fn stop_tun_now(&self) {
-        self.tun.stop();
+        self.tun.quit();
     }
 
     fn take_proxy(&self) {
@@ -240,6 +236,19 @@ impl Session {
         if let Err(error) = sysproxy::disable() {
             log::warn!(target: "freeport", "[-] could not restore the system proxy: {error:#}");
         }
+    }
+}
+
+/// What the TUN interface carries: everything, or the per-app list taken
+/// in or left out.
+fn tun_scope(settings: &Settings) -> tun::Scope {
+    if !settings.tun_per_app {
+        return tun::Scope::Everything;
+    }
+    let programs = settings.proxied_apps.iter().filter_map(|path| crate::apps::program_of(path)).collect();
+    match settings.per_app_except {
+        true => tun::Scope::AllBut(programs),
+        false => tun::Scope::Apps(programs),
     }
 }
 
@@ -299,6 +308,16 @@ fn validate(settings: &Settings) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tun_scope_follows_the_per_app_choices() {
+        let base = Settings { proxied_apps: vec!["/nowhere/Missing.app".into()], ..Settings::default() };
+        assert_eq!(tun_scope(&base), tun::Scope::Everything);
+        let only = Settings { tun_per_app: true, ..base.clone() };
+        assert!(matches!(tun_scope(&only), tun::Scope::Apps(_)));
+        let except = Settings { tun_per_app: true, per_app_except: true, ..base };
+        assert!(matches!(tun_scope(&except), tun::Scope::AllBut(_)));
+    }
 
     #[test]
     fn the_defaults_pass() {
