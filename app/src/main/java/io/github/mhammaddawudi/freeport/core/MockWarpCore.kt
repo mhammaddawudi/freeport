@@ -63,6 +63,7 @@ class MockWarpCore(
             ScanMode.Thorough -> 180 to 18L
             ScanMode.Stealth -> 40 to 110L
             ScanMode.Ironclad -> 48 to 70L
+            ScanMode.Smart -> 96 to 20L
         }
 
         var best: Long? = null

@@ -43,7 +43,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.ConnectionState
-import io.github.mhammaddawudi.freeport.core.CorePayloads
 import io.github.mhammaddawudi.freeport.core.Identity
 import io.github.mhammaddawudi.freeport.core.isEngaged
 import io.github.mhammaddawudi.freeport.data.WarpSettings
@@ -51,7 +50,6 @@ import io.github.mhammaddawudi.freeport.data.AppLanguage
 import io.github.mhammaddawudi.freeport.data.ThemeMode
 import io.github.mhammaddawudi.freeport.data.Protocol
 import io.github.mhammaddawudi.freeport.data.TunnelMode
-import io.github.mhammaddawudi.freeport.ui.components.FieldRow
 import io.github.mhammaddawudi.freeport.ui.components.GlassCard
 import io.github.mhammaddawudi.freeport.ui.components.Glyph
 import io.github.mhammaddawudi.freeport.ui.components.GlyphKind
@@ -60,19 +58,14 @@ import io.github.mhammaddawudi.freeport.ui.components.PortRow
 import io.github.mhammaddawudi.freeport.ui.components.RowDivider
 import io.github.mhammaddawudi.freeport.ui.components.SectionLabel
 import io.github.mhammaddawudi.freeport.ui.components.SegmentedPicker
-import io.github.mhammaddawudi.freeport.ui.components.SliderRow
 import io.github.mhammaddawudi.freeport.ui.components.SwitchRow
-import io.github.mhammaddawudi.freeport.ui.components.TuningSheet
-import io.github.mhammaddawudi.freeport.ui.components.TuningSheetHost
 import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
 
 /**
- * Four sections, in the order someone actually needs them: what gets routed,
- * how the tunnel behaves, then everything else folded away, then what the app
- * currently is.
- *
- * The three tunnel choices open the same sheets the connect screen uses, so
- * no option is presented twice in two different shapes.
+ * Sections in the order someone actually needs them: what gets routed, the
+ * look, everything else folded away, then what the app currently is. How
+ * the tunnel scans and disguises itself is Freeport's to choose
+ * ([WarpSettings.automatic]), so none of it is offered here.
  */
 @Composable
 fun SettingsScreen(
@@ -90,13 +83,8 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val protocol = settings.protocol
-    // Automatic may end up on any transport, so every option stays open for it.
-    val auto = protocol == Protocol.Auto
-    val fragmentApplies = protocol.isTcp || auto
     val cardPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
-    var sheet by remember { mutableStateOf<TuningSheet?>(null) }
     var advanced by rememberSaveable { mutableStateOf(false) }
-    val peerHint = stringResource(R.string.advanced_peer_error)
     val batteryUnrestricted = remember {
         context.getSystemService(PowerManager::class.java)
             ?.isIgnoringBatteryOptimizations(context.packageName) == true
@@ -174,41 +162,6 @@ fun SettingsScreen(
             }
         }
 
-        // ---- how the tunnel behaves -----------------------------------------
-        // Psiphon and Tor pick and disguise their own servers; none of this applies to them.
-        if (!protocol.isDirect) {
-        SectionLabel(stringResource(R.string.section_tunnel), trailing = if (auto) stringResource(R.string.protocol_auto) else protocol.displayName)
-        GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
-            SwitchRow(
-                title = stringResource(R.string.tunnel_auto_tune),
-                checked = settings.autoTune,
-                onCheckedChange = { on -> onUpdateSettings { it.copy(autoTune = on) } },
-                subtitle = stringResource(R.string.tunnel_auto_tune_desc),
-            )
-            RowDivider()
-            InfoRow(
-                title = stringResource(R.string.tunnel_scan),
-                value = stringResource(settings.scanMode.labelRes),
-                glyph = GlyphKind.Radar,
-                onClick = { sheet = TuningSheet.Scan },
-            )
-            RowDivider()
-            InfoRow(
-                title = stringResource(R.string.tunnel_noize),
-                value = if (settings.autoTune) stringResource(R.string.protocol_auto) else stringResource(settings.effectiveNoize.labelRes),
-                glyph = GlyphKind.Mask,
-                onClick = { if (!settings.autoTune) sheet = TuningSheet.Noize },
-            )
-            RowDivider()
-            InfoRow(
-                title = stringResource(R.string.tunnel_ip),
-                value = stringResource(settings.ipVersion.labelRes),
-                glyph = GlyphKind.Globe,
-                onClick = { sheet = TuningSheet.Ip },
-            )
-        }
-        }
-
         // ---- language and theme ----------------------------------------------
         SectionLabel(stringResource(R.string.section_appearance))
         GlassCard(Modifier.fillMaxWidth(), contentPadding = cardPadding) {
@@ -280,48 +233,6 @@ fun SettingsScreen(
                         )
                     }
                     RowDivider(Modifier.padding(vertical = 6.dp))
-                    SwitchRow(
-                        title = stringResource(R.string.advanced_fragment),
-                        checked = settings.fragmentEnabled,
-                        onCheckedChange = { on -> onUpdateSettings { it.copy(fragmentEnabled = on) } },
-                        subtitle = if (fragmentApplies) {
-                            stringResource(R.string.advanced_fragment_desc)
-                        } else {
-                            stringResource(R.string.advanced_fragment_tcp_only)
-                        },
-                        enabled = fragmentApplies,
-                        accent = WarpColors.Control,
-                    )
-                    AnimatedVisibility(visible = settings.fragmentEnabled && fragmentApplies) {
-                        Column {
-                            SliderRow(
-                                title = stringResource(R.string.advanced_fragment_size),
-                                value = settings.fragmentSize,
-                                range = 10..200,
-                                unit = "bytes",
-                                onChange = { size -> onUpdateSettings { it.copy(fragmentSize = size) } },
-                                step = 5,
-                                accent = WarpColors.Control,
-                            )
-                            SliderRow(
-                                title = stringResource(R.string.advanced_fragment_delay),
-                                value = settings.fragmentDelayMs,
-                                range = 0..200,
-                                unit = "ms",
-                                onChange = { delay -> onUpdateSettings { it.copy(fragmentDelayMs = delay) } },
-                                step = 5,
-                                accent = WarpColors.Control,
-                            )
-                        }
-                    }
-                    RowDivider(Modifier.padding(vertical = 6.dp))
-                    SwitchRow(
-                        title = stringResource(R.string.advanced_ech),
-                        checked = settings.fetchEch,
-                        onCheckedChange = { on -> onUpdateSettings { it.copy(fetchEch = on) } },
-                        subtitle = stringResource(R.string.advanced_ech_desc),
-                        enabled = protocol == Protocol.MasqueH3 || auto,
-                    )
                     val canExclude = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                     SwitchRow(
                         title = stringResource(R.string.advanced_bypass_lan),
@@ -329,26 +240,6 @@ fun SettingsScreen(
                         onCheckedChange = { on -> onUpdateSettings { it.copy(bypassLan = on) } },
                         subtitle = if (canExclude) stringResource(R.string.advanced_bypass_lan_desc) else stringResource(R.string.advanced_bypass_lan_needs13),
                         enabled = canExclude,
-                    )
-                    SliderRow(
-                        title = stringResource(R.string.advanced_keepalive),
-                        value = settings.keepaliveSeconds,
-                        range = 0..60,
-                        unit = "s",
-                        onChange = { seconds -> onUpdateSettings { it.copy(keepaliveSeconds = seconds) } },
-                        enabled = protocol == Protocol.WireGuard || protocol == Protocol.Gool || auto,
-                        accent = WarpColors.Control,
-                    )
-                    val peerError = settings.pinnedPeer
-                        .takeIf { it.isNotBlank() && CorePayloads.parsePeer(it) == null }
-                        ?.let { peerHint }
-                    FieldRow(
-                        title = stringResource(R.string.advanced_peer),
-                        value = settings.pinnedPeer,
-                        onValueChange = { value -> onUpdateSettings { it.copy(pinnedPeer = value.trim()) } },
-                        placeholder = "162.159.198.1:443",
-                        helper = stringResource(R.string.advanced_peer_helper),
-                        error = peerError,
                     )
                     RowDivider(Modifier.padding(vertical = 6.dp))
                     InfoRow(
@@ -456,12 +347,6 @@ fun SettingsScreen(
         Spacer(Modifier.height(16.dp))
     }
 
-    TuningSheetHost(
-        sheet = sheet,
-        settings = settings,
-        onUpdateSettings = onUpdateSettings,
-        onDismiss = { sheet = null },
-    )
 
 }
 

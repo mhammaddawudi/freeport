@@ -15,7 +15,7 @@ data class WarpSettings(
     val tunnelMode: TunnelMode = TunnelMode.WholeDevice,
     /** Package names to route, used only in [TunnelMode.SelectedApps]. */
     val tunneledApps: Set<String> = emptySet(),
-    val scanMode: ScanMode = ScanMode.Balanced,
+    val scanMode: ScanMode = ScanMode.Smart,
     val noize: NoizeProfile = NoizeProfile.Firewall,
     /** Let each network's measured speeds choose the obfuscation profile. */
     val autoTune: Boolean = true,
@@ -49,6 +49,27 @@ data class WarpSettings(
             NoizeProfile.fromWire(protocol.defaultNoize, NoizeProfile.Firewall)
         }
 
+    /**
+     * Everything but where traffic goes is Freeport's to choose: the scan,
+     * and the obfuscation, packet size and ClientHello split the tuner
+     * learns from measured speed on each network. Older saves cannot pin them.
+     */
+    fun automatic(): WarpSettings {
+        val defaults = WarpSettings()
+        return copy(
+            scanMode = defaults.scanMode,
+            noize = defaults.noize,
+            autoTune = true,
+            ipVersion = defaults.ipVersion,
+            fetchEch = defaults.fetchEch,
+            keepaliveSeconds = defaults.keepaliveSeconds,
+            fragmentEnabled = defaults.fragmentEnabled,
+            fragmentSize = defaults.fragmentSize,
+            fragmentDelayMs = defaults.fragmentDelayMs,
+            pinnedPeer = defaults.pinnedPeer,
+        )
+    }
+
     companion object {
         const val DEFAULT_SOCKS_PORT = 1819
         const val DEFAULT_HTTP_PORT = 1820
@@ -70,7 +91,7 @@ class SettingsRepository(context: Context) {
     val settings: StateFlow<WarpSettings> = _settings.asStateFlow()
 
     fun update(transform: (WarpSettings) -> WarpSettings) {
-        val next = transform(_settings.value)
+        val next = transform(_settings.value).automatic()
         write(next)
         _settings.value = next
     }
@@ -109,7 +130,7 @@ class SettingsRepository(context: Context) {
             bypassLan = prefs.getBoolean(KEY_BYPASS_LAN, defaults.bypassLan),
             regionUnlock = prefs.getBoolean(KEY_REGION_UNLOCK, defaults.regionUnlock),
             exitCountry = ExitCountries.normalise(prefs.getString(KEY_EXIT_COUNTRY, null)),
-        )
+        ).automatic()
     }
 
     /**

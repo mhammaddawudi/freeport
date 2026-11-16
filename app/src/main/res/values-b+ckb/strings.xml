@@ -58,6 +58,8 @@
 
     <string name="scan_turbo">خێرا</string>
     <string name="scan_turbo_desc">لە یەکەم ڕێگای وەڵامدەر دەوەستێت.</string>
+    <string name="scan_smart">زیرەک</string>
+    <string name="scan_smart_desc">فراوان و خێرا: چەند چرکەیەک دوای یەکەم وەڵام دەگەڕێتەوە</string>
     <string name="scan_balanced">هاوسەنگ</string>
     <string name="scan_balanced_desc">پێش هەڵبژاردن چاوەڕێی چەند ڕێگایەک دەکات. پەیوەستبوون هێواشترە.</string>
     <string name="scan_thorough">ورد</string>

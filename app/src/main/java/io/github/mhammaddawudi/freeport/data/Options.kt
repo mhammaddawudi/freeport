@@ -175,7 +175,13 @@ enum class ScanMode(
     Balanced("balanced", R.string.scan_balanced, R.string.scan_balanced_desc),
     Thorough("thorough", R.string.scan_thorough, R.string.scan_thorough_desc),
     Stealth("stealth", R.string.scan_stealth, R.string.scan_stealth_desc),
-    Ironclad("ironclad", R.string.scan_ironclad, R.string.scan_ironclad_desc);
+    Ironclad("ironclad", R.string.scan_ironclad, R.string.scan_ironclad_desc),
+
+    /**
+     * Freeport's own and the only one it uses: wide like a deep scan, back a
+     * few seconds after the first answer like a quick one.
+     */
+    Smart("smart", R.string.scan_smart, R.string.scan_smart_desc);
 
     companion object {
         fun fromWire(wire: String?): ScanMode = entries.firstOrNull { it.wire == wire } ?: Balanced

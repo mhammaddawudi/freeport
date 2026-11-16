@@ -87,7 +87,9 @@ class Tuner(
             val first = if (preferred in profiles) preferred else profiles.first()
             val noizes = (listOf(first) + EXPLORE.filter { it in profiles }).distinct()
             val wide = if (protocol == Protocol.MasqueH3) listOf(Recipe(first, WIDE_H3_MTU)) else emptyList()
-            return noizes.map { Recipe(it) } + wide
+            // A split ClientHello gets HTTP/2 past filters that read the server name.
+            val split = if (protocol == Protocol.MasqueH2) listOf(Recipe(first, fragment = true)) else emptyList()
+            return noizes.map { Recipe(it) } + wide + split
         }
 
         private const val TTL_MS = 7L * 24 * 60 * 60 * 1000
@@ -96,9 +98,9 @@ class Tuner(
 }
 
 /** One combination of per-tunnel settings, measured on its own. */
-data class Recipe(val noize: NoizeProfile, val masqueMtu: Int = 0) {
+data class Recipe(val noize: NoizeProfile, val masqueMtu: Int = 0, val fragment: Boolean = false) {
     /** The base recipe keeps the bare profile name, as earlier versions stored it. */
-    val id: String get() = noize.wire + if (masqueMtu > 0) "+mtu$masqueMtu" else ""
+    val id: String get() = noize.wire + (if (masqueMtu > 0) "+mtu$masqueMtu" else "") + (if (fragment) "+frag" else "")
 }
 
 interface TuningStore {

@@ -115,6 +115,8 @@
 
     <string name="scan_turbo">Fast</string>
     <string name="scan_turbo_desc">Stops at the first route that answers.</string>
+    <string name="scan_smart">Smart</string>
+    <string name="scan_smart_desc">Wide and quick: back a few seconds after the first answer</string>
     <string name="scan_balanced">Balanced</string>
     <string name="scan_balanced_desc">Waits for several routes before choosing. Slower to connect.</string>
     <string name="scan_thorough">Thorough</string>

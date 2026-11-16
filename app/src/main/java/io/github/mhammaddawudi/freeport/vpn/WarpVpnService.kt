@@ -404,7 +404,10 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
         watcher = scope.launch {
             app.engine.state.drop(1).collect { state ->
                 when (state) {
-                    is ConnectionState.Failed -> shutDown()
+                    // The session ended without this service's own Disconnect
+                    // (the app's button, a failure): leaving the notification
+                    // up would show "Not connected" beside a Disconnect action.
+                    is ConnectionState.Failed, ConnectionState.Idle -> shutDown()
                     else -> getSystemService(NotificationManager::class.java)
                         .notify(VpnNotifications.NOTIFICATION_ID, VpnNotifications.build(this@WarpVpnService, state))
                 }

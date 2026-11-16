@@ -61,4 +61,13 @@ class TunerTest {
         assertEquals(Recipe(NoizeProfile.Firewall, Tuner.WIDE_H3_MTU), tuner.recipeFor("w", Protocol.MasqueH3, NoizeProfile.Firewall))
         assertEquals(1_200L, tuner.speedOf("w", Protocol.MasqueH3))
     }
+
+    @Test
+    fun http2AlsoMeasuresASplitClientHello() {
+        listOf(NoizeProfile.Firewall, NoizeProfile.Off, NoizeProfile.Light)
+            .forEach { tuner.record("h", Protocol.MasqueH2, Recipe(it), 400) }
+        val split = Recipe(NoizeProfile.Firewall, fragment = true)
+        assertEquals(split, tuner.recipeFor("h", Protocol.MasqueH2, NoizeProfile.Firewall))
+        assertEquals("firewall+frag", split.id)
+    }
 }

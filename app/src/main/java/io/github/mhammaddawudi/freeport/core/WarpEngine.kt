@@ -291,13 +291,15 @@ class WarpEngine(
                 val current = host ?: return@withLock
                 if (session?.isActive != true) return@withLock
                 log.info("[*] settings changed, reconnecting")
-                stopSession()
+                // Not through Idle: the service reads Idle as the end and closes.
+                stopSession(final = false)
                 session = scope.launch { runSession(current) }
             }
         }
     }
 
-    private suspend fun stopSession() {
+    /** Ends the session; [final] says nothing follows, so the state goes to Idle. */
+    private suspend fun stopSession(final: Boolean = true) {
         val running = session
         if (running != null && running.isActive) {
             _state.value = ConnectionState.Disconnecting
@@ -305,7 +307,7 @@ class WarpEngine(
             log.info("[*] disconnected")
         }
         session = null
-        _state.value = ConnectionState.Idle
+        if (final) _state.value = ConnectionState.Idle
     }
 
     private suspend fun runSession(host: TunnelHost) {
@@ -380,7 +382,7 @@ class WarpEngine(
         if (!settings.autoTune || settings.protocol.noizeProfiles.isEmpty() || settings.protocol == Protocol.Auto) return settings
         val recipe = tuner.recipeFor(network, settings.protocol, settings.effectiveNoize)
         if (recipe != Recipe(settings.effectiveNoize)) log.info("[*] tuning: ${settings.protocol.displayName} with ${recipe.id} on this network")
-        return settings.copy(noize = recipe.noize, masqueMtu = recipe.masqueMtu)
+        return settings.copy(noize = recipe.noize, masqueMtu = recipe.masqueMtu, fragmentEnabled = recipe.fragment)
     }
 
     /** What Automatic expects of [protocol] here: its measured best, or a prior. */
@@ -606,6 +608,18 @@ class WarpEngine(
                     withTimeoutOrNull(laneMs) { ping(Protocol.MasqueH3) }
                 },
                 launch { ping(Protocol.WireGuard) },
+                // HTTP/2 rides TCP 443: a connect to its known edges answers in
+                // about a round trip, so it is never cut short behind a slower scan.
+                launch {
+                    if (Protocol.MasqueH2 !in identities) return@launch
+                    val remembered = cache.recall(cacheKey(candidates.getValue(Protocol.MasqueH2)))
+                    val edges = (listOfNotNull(remembered) + MASQUE_EDGES).filter { it.socket !in slowEdges }
+                    EdgeReach.quickestEdge(edges)?.let { edge ->
+                        log.info("[+] ${Protocol.MasqueH2.displayName} edge ${edge.socket} accepts in ${edge.rttMs}ms")
+                        found.putIfAbsent(Protocol.MasqueH2, edge)
+                        noteReach(Protocol.MasqueH2, edge.rttMs)
+                    }
+                },
             )
             val all = launch { lanes.joinAll() }
             withTimeoutOrNull(laneMs * 2 + AUTO_GRACE_MS) {
@@ -642,7 +656,7 @@ class WarpEngine(
         for (protocol in refused - found.keys) {
             if (tuner.speedOf(network, protocol) == null) {
                 val missed = candidates.getValue(protocol)
-                tuner.record(network, protocol, Recipe(missed.effectiveNoize, missed.masqueMtu), 0)
+                tuner.record(network, protocol, Recipe(missed.effectiveNoize, missed.masqueMtu, missed.fragmentEnabled), 0)
             }
         }
         for ((protocol, endpoint) in ranked) {
@@ -653,7 +667,7 @@ class WarpEngine(
             if (outcome.connected || outcome.rotate || outcome.refresh) return outcome
             log.warn("[-] automatic: ${protocol.displayName} answered but did not carry (${outcome.reason}), trying the next")
             cache.markStalled(cacheKey(chosen), System.currentTimeMillis())
-            tuner.record(network, protocol, Recipe(chosen.effectiveNoize, chosen.masqueMtu), 0)
+            tuner.record(network, protocol, Recipe(chosen.effectiveNoize, chosen.masqueMtu, chosen.fragmentEnabled), 0)
             failed += protocol
         }
         // Every protocol found failed to carry: the next look, or the
@@ -1116,7 +1130,7 @@ class WarpEngine(
             board.fetch(settings.protocol, settings.ipVersion.wire, shared, settings.socksPort)
         }
         baseline = kbps
-        tuner.record(network, settings.protocol, Recipe(settings.effectiveNoize, settings.masqueMtu), kbps)
+        tuner.record(network, settings.protocol, Recipe(settings.effectiveNoize, settings.masqueMtu, settings.fragmentEnabled), kbps)
         val bar = if (warms) WARM_SLOW_KBPS else SLOW_KBPS
         if (kbps >= bar || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
         rotations++
@@ -1422,12 +1436,12 @@ class WarpEngine(
         const val WARP_LOOK_EDGES = 4
 
         /** Each MASQUE carrier's scan slot; they cannot scan at the same time. */
-        const val AUTO_LANE_MS = 8_000L
+        const val AUTO_LANE_MS = 12_000L
         /** The second look, on a line too slow for the first: what a manual scan gets. */
         const val AUTO_SLOW_LANE_MS = 20_000L
 
         /** How long the others may still beat the first edge that answered. */
-        const val AUTO_GRACE_MS = 2_500L
+        const val AUTO_GRACE_MS = 4_000L
 
     }
 }

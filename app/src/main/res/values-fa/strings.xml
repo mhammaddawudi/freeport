@@ -115,6 +115,8 @@
 
     <string name="scan_turbo">سریع</string>
     <string name="scan_turbo_desc">در اولین مسیری که جواب بدهد می‌ایستد.</string>
+    <string name="scan_smart">هوشمند</string>
+    <string name="scan_smart_desc">گسترده و سریع: چند ثانیه پس از اولین پاسخ برمی‌گردد</string>
     <string name="scan_balanced">متعادل</string>
     <string name="scan_balanced_desc">قبل از انتخاب منتظر چند مسیر می‌ماند. اتصال کندتر است.</string>
     <string name="scan_thorough">دقیق</string>

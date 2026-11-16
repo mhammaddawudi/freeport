@@ -115,6 +115,8 @@
 
     <string name="scan_turbo">Bilez</string>
     <string name="scan_turbo_desc">Li rêya yekem a ku bersiv dide radiweste.</string>
+    <string name="scan_smart">Jîr</string>
+    <string name="scan_smart_desc">Fireh û bilez: çend çirke piştî bersiva yekem vedigere</string>
     <string name="scan_balanced">Hevseng</string>
     <string name="scan_balanced_desc">Berî hilbijartinê li çend rêyan disekine. Girêdan hêdîtir e.</string>
     <string name="scan_thorough">Bi hûrgilî</string>
