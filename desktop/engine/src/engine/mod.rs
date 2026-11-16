@@ -99,6 +99,9 @@ pub struct Engine {
     pub(crate) best_slow: Mutex<Option<attempt::SlowEdge>>,
     /// Set while `best_slow` is connected: the judge keeps it however slow.
     pub(crate) settling: std::sync::atomic::AtomicBool,
+    /// Set while Automatic still has another found edge to compare: a slow
+    /// edge then makes way for it at once, without a new search.
+    pub(crate) auto_has_more: std::sync::atomic::AtomicBool,
     /// Protocols that answered Automatic's scan this session but carried
     /// nothing; the next round tries them last.
     pub(crate) benched: Mutex<Vec<crate::model::Protocol>>,
@@ -123,6 +126,7 @@ impl Engine {
             slow: Mutex::new(Default::default()),
             best_slow: Mutex::new(None),
             settling: Default::default(),
+            auto_has_more: Default::default(),
             benched: Mutex::new(Vec::new()),
             reach: Mutex::new(Default::default()),
             probing: Default::default(),

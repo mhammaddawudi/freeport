@@ -49,6 +49,8 @@ const LATENCY_KEPT: usize = 60;
 /// enough for H2 on a line with multi-second round trips.
 const AUTO_LANE: Duration = Duration::from_secs(12);
 const AUTO_PING: Duration = Duration::from_secs(20);
+/// What Automatic keeps without comparing the other protocols it found.
+const AUTO_GOOD_KBPS: u64 = 800;
 const AUTO_GRACE: Duration = Duration::from_millis(4_000);
 const MAX_KNOWN_TRIES: usize = 2;
 /// Through Automatic a remembered edge either carries at once or is passed over.
@@ -172,9 +174,14 @@ impl Engine {
                 let Some(identity) = identity_of(protocol) else { continue };
                 let chosen = self.tuned(&base.with_protocol(protocol));
                 self.core.apply_environment(&chosen);
+                self.auto_has_more.store(true, Ordering::SeqCst);
                 let outcome = self.try_remembered(identity, edge.endpoint(), &chosen, true).await;
+                self.auto_has_more.store(false, Ordering::SeqCst);
                 if outcome.connected {
                     return outcome;
+                }
+                if outcome.rotate {
+                    log::info!(target: "freeport", "[*] {}", outcome.reason);
                 }
             }
         }
@@ -209,6 +216,12 @@ impl Engine {
             self.set_phase(Phase::Scanning, Some(Protocol::Auto));
             let found = self.scan_lanes(&identities, base, &tried, AUTO_SECOND_LANE).await;
             if let Some(outcome) = self.carry_first(&identities, found, base, &mut tried).await {
+                return outcome;
+            }
+        }
+        // Everything that carried was slow: the fastest of them, now.
+        if let Some(outcome) = self.settle_for_slow().await {
+            if outcome.connected {
                 return outcome;
             }
         }
@@ -289,13 +302,18 @@ impl Engine {
     ) -> Option<Outcome> {
         let benched = self.benched.lock().clone();
         let mut seen = Vec::new();
-        for (protocol, endpoint) in rank(found, &benched, |p| self.tuner.expected(p)) {
-            // One edge per protocol per round: the next edge of a protocol
-            // that failed would most likely fail the same way.
-            if seen.contains(&protocol) {
-                continue;
-            }
-            seen.push(protocol);
+        // One edge per protocol per round: the next edge of a protocol
+        // that failed would most likely fail the same way.
+        let ranked: Vec<(Protocol, Endpoint)> = rank(found, &benched, |p| self.tuner.expected(p))
+            .into_iter()
+            .filter(|(p, _)| {
+                let first = !seen.contains(p);
+                seen.push(*p);
+                first
+            })
+            .collect();
+        let last = ranked.len().saturating_sub(1);
+        for (index, (protocol, endpoint)) in ranked.into_iter().enumerate() {
             let Some(identity) = identities.iter().find(|(p, _)| *p == protocol).map(|(_, i)| i.clone()) else { continue };
             if !tried.contains(&protocol) {
                 tried.push(protocol);
@@ -303,9 +321,16 @@ impl Engine {
             log::info!(target: "freeport", "[+] automatic: {} chosen ({}ms)", protocol.name(), endpoint.rtt_ms);
             let chosen = self.tuned(&base.with_protocol(protocol));
             self.core.apply_environment(&chosen);
+            self.auto_has_more.store(index < last, Ordering::SeqCst);
             let outcome = self.run_tunnel(identity, endpoint, &chosen, AUTO_TUNNEL_STARTUP, true).await;
+            self.auto_has_more.store(false, Ordering::SeqCst);
             if outcome.connected {
                 return Some(outcome);
+            }
+            // Slow, with others found: compare the next one before settling.
+            if outcome.rotate {
+                log::info!(target: "freeport", "[*] {}", outcome.reason);
+                continue;
             }
             log::warn!(target: "freeport", "[-] automatic: {} answered but did not carry ({}), trying the next", protocol.name(), outcome.reason);
             if !outcome.rotate {
@@ -686,12 +711,32 @@ impl Engine {
         self.tuner.record(settings.protocol, tuner::Recipe::of(&settings), measured.kbps);
         // Automatic keeps what it found: the person should not wait through
         // another search, and the scout swaps in a faster edge later.
-        if measured.kbps >= SLOW_KBPS || self.settling.load(Ordering::SeqCst) || self.status.borrow().via_auto {
+        if self.settling.load(Ordering::SeqCst) {
+            return None;
+        }
+        let via_auto = self.status.borrow().via_auto;
+        if via_auto {
+            // Automatic compares what it already found instead of searching
+            // again; with nothing left to compare it keeps this one, and the
+            // scout swaps in a faster edge later.
+            if !self.auto_has_more.load(Ordering::SeqCst) || measured.kbps >= AUTO_GOOD_KBPS {
+                return None;
+            }
+            let mut best = self.best_slow.lock();
+            if best.as_ref().map_or(true, |b| measured.kbps > b.kbps) {
+                *best = Some(SlowEdge { settings: settings.clone(), endpoint, kbps: measured.kbps, via_auto });
+            }
+            return Some(format!(
+                "{} carries only {} KB/s here, comparing the next protocol",
+                settings.protocol.name(), measured.kbps
+            ));
+        }
+        if measured.kbps >= SLOW_KBPS {
             return None;
         }
         let mut best = self.best_slow.lock();
         if best.as_ref().map_or(true, |b| measured.kbps > b.kbps) {
-            *best = Some(SlowEdge { settings: settings.clone(), endpoint, kbps: measured.kbps, via_auto: self.status.borrow().via_auto });
+            *best = Some(SlowEdge { settings: settings.clone(), endpoint, kbps: measured.kbps, via_auto: false });
         }
         drop(best);
         self.slow.lock().insert(endpoint.socket());

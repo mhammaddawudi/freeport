@@ -125,7 +125,7 @@ impl Tuner {
         let tries = recipes(protocol, preferred);
         let measured: Vec<(Recipe, Option<u64>)> = tries.iter().map(|r| (*r, self.read(&key(protocol, *r), at))).collect();
         let best = measured.iter().filter_map(|(r, k)| k.map(|k| (*r, k))).max_by_key(|(_, k)| *k);
-        if let Some((recipe, kbps)) = best.filter(|(_, k)| *k >= GOOD_KBPS) {
+        if let Some((recipe, _)) = best.filter(|(_, k)| *k >= GOOD_KBPS) {
             return recipe;
         }
         // Lighter obfuscation is only worth a look once the protocol is known

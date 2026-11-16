@@ -179,6 +179,12 @@ class WarpEngine(
     /** Set while [bestSlow] is being connected: [judge] keeps it however slow. */
     @Volatile private var settling = false
 
+    /**
+     * Set while Automatic still has another found edge to compare: a slow
+     * edge then makes way for it at once, without a new search.
+     */
+    @Volatile private var autoHasMore = false
+
     /** What the current edge delivered when it was chosen, in KB/s; 0 when unmeasured. */
     @Volatile private var baseline = 0L
 
@@ -237,33 +243,35 @@ class WarpEngine(
                 known.forEach { (protocol, edges) -> edges.minOfOrNull { it.rttMs }?.let { noteReach(protocol, it) } }
                 direct[Protocol.Configs]?.lastRttMs()?.let { noteReach(Protocol.Configs, it) }
 
-                // One at a time: MASQUE and WireGuard keep sibling identity files.
-                val opened = tries.mapValues { (_, chosen) -> (identityFor(chosen) as? CoreResult.Ok)?.value }
-                suspend fun scanned(protocol: Protocol) {
-                    val chosen = tries.getValue(protocol)
-                    val identity = opened[protocol]
-                    val rtt = identity?.let {
-                        if (protocol.transport == "masque") core.applyEnvironment(chosen)
-                        withTimeoutOrNull(AUTO_SLOW_LANE_MS) {
-                            when (val result = core.scan(it, chosen, emptySet(), onRunnersUp = { found -> pool(chosen, found) }) {}) {
-                                is CoreResult.Ok -> result.value.rttMs
-                                is CoreResult.Err -> NO_ANSWER
-                            }
-                        }
-                    }
-                    when {
-                        rtt != null && rtt > 0 -> noteReach(protocol, rtt)
-                        known.getValue(protocol).isEmpty() && (rtt == NO_ANSWER || identity == null) -> noteReach(protocol, NO_ANSWER)
-                    }
-                }
                 coroutineScope {
-                    launch {
-                        val edges = known.getValue(Protocol.MasqueH2).ifEmpty { MASQUE_EDGES }
-                        EdgeReach.quickest(edges)?.let { noteReach(Protocol.MasqueH2, it) }
+                    // A TCP connect needs no identity: HTTP/2 shows in a second.
+                    val knocked = async {
+                        val edges = (known.getValue(Protocol.MasqueH2) + MASQUE_EDGES).distinctBy { it.socket }
+                        EdgeReach.quickest(edges)?.also { noteReach(Protocol.MasqueH2, it) }
+                    }
+                    // One at a time: MASQUE and WireGuard keep sibling identity files.
+                    val opened = tries.mapValues { (_, chosen) -> (identityFor(chosen) as? CoreResult.Ok)?.value }
+                    suspend fun scanned(protocol: Protocol) {
+                        val chosen = tries.getValue(protocol)
+                        val identity = opened[protocol]
+                        val rtt = identity?.let {
+                            if (protocol.transport == "masque") core.applyEnvironment(chosen)
+                            // A ping, not a search: what has not answered by now shows as such.
+                            withTimeoutOrNull(PROBE_SCAN_MS) {
+                                when (val result = core.scan(it, chosen, emptySet(), onRunnersUp = { found -> pool(chosen, found) }) {}) {
+                                    is CoreResult.Ok -> result.value.rttMs
+                                    is CoreResult.Err -> NO_ANSWER
+                                }
+                            } ?: NO_ANSWER
+                        } ?: NO_ANSWER
+                        when {
+                            rtt > 0 -> noteReach(protocol, rtt)
+                            known.getValue(protocol).isEmpty() -> noteReach(protocol, NO_ANSWER)
+                        }
                     }
                     launch {
                         scanned(Protocol.MasqueH3)
-                        scanned(Protocol.MasqueH2)
+                        if (knocked.await() == null) scanned(Protocol.MasqueH2)
                     }
                     launch { scanned(Protocol.WireGuard) }
                 }
@@ -530,6 +538,11 @@ class WarpEngine(
                 if (outcome.connected) warpReturnMs = WARP_RETURN_MS
                 return outcome
             }
+            // Everything that carried was slow: the fastest of them, now.
+            settleForSlow(host)?.let { outcome ->
+                if (outcome.connected) warpReturnMs = WARP_RETURN_MS
+                return outcome
+            }
         }
         if (returning) {
             warpReturnMs = (warpReturnMs * 2).coerceAtMost(MAX_WARP_RETURN_MS)
@@ -588,7 +601,10 @@ class WarpEngine(
             for ((protocol, edge) in known.take(MAX_KNOWN_TRIES)) {
                 val settings = candidates.getValue(protocol)
                 core.applyEnvironment(settings)
+                autoHasMore = true
                 val outcome = tryRemembered(identities.getValue(protocol), edge.endpoint, settings, host, viaAuto = true)
+                autoHasMore = false
+                if (outcome.rotate) log.info("[*] ${outcome.reason}")
                 if (outcome.connected) return outcome
             }
             return null
@@ -691,12 +707,23 @@ class WarpEngine(
                 tuner.record(network, protocol, Recipe(missed.effectiveNoize, missed.masqueMtu, missed.fragmentEnabled), 0)
             }
         }
-        for ((protocol, endpoint) in ranked) {
+        for ((index, entry) in ranked.withIndex()) {
+            val (protocol, endpoint) = entry
             val chosen = candidates.getValue(protocol)
             log.good("[+] automatic: ${protocol.displayName} chosen (${endpoint.rttMs}ms)")
             core.applyEnvironment(chosen)
-            val outcome = runTunnel(identities.getValue(protocol), endpoint, chosen, host, AUTO_TUNNEL_STARTUP_MS, viaAuto = true)
-            if (outcome.connected || outcome.rotate || outcome.refresh) return outcome
+            autoHasMore = index < ranked.lastIndex
+            val outcome = try {
+                runTunnel(identities.getValue(protocol), endpoint, chosen, host, AUTO_TUNNEL_STARTUP_MS, viaAuto = true)
+            } finally {
+                autoHasMore = false
+            }
+            // Slow, with others found: compare the next one before settling.
+            if (outcome.rotate) {
+                log.info("[*] ${outcome.reason}")
+                continue
+            }
+            if (outcome.connected || outcome.refresh) return outcome
             log.warn("[-] automatic: ${protocol.displayName} answered but did not carry (${outcome.reason}), trying the next")
             cache.markStalled(cacheKey(chosen), System.currentTimeMillis())
             tuner.record(network, protocol, Recipe(chosen.effectiveNoize, chosen.masqueMtu, chosen.fragmentEnabled), 0)
@@ -1182,10 +1209,17 @@ class WarpEngine(
         }
         baseline = kbps
         tuner.record(network, settings.protocol, Recipe(settings.effectiveNoize, settings.masqueMtu, settings.fragmentEnabled), kbps)
+        if (settling || settings.pinnedPeer.isNotBlank()) return null
+        if (viaAuto) {
+            // Automatic compares what it already found instead of searching
+            // again; with nothing left to compare it keeps this one, and the
+            // scout swaps in a faster edge in the background.
+            if (!autoHasMore || kbps >= AUTO_GOOD_KBPS) return null
+            if (kbps > (bestSlow?.kbps ?: 0L)) bestSlow = SlowEdge(settings, endpoint, kbps, viaAuto)
+            return "${settings.protocol.displayName} carries only $kbps KB/s here, comparing the next protocol"
+        }
         val bar = if (warms) WARM_SLOW_KBPS else SLOW_KBPS
-        // Automatic keeps what it found: the person should not wait through
-        // another search, and the scout swaps in a faster edge in the background.
-        if (kbps >= bar || settling || viaAuto || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
+        if (kbps >= bar || rotations >= MAX_ROTATIONS) return null
         if (kbps > (bestSlow?.kbps ?: 0L)) bestSlow = SlowEdge(settings, endpoint, kbps, viaAuto)
         rotations++
         slowEdges += endpoint.socket
@@ -1439,6 +1473,12 @@ class WarpEngine(
 
         /** Slow edges dropped per session before the engine settles for what it has. */
         const val MAX_ROTATIONS = 2
+
+        /** What Automatic keeps without comparing the other protocols it found. */
+        const val AUTO_GOOD_KBPS = 800L
+
+        /** How long a ping waits for a protocol before showing it as not answering. */
+        const val PROBE_SCAN_MS = 8_000L
 
         /** How the core says an edge refused the tunnel itself, as opposed to not answering. */
         val REFUSED = Regex("connect-ip status:? [45]\\d\\d")

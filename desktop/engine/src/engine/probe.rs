@@ -14,8 +14,9 @@ use crate::settings::Settings;
 
 /// Shown for a protocol that did not answer.
 pub const NO_ANSWER: i64 = -1;
-/// A scan may take this long on a slow line; running out keeps the last figure.
-const LANE: Duration = Duration::from_secs(30);
+/// A ping, not a search: what has not answered by now shows as not answering,
+/// unless an earlier figure is known.
+const LANE: Duration = Duration::from_secs(8);
 /// Cloudflare's published MASQUE edges: a TCP connect to them is H2's quick ping.
 pub(crate) const MASQUE_EDGES: [&str; 2] = ["162.159.198.1:443", "162.159.198.2:443"];
 
@@ -40,28 +41,32 @@ impl Engine {
             self.note_reach(Protocol::Configs, ms as i64);
         }
         tokio::spawn(async move {
+            // A TCP connect needs no identity: HTTP/2 shows in a second.
             let quick = {
                 let engine = engine.clone();
                 tokio::spawn(async move {
-                    if let Some(ms) = quickest_connect().await {
+                    let ms = quickest_connect().await;
+                    if let Some(ms) = ms {
                         if engine.probing.load(Ordering::SeqCst) {
                             engine.note_reach(Protocol::MasqueH2, ms);
                         }
                     }
+                    ms.is_some()
                 })
             };
             let masque = {
                 let engine = engine.clone();
                 let base = base.clone();
                 tokio::spawn(async move {
-                    for protocol in [Protocol::MasqueH3, Protocol::MasqueH2] {
-                        engine.ping(protocol, &base).await;
+                    engine.ping(Protocol::MasqueH3, &base).await;
+                    // HTTP/2 is scanned only when the knock found nothing.
+                    if !quick.await.unwrap_or(false) {
+                        engine.ping(Protocol::MasqueH2, &base).await;
                     }
                 })
             };
             engine.ping(Protocol::WireGuard, &base).await;
             let _ = masque.await;
-            let _ = quick.await;
             engine.probing.store(false, Ordering::SeqCst);
         });
     }
@@ -80,8 +85,7 @@ impl Engine {
                 match timeout(LANE, self.core.scan(&identity, &settings, &Default::default(), &Cancel::new())).await {
                     Ok(Ok(endpoint)) => Some(endpoint.rtt_ms as i64),
                     Ok(Err(_)) => Some(NO_ANSWER),
-                    // Out of time is not a refusal: the last figure stands.
-                    Err(_) => None,
+                    Err(_) => Some(NO_ANSWER),
                 }
             }
             Err(_) => Some(NO_ANSWER),
