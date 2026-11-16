@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The AT flag, drawn rather than an emoji: not every phone's font has flags. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp" android:height="20dp" android:viewportWidth="30" android:viewportHeight="20">
+    <clip-path android:pathData="M0,0h30v20h-30z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M0,0h30v20h-30z"/><path android:fillColor="#C8102E" android:pathData="M0,0h30v6.67h-30z"/><path android:fillColor="#C8102E" android:pathData="M0,13.33h30v6.67h-30z"/>
+</vector>

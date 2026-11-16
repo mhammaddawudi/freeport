@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The SE flag, drawn rather than an emoji: not every phone's font has flags. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp" android:height="20dp" android:viewportWidth="30" android:viewportHeight="20">
+    <clip-path android:pathData="M0,0h30v20h-30z"/>
+    <path android:fillColor="#006AA7" android:pathData="M0,0h30v20h-30z"/><path android:fillColor="#FECC00" android:pathData="M9,0h4v20h-4z"/><path android:fillColor="#FECC00" android:pathData="M0,8h30v4h-30z"/>
+</vector>

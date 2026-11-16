@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The FR flag, drawn rather than an emoji: not every phone's font has flags. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp" android:height="20dp" android:viewportWidth="30" android:viewportHeight="20">
+    <clip-path android:pathData="M0,0h30v20h-30z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M0,0h30v20h-30z"/><path android:fillColor="#002395" android:pathData="M0,0h10v20h-10z"/><path android:fillColor="#ED2939" android:pathData="M20,0h10v20h-10z"/>
+</vector>

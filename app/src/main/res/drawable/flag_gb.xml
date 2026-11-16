@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The GB flag, drawn rather than an emoji: not every phone's font has flags. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp" android:height="20dp" android:viewportWidth="30" android:viewportHeight="20">
+    <clip-path android:pathData="M0,0h30v20h-30z"/>
+    <path android:fillColor="#012169" android:pathData="M0,0h30v20h-30z"/><path android:strokeColor="#FFFFFF" android:strokeWidth="4" android:pathData="M0,0L30,20M30,0L0,20"/><path android:strokeColor="#C8102E" android:strokeWidth="1.4" android:pathData="M0,0L30,20M30,0L0,20"/><path android:strokeColor="#FFFFFF" android:strokeWidth="6.5" android:pathData="M15,0V20M0,10H30"/><path android:strokeColor="#C8102E" android:strokeWidth="3.6" android:pathData="M15,0V20M0,10H30"/>
+</vector>

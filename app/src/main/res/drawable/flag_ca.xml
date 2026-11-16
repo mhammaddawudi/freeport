@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The CA flag, drawn rather than an emoji: not every phone's font has flags. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp" android:height="20dp" android:viewportWidth="30" android:viewportHeight="20">
+    <clip-path android:pathData="M0,0h30v20h-30z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M0,0h30v20h-30z"/><path android:fillColor="#D52B1E" android:pathData="M0,0h7.5v20h-7.5z"/><path android:fillColor="#D52B1E" android:pathData="M22.5,0h7.5v20h-7.5z"/><path android:fillColor="#D52B1E" android:pathData="M15,3.2l1.2,2.4 1.4,-0.7 -0.5,3.4 2,-2.1 0.5,1.2 2,-0.4 -0.7,2.1 0.9,0.5 -3.2,2.7 0.4,1.2 -3.3,-0.5v3h-0.6v-3l-3.3,0.5 0.4,-1.2 -3.2,-2.7 0.9,-0.5 -0.7,-2.1 2,0.4 0.5,-1.2 2,2.1 -0.5,-3.4 1.4,0.7z"/>
+</vector>

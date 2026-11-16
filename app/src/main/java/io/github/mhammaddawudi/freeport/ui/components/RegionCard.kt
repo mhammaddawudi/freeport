@@ -27,6 +27,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -215,7 +218,20 @@ private fun CountryFlag(code: String, emojiSize: TextUnit, width: Dp) {
         Glyph(GlyphKind.Globe, WarpColors.InkMuted, Modifier.size(width), strokeWidth = 1.6.dp)
         return
     }
+    FLAGS[code]?.let { flag ->
+        Image(
+            painterResource(flag),
+            contentDescription = null,
+            modifier = Modifier
+                .size(width = width, height = width * 0.67f)
+                .clip(RoundedCornerShape(2.dp))
+                .border(0.5.dp, WarpColors.Hairline, RoundedCornerShape(2.dp)),
+            contentScale = ContentScale.FillBounds,
+        )
+        return
+    }
     if (code != IRAN) {
+        // An exit outside the list (Psiphon may land elsewhere): the emoji when the font has it.
         val emoji = ExitCountries.flag(code)
         val drawable = remember(emoji) { Paint().hasGlyph(emoji) }
         if (drawable) {
@@ -251,6 +267,15 @@ private fun CodeBadge(code: String, width: Dp) {
         Text(code, fontSize = 9.sp, color = WarpColors.InkMuted, maxLines = 1)
     }
 }
+
+/** Every offered exit drawn as a vector, so it shows on fonts without flag emoji. */
+private val FLAGS = mapOf(
+    "DE" to R.drawable.flag_de, "NL" to R.drawable.flag_nl, "GB" to R.drawable.flag_gb,
+    "FR" to R.drawable.flag_fr, "US" to R.drawable.flag_us, "CA" to R.drawable.flag_ca,
+    "AU" to R.drawable.flag_au, "SE" to R.drawable.flag_se, "FI" to R.drawable.flag_fi,
+    "CH" to R.drawable.flag_ch, "AT" to R.drawable.flag_at, "SG" to R.drawable.flag_sg,
+    "JP" to R.drawable.flag_jp,
+)
 
 private const val IRAN = "IR"
 private val IranStripes = listOf(Color(0xFF239F40), Color(0xFFFFFFFF), Color(0xFFDA0000))
