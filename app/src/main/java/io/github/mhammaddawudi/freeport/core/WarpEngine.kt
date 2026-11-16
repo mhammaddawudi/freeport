@@ -1098,8 +1098,9 @@ class WarpEngine(
                 relayPort = relayPort,
                 relay = relay,
                 restartRelay = { country ->
+                    // start() answers null once Psiphon is up again.
                     relay?.start(settings.socksPort, relayPort ?: 0, country, RELAY_STARTUP_MS)
-                        ?: "this build has no psiphon client"
+                        ?: if (relay == null) "this build has no psiphon client" else null
                 },
                 carries = core::carries,
                 moving = traffic::moved,

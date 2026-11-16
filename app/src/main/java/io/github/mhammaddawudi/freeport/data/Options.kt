@@ -264,7 +264,7 @@ object ExitCountries {
     /** Empty means "any": Psiphon takes whichever server answers first. */
     const val ANY = ""
 
-    val offered = listOf(ANY, "DE", "NL", "GB", "FR", "US", "CA", "SE", "FI", "AT", "SG", "JP")
+    val offered = listOf(ANY, "DE", "NL", "GB", "FR", "US", "CA", "AU", "SE", "FI", "CH", "AT", "SG", "JP")
 
     fun normalise(code: String?): String {
         val upper = code?.trim()?.uppercase().orEmpty()

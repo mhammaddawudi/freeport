@@ -36,18 +36,17 @@
         <div id="action" class="action"></div>
         <div id="timer" class="timer"><i data-glyph="clock"></i><span id="timer-text"></span></div>
 
-        <div class="card region">
+        <div class="card region" id="region">
           <div class="row">
+            <span id="region-flag" class="flag-tile"></span>
             <div class="grow">
               <div class="title" data-t="region_unlock"></div>
               <div class="hint" data-t="region_unlock_desc"></div>
+              <span id="claude" class="pill" hidden></span>
             </div>
             <label class="switch"><input type="checkbox" id="unlock"><span></span></label>
           </div>
-          <div class="row">
-            <select id="country"></select>
-            <span id="claude" class="pill" hidden></span>
-          </div>
+          <div id="countries" class="countries" role="radiogroup" data-t-label="region_unlock"></div>
         </div>
 
         <div id="stats" class="reveal">
@@ -152,6 +151,7 @@
 
   <script src="i18n.js"></script>
   <script src="glyphs.js"></script>
+  <script src="flags.js"></script>
   <script src="choices.js"></script>
   <script src="motion.js"></script>
   <script src="field.js"></script>

@@ -17,7 +17,7 @@ const PROTOCOLS = [
 ];
 // V2Ray, Psiphon and Tor leave on their own: region unlock has nothing to ride on.
 const DIRECT = ["v2ray", "psiphon", "tor"];
-const COUNTRIES = ["", "DE", "NL", "US", "GB", "FR", "CA", "SE", "CH", "JP", "SG"];
+const COUNTRIES = ["", "DE", "NL", "GB", "FR", "US", "CA", "AU", "SE", "FI", "CH", "AT", "SG", "JP"];
 const NOIZE = {
   wg: ["amnezia", "off", "light", "balanced", "aggressive"],
   masque: ["off", "light", "firewall", "gfw"],
@@ -75,10 +75,36 @@ function formatDuration(seconds) {
   const two = (n) => String(n).padStart(2, "0");
   return h > 0 ? `${h}:${two(m)}:${two(s)}` : `${two(m)}:${two(s)}`;
 }
-function countryLabel(code) {
+function countryName(code) {
   if (!code) return t("region_any");
-  const flag = String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
-  return `${flag} ${code}`;
+  try {
+    return new Intl.DisplayNames([document.documentElement.lang || "en"], { type: "region" }).of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+// The exit-country tiles: a flag and a name each, the chosen one lit.
+function renderCountries() {
+  const s = state.settings;
+  if (!s) return;
+  const chosen = s.exit_country || "";
+  const on = !!s.region_unlock && !DIRECT.includes(s.protocol);
+  $("region-flag").innerHTML = flagSvg(on ? chosen : "");
+  $("region").classList.toggle("open", on);
+  const grid = $("countries");
+  grid.replaceChildren(...COUNTRIES.map((code) => {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = `country${code === chosen ? " chosen" : ""}`;
+    tile.setAttribute("role", "radio");
+    tile.setAttribute("aria-checked", String(code === chosen));
+    tile.innerHTML = `<span class="flag">${flagSvg(code)}</span><span class="name"></span>`;
+    tile.querySelector(".name").textContent = countryName(code);
+    tile.title = countryName(code);
+    tile.addEventListener("click", () => saveSettings({ ...state.settings, exit_country: code, region_unlock: true }, false));
+    return tile;
+  }));
 }
 
 // ---- Home ----
@@ -268,7 +294,7 @@ function renderSettings() {
   const direct = DIRECT.includes(s.protocol);
   $("unlock").disabled = direct;
   $("unlock").closest(".card, .row, label")?.classList.toggle("muted", direct);
-  $("country").value = s.exit_country || "";
+  renderCountries();
   Choices.syncAll();
 }
 
@@ -378,7 +404,6 @@ function wire(prefs) {
   document.querySelectorAll(".tabbar button").forEach((b) => b.addEventListener("click", () => { showTab(b.dataset.tab); placeFieldFocus(); }));
   document.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () => invoke("open_link", { url: b.dataset.link }).catch((e) => toast(String(e)))));
   $("unlock").addEventListener("change", (e) => saveSettings({ ...state.settings, region_unlock: e.target.checked }, false));
-  $("country").addEventListener("change", (e) => saveSettings({ ...state.settings, exit_country: e.target.value, region_unlock: true }, false));
   $("save").addEventListener("click", () => applySettings(readSettings()));
   $("apply-network").addEventListener("click", () => applySettings(readSettings()));
   document.querySelector('[data-setting="tun"]').addEventListener("change", () => saveSettings(readSettings(), false));
@@ -394,6 +419,7 @@ function wire(prefs) {
     applyLanguage(e.target.value);
     fillStaticSelects();
     PerApp.render();
+    renderCountries();
     renderStatus();
   });
   $("theme").addEventListener("change", (e) => {
@@ -408,7 +434,6 @@ function wire(prefs) {
 }
 
 function fillStaticSelects() {
-  fillSelect($("country"), COUNTRIES, countryLabel);
   fillSelect(document.querySelector('[data-setting="ip_version"]'), IP_VERSIONS, (v) => ({ v4: "IPv4", v6: "IPv6", both: "IPv4 + IPv6" })[v]);
   fillSelect($("language"), Object.keys(LANGUAGES), (v) => LANGUAGES[v].label);
   fillSelect($("theme"), ["dark", "light", "system"], (v) => t(`theme_${v}`));

@@ -275,3 +275,23 @@ i[data-glyph] { display: inline-flex; width: 20px; height: 20px; flex: none; }
 #lan-rows .row { margin-top: 12px; }
 .primary.inline { margin-top: 10px; }
 .primary:disabled { opacity: 0.35; cursor: default; }
+
+/* ---- Region unlock: a flag tile per exit country ---- */
+.flag-tile { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--muted); }
+.flag-tile svg { width: 24px; height: 24px; }
+.flag-tile svg[viewBox="0 0 30 20"] { height: 16px; border-radius: 3px; box-shadow: 0 0 0 0.5px var(--hairline); }
+.region #claude { display: inline-block; margin-top: 6px; }
+.region #claude[hidden] { display: none; }
+.countries { display: none; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; margin-top: 14px; }
+.region.open .countries { display: grid; }
+.country { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 10px; border-radius: 12px;
+  border: 1px solid var(--hairline); background: transparent; color: var(--muted); font: inherit; font-size: 13px;
+  cursor: pointer; text-align: start; transition: border-color 0.15s, background 0.15s, color 0.15s; }
+.country:hover { border-color: color-mix(in srgb, var(--mint) 50%, var(--hairline)); color: var(--ink); }
+.country:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
+.country.chosen { border-color: var(--mint); background: color-mix(in srgb, var(--mint) 12%, transparent); color: var(--ink); }
+.country .flag { width: 22px; height: 15px; flex: none; display: grid; place-items: center; }
+.country .flag svg { width: 22px; height: 15px; border-radius: 2px; box-shadow: 0 0 0 0.5px var(--hairline); }
+.country .flag svg[viewBox="0 0 24 24"] { width: 16px; height: 16px; box-shadow: none; }
+.country .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

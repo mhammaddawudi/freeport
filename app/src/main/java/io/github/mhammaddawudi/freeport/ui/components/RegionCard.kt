@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,13 +20,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import android.graphics.Paint
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,7 +85,9 @@ fun RegionCard(
                 if (relaying) {
                     StatusDot(WarpColors.Amber, pulsing = true)
                 } else {
-                    CountryFlag(exit.orEmpty(), emojiSize = 19.sp, width = 22.dp)
+                    // Where it leaves from once known; until then, where it was asked to.
+                    val shown = exit ?: exitCountry.takeIf { regionUnlock && enabled }.orEmpty()
+                    CountryFlag(shown, emojiSize = 19.sp, width = 22.dp)
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -106,20 +108,26 @@ fun RegionCard(
             enter = fadeIn(tween(220)) + expandVertically(tween(220)),
             exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
         ) {
-            Row(
+            // Every country in view at once, a flag and a name each.
+            Column(
                 Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(top = 2.dp, bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(top = 4.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ExitCountries.offered.forEach { code ->
-                    CountryChip(
-                        label = if (code.isEmpty()) stringResource(R.string.region_any) else countryName(code),
-                        code = code,
-                        selected = code == exitCountry,
-                        onClick = { onSelectCountry(code) },
-                    )
+                ExitCountries.offered.chunked(COLUMNS).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { code ->
+                            CountryTile(
+                                label = if (code.isEmpty()) stringResource(R.string.region_any) else countryName(code),
+                                code = code,
+                                selected = code == exitCountry,
+                                onClick = { onSelectCountry(code) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        repeat(COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
                 }
             }
         }
@@ -127,26 +135,27 @@ fun RegionCard(
 }
 
 @Composable
-private fun CountryChip(label: String, code: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
+private fun CountryTile(label: String, code: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
     val accent = WarpColors.Mint
     Row(
-        Modifier
-            .heightIn(min = 40.dp)
+        modifier
+            .heightIn(min = 44.dp)
             .clip(shape)
             .background(if (selected) accent.copy(alpha = 0.14f) else Color.Transparent)
             .border(1.dp, if (selected) accent else WarpColors.Hairline, shape)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CountryFlag(code, emojiSize = 16.sp, width = 18.dp)
         Spacer(Modifier.width(6.dp))
         Text(
             label,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
             color = if (selected) WarpColors.Ink else WarpColors.InkMuted,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -171,7 +180,14 @@ private fun CountryFlag(code: String, emojiSize: TextUnit, width: Dp) {
         return
     }
     if (code != IRAN) {
-        Text(ExitCountries.flag(code), fontSize = emojiSize)
+        val emoji = ExitCountries.flag(code)
+        val drawable = remember(emoji) { Paint().hasGlyph(emoji) }
+        if (drawable) {
+            Text(emoji, fontSize = emojiSize)
+        } else {
+            // Some phones' fonts have no flags and would show two letters in boxes.
+            CodeBadge(code, width)
+        }
         return
     }
     val shape = RoundedCornerShape(3.dp)
@@ -185,5 +201,21 @@ private fun CountryFlag(code: String, emojiSize: TextUnit, width: Dp) {
     }
 }
 
+@Composable
+private fun CodeBadge(code: String, width: Dp) {
+    val shape = RoundedCornerShape(3.dp)
+    Box(
+        Modifier
+            .size(width = width + 4.dp, height = width * 0.78f)
+            .clip(shape)
+            .background(WarpColors.Ink.copy(alpha = 0.08f))
+            .border(0.5.dp, WarpColors.Hairline, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(code, fontSize = 9.sp, color = WarpColors.InkMuted, maxLines = 1)
+    }
+}
+
+private const val COLUMNS = 3
 private const val IRAN = "IR"
 private val IranStripes = listOf(Color(0xFF239F40), Color(0xFFFFFFFF), Color(0xFFDA0000))
