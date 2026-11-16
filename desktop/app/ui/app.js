@@ -84,7 +84,15 @@ function countryName(code) {
   }
 }
 
-// The exit-country tiles: a flag and a name each, the chosen one lit.
+function countryRow(code, extra = "") {
+  const node = document.createElement("span");
+  node.className = "country-row";
+  node.innerHTML = `<span class="flag">${flagSvg(code)}</span><span class="name"></span>${extra}`;
+  node.querySelector(".name").textContent = countryName(code);
+  return node;
+}
+
+// The exit country: one row with the chosen one, opening a list below it.
 function renderCountries() {
   const s = state.settings;
   if (!s) return;
@@ -92,19 +100,28 @@ function renderCountries() {
   const on = !!s.region_unlock && !DIRECT.includes(s.protocol);
   $("region-flag").innerHTML = flagSvg(on ? chosen : "");
   $("region").classList.toggle("open", on);
-  const grid = $("countries");
-  grid.replaceChildren(...COUNTRIES.map((code) => {
-    const tile = document.createElement("button");
-    tile.type = "button";
-    tile.className = `country${code === chosen ? " chosen" : ""}`;
-    tile.setAttribute("role", "radio");
-    tile.setAttribute("aria-checked", String(code === chosen));
-    tile.innerHTML = `<span class="flag">${flagSvg(code)}</span><span class="name"></span>`;
-    tile.querySelector(".name").textContent = countryName(code);
-    tile.title = countryName(code);
-    tile.addEventListener("click", () => saveSettings({ ...state.settings, exit_country: code, region_unlock: true }, false));
-    return tile;
+  if (!on) toggleCountries(false);
+  $("country-current").replaceChildren(countryRow(chosen, `<i class="chev" aria-hidden="true"></i>`));
+  $("countries").replaceChildren(...COUNTRIES.map((code) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = `country${code === chosen ? " chosen" : ""}`;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(code === chosen));
+    option.append(countryRow(code, code === chosen ? `<i class="tick" aria-hidden="true"></i>` : ""));
+    option.addEventListener("click", () => {
+      toggleCountries(false);
+      saveSettings({ ...state.settings, exit_country: code, region_unlock: true }, false);
+    });
+    return option;
   }));
+}
+
+function toggleCountries(open = $("countries").hidden) {
+  $("countries").hidden = !open;
+  $("country-current").setAttribute("aria-expanded", String(open));
+  $("country-picker").classList.toggle("expanded", open);
+  if (open) $("countries").querySelector(".chosen")?.scrollIntoView({ block: "nearest" });
 }
 
 // ---- Home ----
@@ -403,6 +420,9 @@ function wire(prefs) {
   $("picker-head").addEventListener("click", () => setPicker(!$("picker").classList.contains("open")));
   document.querySelectorAll(".tabbar button").forEach((b) => b.addEventListener("click", () => { showTab(b.dataset.tab); placeFieldFocus(); }));
   document.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () => invoke("open_link", { url: b.dataset.link }).catch((e) => toast(String(e)))));
+  $("country-current").addEventListener("click", () => toggleCountries());
+  document.addEventListener("click", (e) => { if (!$("country-picker").contains(e.target)) toggleCountries(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") toggleCountries(false); });
   $("unlock").addEventListener("change", (e) => saveSettings({ ...state.settings, region_unlock: e.target.checked }, false));
   $("save").addEventListener("click", () => applySettings(readSettings()));
   $("apply-network").addEventListener("click", () => applySettings(readSettings()));

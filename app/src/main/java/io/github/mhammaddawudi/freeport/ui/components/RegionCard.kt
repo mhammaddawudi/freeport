@@ -27,6 +27,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.rotate
 import android.graphics.Paint
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,25 +117,63 @@ fun RegionCard(
             enter = fadeIn(tween(220)) + expandVertically(tween(220)),
             exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
         ) {
-            // Every country in view at once, a flag and a name each.
+            CountryPicker(exitCountry, onSelectCountry)
+        }
+    }
+}
+
+/** The chosen exit on one row; tapped, the other countries open beneath it, one per row. */
+@Composable
+private fun CountryPicker(exitCountry: String, onSelectCountry: (String) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
+    val turn by animateFloatAsState(if (open) -90f else 90f, label = "chevron")
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .clip(shape)
+                .border(1.dp, if (open) WarpColors.Mint.copy(alpha = 0.6f) else WarpColors.Hairline, shape)
+                .clickable(role = Role.DropdownList) { open = !open }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CountryLabel(exitCountry, WarpColors.Ink, Modifier.weight(1f))
+            Glyph(GlyphKind.Chevron, WarpColors.InkMuted, Modifier.size(16.dp).rotate(turn), strokeWidth = 1.8.dp)
+        }
+        AnimatedVisibility(
+            visible = open,
+            enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+            exit = fadeOut(tween(140)) + shrinkVertically(tween(140)),
+        ) {
             Column(
                 Modifier
+                    .padding(top = 6.dp)
                     .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                    .heightIn(max = 264.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(1.dp, WarpColors.Hairline, RoundedCornerShape(14.dp))
+                    .verticalScroll(rememberScrollState())
+                    .padding(4.dp),
             ) {
-                ExitCountries.offered.chunked(COLUMNS).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { code ->
-                            CountryTile(
-                                label = if (code.isEmpty()) stringResource(R.string.region_any) else countryName(code),
-                                code = code,
-                                selected = code == exitCountry,
-                                onClick = { onSelectCountry(code) },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        repeat(COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                ExitCountries.offered.forEach { code ->
+                    val selected = code == exitCountry
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 42.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selected) WarpColors.Mint.copy(alpha = 0.12f) else Color.Transparent)
+                            .selectable(selected = selected, role = Role.RadioButton) {
+                                open = false
+                                onSelectCountry(code)
+                            }
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CountryLabel(code, if (selected) WarpColors.Ink else WarpColors.InkMuted, Modifier.weight(1f))
+                        if (selected) Glyph(GlyphKind.Check, WarpColors.Mint, Modifier.size(16.dp), strokeWidth = 2.dp)
                     }
                 }
             }
@@ -135,25 +182,14 @@ fun RegionCard(
 }
 
 @Composable
-private fun CountryTile(label: String, code: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(12.dp)
-    val accent = WarpColors.Mint
-    Row(
-        modifier
-            .heightIn(min = 44.dp)
-            .clip(shape)
-            .background(if (selected) accent.copy(alpha = 0.14f) else Color.Transparent)
-            .border(1.dp, if (selected) accent else WarpColors.Hairline, shape)
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+private fun CountryLabel(code: String, color: Color, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         CountryFlag(code, emojiSize = 16.sp, width = 18.dp)
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(10.dp))
         Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) WarpColors.Ink else WarpColors.InkMuted,
+            if (code.isEmpty()) stringResource(R.string.region_any) else countryName(code),
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -216,6 +252,5 @@ private fun CodeBadge(code: String, width: Dp) {
     }
 }
 
-private const val COLUMNS = 3
 private const val IRAN = "IR"
 private val IranStripes = listOf(Color(0xFF239F40), Color(0xFFFFFFFF), Color(0xFFDA0000))
