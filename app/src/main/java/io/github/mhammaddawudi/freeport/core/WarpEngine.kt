@@ -171,6 +171,14 @@ class WarpEngine(
     /** How many times this session has dropped a slow edge for another. */
     @Volatile private var rotations = 0
 
+    /** The fastest edge this session dropped as slow; better than nothing when nothing else carries. */
+    private data class SlowEdge(val settings: WarpSettings, val endpoint: Endpoint, val kbps: Long, val viaAuto: Boolean)
+
+    @Volatile private var bestSlow: SlowEdge? = null
+
+    /** Set while [bestSlow] is being connected: [judge] keeps it however slow. */
+    @Volatile private var settling = false
+
     /** What the current edge delivered when it was chosen, in KB/s; 0 when unmeasured. */
     @Volatile private var baseline = 0L
 
@@ -315,6 +323,7 @@ class WarpEngine(
         var fallback = 0
         slowEdges.clear()
         rotations = 0
+        bestSlow = null
         carryOver = null
         refreshes.clear()
         returningToWarp = false
@@ -330,7 +339,9 @@ class WarpEngine(
                 if (fallback > 0) {
                     log.info("[*] ${chosen.protocol.displayName} is not getting through, trying ${current.protocol.displayName}")
                 }
-                val outcome = attemptOnce(current, host)
+                val outcome = attemptOnce(current, host).let { first ->
+                    if (first.connected || first.rotate || first.refresh) first else settleForSlow(host) ?: first
+                }
                 if (outcome.refresh) {
                     log.info("[*] ${outcome.reason}")
                     rotations = 0
@@ -363,6 +374,25 @@ class WarpEngine(
             }
         } finally {
             withContext(NonCancellable) { host.onTunnelDown() }
+        }
+    }
+
+    /**
+     * Goes back to the fastest edge dropped as slow, once nothing faster came
+     * up: a slow connection beats none. Null when there is none to go back to.
+     */
+    private suspend fun settleForSlow(host: TunnelHost): Outcome? {
+        val slow = bestSlow ?: return null
+        bestSlow = null
+        val identity = (identityFor(slow.settings) as? CoreResult.Ok)?.value ?: return null
+        log.info("[*] nothing faster came up; going back to ${slow.endpoint.socket} (${slow.kbps} KB/s)")
+        slowEdges -= slow.endpoint.socket
+        core.applyEnvironment(slow.settings)
+        settling = true
+        return try {
+            runTunnel(identity, slow.endpoint, withFreePort(slow.settings), host, REMEMBERED_STARTUP_MS, slow.viaAuto)
+        } finally {
+            settling = false
         }
     }
 
@@ -764,6 +794,25 @@ class WarpEngine(
         startupMs: Long = TUNNEL_STARTUP_MS,
         viaAuto: Boolean = false,
     ): Outcome {
+        val outcome = openTunnel(identity, endpoint, settings, host, startupMs, viaAuto)
+        // An edge that refuses the tunnel outright (an H2 edge that answers
+        // CONNECT-IP with an error status) will refuse it again; scans skip it.
+        if (!outcome.connected && REFUSED.containsMatchIn(outcome.reason)) {
+            log.warn("[-] ${endpoint.socket} refused the tunnel; leaving it out")
+            slowEdges += endpoint.socket
+            cache.dropFromPool(cacheKey(settings), endpoint.socket)
+        }
+        return outcome
+    }
+
+    private suspend fun openTunnel(
+        identity: Identity,
+        endpoint: Endpoint,
+        settings: WarpSettings,
+        host: TunnelHost,
+        startupMs: Long,
+        viaAuto: Boolean,
+    ): Outcome {
         show(ConnectionState.Connecting(settings.protocol, endpoint, viaAuto))
         log.info("[*] opening ${settings.protocol.displayName} tunnel to ${endpoint.socket}")
 
@@ -1132,7 +1181,8 @@ class WarpEngine(
         baseline = kbps
         tuner.record(network, settings.protocol, Recipe(settings.effectiveNoize, settings.masqueMtu, settings.fragmentEnabled), kbps)
         val bar = if (warms) WARM_SLOW_KBPS else SLOW_KBPS
-        if (kbps >= bar || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
+        if (kbps >= bar || settling || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
+        if (kbps > (bestSlow?.kbps ?: 0L)) bestSlow = SlowEdge(settings, endpoint, kbps, viaAuto)
         rotations++
         slowEdges += endpoint.socket
         forget(settings, viaAuto)
@@ -1385,6 +1435,10 @@ class WarpEngine(
 
         /** Slow edges dropped per session before the engine settles for what it has. */
         const val MAX_ROTATIONS = 2
+
+        /** How the core says an edge refused the tunnel itself, as opposed to not answering. */
+        val REFUSED = Regex("connect-ip status:? [45]\\d\\d")
+
         const val POLL_MS = 1_000L
         const val SPEED_LOG_POLLS = 60L
         const val STABLE_MS = 30_000L

@@ -1,5 +1,6 @@
 //! One connection attempt, from scan to the moment the tunnel drops.
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -408,7 +409,43 @@ impl Engine {
         outcome
     }
 
+    /// Connects the fastest edge dropped as slow this session; None when
+    /// there is none or its identity cannot be opened.
+    pub(super) async fn settle_for_slow(self: &Arc<Self>) -> Option<Outcome> {
+        let slow = self.best_slow.lock().take()?;
+        let identity = self.core.identity(slow.settings.protocol).await.ok()?;
+        log::info!(
+            target: "freeport",
+            "[*] nothing faster came up; going back to {} ({} KB/s)",
+            slow.endpoint.socket(), slow.kbps
+        );
+        self.slow.lock().remove(&slow.endpoint.socket());
+        self.settling.store(true, Ordering::SeqCst);
+        let outcome = self.run_tunnel(identity, slow.endpoint, &slow.settings, REMEMBERED_STARTUP, slow.via_auto).await;
+        self.settling.store(false, Ordering::SeqCst);
+        Some(outcome)
+    }
+
     async fn run_tunnel(
+        self: &Arc<Self>,
+        identity: Arc<Identity>,
+        endpoint: Endpoint,
+        settings: &Settings,
+        startup: Duration,
+        via_auto: bool,
+    ) -> Outcome {
+        let outcome = self.open_tunnel(identity, endpoint, settings, startup, via_auto).await;
+        // An edge that refuses the tunnel outright (an H2 edge answering
+        // CONNECT-IP with an error status) will refuse it again; skip it.
+        if !outcome.connected && refused(&outcome.reason) {
+            log::warn!(target: "freeport", "[-] {} refused the tunnel; leaving it out", endpoint.socket());
+            self.slow.lock().insert(endpoint.socket());
+            self.cache.forget(settings.protocol, settings.ip_version);
+        }
+        outcome
+    }
+
+    async fn open_tunnel(
         self: &Arc<Self>,
         identity: Arc<Identity>,
         endpoint: Endpoint,
@@ -645,9 +682,14 @@ impl Engine {
             let _ = board::fetch(protocol, ip, Some(port)).await;
         });
         self.tuner.record(settings.protocol, tuner::Recipe::of(&settings), measured.kbps);
-        if measured.kbps >= SLOW_KBPS {
+        if measured.kbps >= SLOW_KBPS || self.settling.load(Ordering::SeqCst) {
             return None;
         }
+        let mut best = self.best_slow.lock();
+        if best.as_ref().map_or(true, |b| measured.kbps > b.kbps) {
+            *best = Some(SlowEdge { settings: settings.clone(), endpoint, kbps: measured.kbps, via_auto: self.status.borrow().via_auto });
+        }
+        drop(best);
         self.slow.lock().insert(endpoint.socket());
         self.cache.forget(protocol, ip);
         Some(format!("{} carries only {} KB/s, trying another edge", endpoint.socket(), measured.kbps))
@@ -783,5 +825,33 @@ mod tests {
         let h2_fast = |p: Protocol| if p == Protocol::MasqueH2 { 3_000 } else { 500 };
         let order: Vec<Protocol> = rank(found, &[], h2_fast).into_iter().map(|(p, _)| p).collect();
         assert_eq!(order[0], Protocol::MasqueH2);
+    }
+}
+
+/// The fastest edge a session dropped as slow, kept to fall back on.
+pub(crate) struct SlowEdge {
+    pub settings: Settings,
+    pub endpoint: Endpoint,
+    pub kbps: u64,
+    pub via_auto: bool,
+}
+
+/// Whether the core said the edge refused the tunnel itself (an error
+/// status to CONNECT-IP), as opposed to not answering.
+fn refused(reason: &str) -> bool {
+    reason.split("connect-ip status").skip(1).any(|rest| {
+        let code = rest.trim_start_matches([':', ' ']);
+        code.len() >= 3 && matches!(code.as_bytes()[0], b'4' | b'5') && code.as_bytes()[1..3].iter().all(u8::is_ascii_digit)
+    })
+}
+
+#[cfg(test)]
+mod refused_tests {
+    #[test]
+    fn an_error_status_is_a_refusal_and_silence_is_not() {
+        assert!(super::refused("tunnel: h2 connect-ip status 400 Bad Request"));
+        assert!(super::refused("[h2] connect-ip status: 403"));
+        assert!(!super::refused("connect-ip status: 200"));
+        assert!(!super::refused("the tunnel did not come up within 15s"));
     }
 }

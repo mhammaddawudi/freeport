@@ -94,6 +94,11 @@ pub struct Engine {
     /// Edges found too slow for video this session; scans and the shared
     /// list skip them.
     pub(crate) slow: Mutex<std::collections::HashSet<std::net::SocketAddr>>,
+    /// The fastest edge this session dropped as slow; better than nothing
+    /// when nothing faster comes up.
+    pub(crate) best_slow: Mutex<Option<attempt::SlowEdge>>,
+    /// Set while `best_slow` is connected: the judge keeps it however slow.
+    pub(crate) settling: std::sync::atomic::AtomicBool,
     /// Protocols that answered Automatic's scan this session but carried
     /// nothing; the next round tries them last.
     pub(crate) benched: Mutex<Vec<crate::model::Protocol>>,
@@ -116,6 +121,8 @@ impl Engine {
             tor: tor::Tor::default(),
             configs: configs::Configs::default(),
             slow: Mutex::new(Default::default()),
+            best_slow: Mutex::new(None),
+            settling: Default::default(),
             benched: Mutex::new(Vec::new()),
             reach: Mutex::new(Default::default()),
             probing: Default::default(),
@@ -178,6 +185,7 @@ impl Engine {
         let mut fallback: usize = 0;
         let mut rotations: u32 = 0;
         self.slow.lock().clear();
+        *self.best_slow.lock() = None;
         self.benched.lock().clear();
         loop {
             let alternatives = chosen.protocol.alternatives();
@@ -193,7 +201,14 @@ impl Engine {
                     current.protocol.name()
                 );
             }
-            let outcome = self.attempt_once(&current).await;
+            let mut outcome = self.attempt_once(&current).await;
+            // A slow connection beats none: once nothing faster comes up,
+            // go back to the best edge dropped as slow.
+            if !outcome.connected && (!outcome.rotate || rotations >= MAX_ROTATIONS) {
+                if let Some(settled) = self.settle_for_slow().await {
+                    outcome = settled;
+                }
+            }
             self.front.point_at(0);
             // A slow edge is swapped at once, while the status still says
             // connecting, rather than after a backoff.

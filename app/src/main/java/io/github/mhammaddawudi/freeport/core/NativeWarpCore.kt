@@ -60,7 +60,39 @@ class NativeWarpCore : WarpCore {
         }
 
         onProgress(ScanProgress(ScanProgress.Phase.Probing))
-        val result = runJob(
+        val first = scanOnce(identity, echable(settings), excluded, onRunnersUp)
+        // A network that blocks the ECH lookup should not cost the whole
+        // protocol: go on without ECH, as the desktop app does.
+        val result = if (first is CoreResult.Err && first.message.contains(NO_ECH_KEY)) {
+            echMissingAt = SystemClock.elapsedRealtime()
+            CoreLog.info("[-] no ECH key on this network; handshakes go without it")
+            scanOnce(identity, settings.copy(fetchEch = false), excluded, onRunnersUp)
+        } else {
+            first
+        }
+        if (result is CoreResult.Ok) {
+            onProgress(ScanProgress(ScanProgress.Phase.Settled, bestRttMs = result.value.rttMs))
+        }
+        return result
+    }
+
+    /** When the ECH key was last found missing; for a while ECH is not asked for. */
+    @Volatile
+    private var echMissingAt = 0L
+
+    private fun echable(settings: WarpSettings): WarpSettings {
+        val missing = echMissingAt != 0L &&
+            SystemClock.elapsedRealtime() - echMissingAt < ECH_RETRY_MS
+        return if (missing && settings.fetchEch) settings.copy(fetchEch = false) else settings
+    }
+
+    private suspend fun scanOnce(
+        identity: Identity,
+        settings: WarpSettings,
+        excluded: Set<String>,
+        onRunnersUp: (List<Endpoint>) -> Unit,
+    ): CoreResult<Endpoint> =
+        runJob(
             nativeScanStart(identity.handle, CorePayloads.scan(settings, excluded)),
         ) { reply ->
             // Older cores send no `also`; the scan then simply has no runners-up.
@@ -72,11 +104,6 @@ class NativeWarpCore : WarpCore {
             }
             endpointOf(reply.getJSONObject("endpoint"))
         }
-        if (result is CoreResult.Ok) {
-            onProgress(ScanProgress(ScanProgress.Phase.Settled, bestRttMs = result.value.rttMs))
-        }
-        return result
-    }
 
     private fun endpointOf(json: JSONObject): Endpoint = Endpoint(
         ip = json.getString("ip"),
@@ -90,7 +117,7 @@ class NativeWarpCore : WarpCore {
         settings: WarpSettings,
     ): CoreResult<JobHandle> = io {
         val reply = JSONObject(
-            nativeTunnelStart(identity.handle, CorePayloads.tunnel(endpoint, settings)),
+            nativeTunnelStart(identity.handle, CorePayloads.tunnel(endpoint, echable(settings))),
         )
         if (!reply.optBoolean("ok")) {
             CoreResult.Err(reply.optString("error", "the core refused to start the tunnel"))
@@ -256,6 +283,12 @@ class NativeWarpCore : WarpCore {
     }
 
     companion object {
+        /** How the core says the ECH key could not be had (`tls::NO_ECH_KEY`). */
+        internal const val NO_ECH_KEY = "there is no ECH key to offer"
+
+        /** How long a network that hid the ECH key goes without asking again. */
+        private const val ECH_RETRY_MS = 10 * 60_000L
+
         /**
          * Whether both `libwarp.so` and the JNI shim loaded.
          *
