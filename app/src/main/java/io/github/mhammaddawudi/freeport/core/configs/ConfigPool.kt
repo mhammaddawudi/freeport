@@ -73,8 +73,19 @@ class ConfigPool(
 
     /** A config carried a session: told to the shared pool. */
     @Synchronized
-    fun markGood(link: ShareLink, delayMs: Long) {
-        pending += ConfigFeed.Report(link, ok = true, delayMs = delayMs)
+    fun markGood(link: ShareLink, delayMs: Long, kbps: Long = 0) {
+        pending += ConfigFeed.Report(link, ok = true, delayMs = delayMs, kbps = kbps)
+    }
+
+    /**
+     * A fresh download through [link], blended into what the pool knew, so
+     * the order follows how each config carries now, not hours ago.
+     */
+    fun noteSpeed(link: ShareLink, kbps: Long) {
+        synchronized(this) {
+            entries = entries.map { if (it.link.key == link.key) it.copy(kbps = blend(it.kbps, kbps)) else it }
+        }
+        save()
     }
 
     /** Sends what waits to the shared pool, over the bare line or through [socksPort]. */
@@ -175,7 +186,7 @@ class ConfigPool(
     /** How far one sieve goes: servers knocked, working configs sought, downloads measured. */
     private data class Depth(val knock: Int, val healthy: Int, val speedTested: Int, val windowMs: Long, val speedReserveMs: Long) {
         companion object {
-            val QUICK = Depth(knock = 600, healthy = 30, speedTested = 8, windowMs = 3_500, speedReserveMs = 35_000)
+            val QUICK = Depth(knock = 800, healthy = 40, speedTested = 12, windowMs = 3_000, speedReserveMs = 45_000)
         }
     }
 
@@ -190,7 +201,10 @@ class ConfigPool(
 
         /** A download this quick carries reels without stalling. */
         private const val FAST_KBPS = 400L
-        private val DEEP_WANT = Depth(knock = 1_200, healthy = 60, speedTested = 12, windowMs = 5_000, speedReserveMs = 70_000)
+        private val DEEP_WANT = Depth(knock = 2_000, healthy = 100, speedTested = 24, windowMs = 4_500, speedReserveMs = 120_000)
+
+        /** The newer reading counts most: a config's line changes through the day. */
+        internal fun blend(known: Long, fresh: Long): Long = if (known == 0L) fresh else (known + 2 * fresh) / 3
         private const val MIN_TEST_MS = 60_000L
         private const val MAX_POOLED = 60
         private const val MAX_FAILED_REPORTS = 40

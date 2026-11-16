@@ -67,14 +67,32 @@ class ConfigsTunnel(
                 helpers.forEach { runCatching { it.close() } }
             }
         }
+        // The quickest config that carries video now; a slower one that
+        // works is kept in hand in case nothing better turns up.
+        var fallback: Pair<ShareLink, Long>? = null
         for (link in pool.candidates(network).take(MAX_TRIES)) {
-            if (System.currentTimeMillis() - started > timeoutMs) break
-            if (tryLink(link, socksPort)) {
+            if (System.currentTimeMillis() - started > timeoutMs - TRY_RESERVE_MS / 2) break
+            val kbps = tryLink(link, socksPort)
+            when {
+                kbps == null -> pool.markFailed(network, link)
+                kbps >= GOOD_KBPS -> {
+                    current = link
+                    openedAt = System.currentTimeMillis()
+                    return@withContext null
+                }
+                else -> {
+                    log.info("[*] configs: ${link.label} carries only $kbps KB/s, looking for a quicker one")
+                    close()
+                    if (fallback == null || kbps > fallback.second) fallback = link to kbps
+                }
+            }
+        }
+        fallback?.let { (link, _) ->
+            if (tryLink(link, socksPort) != null) {
                 current = link
                 openedAt = System.currentTimeMillis()
                 return@withContext null
             }
-            pool.markFailed(network, link)
         }
         "no working config on this network"
     }
@@ -124,23 +142,26 @@ class ConfigsTunnel(
 
     override fun lastRttMs(): Long? = pool.bestDelay(NetworkKey.current(context))
 
-    private suspend fun tryLink(link: ShareLink, socksPort: Int): Boolean {
+    /** Serves [link] on [socksPort] and measures its download there; the speed, or null when it does not carry. */
+    private suspend fun tryLink(link: ShareLink, socksPort: Int): Long? {
         val started = xray.start(listOf(Xray.Route(link, socksPort)), "session", udp = true).getOrElse {
             log.warn("[-] configs: xray refused ${link.label}: ${it.message?.take(120)}")
-            return false
+            return null
         }
         val delay = tester.answers(socksPort)
         if (delay == null) {
             log.warn("[-] configs: ${link.label} did not answer")
             started.close()
-            return false
+            return null
         }
         running = started
-        log.good("[+] configs: carrying through ${link.label}, ${delay}ms")
-        pool.markGood(link, delay)
+        val kbps = ThroughputProbe.measure(socksPort, CHECK_BYTES, CHECK_WINDOW_MS)?.kbps ?: 0L
+        pool.noteSpeed(link, kbps)
+        log.good("[+] configs: ${link.label} answers in ${delay}ms, $kbps KB/s")
+        pool.markGood(link, delay, kbps)
         // The board is often filtered on the bare line; this session reaches it.
         Thread({ kotlinx.coroutines.runBlocking { pool.share(socksPort) } }, "configs-share").apply { isDaemon = true }.start()
-        return true
+        return kbps
     }
 
     override fun close() {
@@ -149,7 +170,12 @@ class ConfigsTunnel(
     }
 
     private companion object {
-        const val MAX_TRIES = 6
+        const val MAX_TRIES = 8
+        /** A config is checked for video speed before it carries the session. */
+        const val CHECK_BYTES = 1_500_000
+        const val CHECK_WINDOW_MS = 2_500L
+        /** Fast enough for reels; a config below this is passed over while others remain. */
+        const val GOOD_KBPS = 400L
         const val TRY_RESERVE_MS = 20_000L
         const val QUICK_DROP_MS = 5 * 60_000L
         const val BOOTSTRAP_MS = 60_000L

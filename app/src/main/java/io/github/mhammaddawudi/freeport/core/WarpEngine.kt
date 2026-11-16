@@ -484,12 +484,15 @@ class WarpEngine(
         // once more before leaving Cloudflare. Coming back from Psiphon, only
         // the known edges are tried, so a failed look costs seconds, not a scan.
         val rounds = if (returning) 1 else AUTO_ROUNDS
+        // Protocols that answered but did not carry this attempt: the next
+        // look passes over them, so MASQUE is not hidden behind WireGuard.
+        val failed = mutableSetOf<Protocol>()
         for (round in 1..rounds) {
             if (round > 1) {
                 log.info("[*] automatic: nothing answered; looking once more before leaving Cloudflare")
                 delay(AUTO_RECHECK_MS)
             }
-            findWarp(base, host, candidates, shared, identities, stalledAt, scan = !returning, round = round)?.let { outcome ->
+            findWarp(base, host, candidates, shared, identities, stalledAt, scan = !returning, round = round, failed = failed)?.let { outcome ->
                 if (outcome.connected) warpReturnMs = WARP_RETURN_MS
                 return outcome
             }
@@ -532,6 +535,7 @@ class WarpEngine(
         stalledAt: Map<Protocol, Long>,
         scan: Boolean,
         round: Int = 1,
+        failed: MutableSet<Protocol> = mutableSetOf(),
     ): Outcome? {
         val stalled = stalledAt.keys
         // The user waits on this: a known edge that carries ends the search at
@@ -628,7 +632,7 @@ class WarpEngine(
             compareBy<Map.Entry<Protocol, Endpoint>> { it.key in stalled }
                 .thenByDescending { if (it.key in stalled) 0L else expectedKbps(it.key) }
                 .thenBy { if (it.key in stalled) stalledAt[it.key] ?: 0L else it.value.rttMs },
-        ).map { it.key to it.value }
+        ).map { it.key to it.value }.filter { (protocol, _) -> protocol !in failed }
         if (ranked.isEmpty()) {
             return null
         }
@@ -641,19 +645,20 @@ class WarpEngine(
                 tuner.record(network, protocol, Recipe(missed.effectiveNoize, missed.masqueMtu), 0)
             }
         }
-        var last: Outcome? = null
         for ((protocol, endpoint) in ranked) {
             val chosen = candidates.getValue(protocol)
             log.good("[+] automatic: ${protocol.displayName} chosen (${endpoint.rttMs}ms)")
             core.applyEnvironment(chosen)
-            val outcome = runTunnel(identities.getValue(protocol), endpoint, chosen, host, viaAuto = true)
+            val outcome = runTunnel(identities.getValue(protocol), endpoint, chosen, host, AUTO_TUNNEL_STARTUP_MS, viaAuto = true)
             if (outcome.connected || outcome.rotate || outcome.refresh) return outcome
             log.warn("[-] automatic: ${protocol.displayName} answered but did not carry (${outcome.reason}), trying the next")
             cache.markStalled(cacheKey(chosen), System.currentTimeMillis())
             tuner.record(network, protocol, Recipe(chosen.effectiveNoize, chosen.masqueMtu), 0)
-            last = outcome
+            failed += protocol
         }
-        return last
+        // Every protocol found failed to carry: the next look, or the
+        // fallback, takes over instead of a reconnect from the top.
+        return null
     }
 
     /**
@@ -1313,6 +1318,11 @@ class WarpEngine(
         const val ATTEMPTS_PER_TRANSPORT = 2
         /** A direct tunnel should be serving within this long, or it is stuck. */
         const val TUNNEL_STARTUP_MS = 45_000L
+        /**
+         * Through Automatic, an edge that answered the scan but carries
+         * nothing within this is passed over for the next protocol.
+         */
+        const val AUTO_TUNNEL_STARTUP_MS = 20_000L
 
         /** The region-unlock exit listens this far above the tunnel's own port. */
         const val RELAY_PORT_OFFSET = 10
