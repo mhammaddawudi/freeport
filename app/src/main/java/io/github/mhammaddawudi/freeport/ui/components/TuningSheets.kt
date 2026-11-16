@@ -1,0 +1,113 @@
+package io.github.mhammaddawudi.freeport.ui.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import io.github.mhammaddawudi.freeport.R
+import io.github.mhammaddawudi.freeport.data.WarpSettings
+import io.github.mhammaddawudi.freeport.data.IpVersion
+import io.github.mhammaddawudi.freeport.ui.theme.WarpColors
+
+/** The three tuning choices that get their own sheet. */
+enum class TuningSheet { Noize, Ip }
+
+/**
+ * One sheet, shared by the connect screen's chips and the settings rows, so
+ * the same choice is never presented two different ways.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TuningSheetHost(
+    sheet: TuningSheet?,
+    settings: WarpSettings,
+    onUpdateSettings: ((WarpSettings) -> WarpSettings) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    if (sheet == null) return
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val close: () -> Unit = {
+        scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = WarpColors.Surface,
+        contentColor = WarpColors.Ink,
+        dragHandle = {
+            Box(
+                Modifier
+                    .padding(top = 12.dp, bottom = 8.dp)
+                    .size(width = 40.dp, height = 4.dp)
+                    .clip(CircleShape)
+                    .background(WarpColors.HairlineStrong),
+            )
+        },
+    ) {
+        Column(
+            Modifier
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+                .navigationBarsPadding(),
+        ) {
+            val (title, subtitle) = when (sheet) {
+                TuningSheet.Noize ->
+                    stringResource(R.string.sheet_noize_title) to stringResource(R.string.sheet_noize_subtitle)
+                TuningSheet.Ip ->
+                    stringResource(R.string.sheet_ip_title) to stringResource(R.string.sheet_ip_subtitle)
+            }
+            Text(title, style = MaterialTheme.typography.headlineSmall, color = WarpColors.Ink)
+            Spacer(Modifier.height(6.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = WarpColors.InkMuted)
+            Spacer(Modifier.height(16.dp))
+
+            when (sheet) {
+                TuningSheet.Noize -> settings.protocol.noizeProfiles.forEach { profile ->
+                    ChoiceRow(
+                        title = stringResource(profile.labelRes),
+                        description = stringResource(profile.descriptionRes),
+                        selected = profile == settings.effectiveNoize,
+                        accent = WarpColors.Control,
+                        onClick = {
+                            onUpdateSettings { it.copy(noize = profile) }
+                            close()
+                        },
+                    )
+                }
+
+                TuningSheet.Ip -> IpVersion.entries.forEach { version ->
+                    ChoiceRow(
+                        title = stringResource(version.labelRes),
+                        description = "",
+                        selected = version == settings.ipVersion,
+                        accent = WarpColors.Control,
+                        onClick = {
+                            onUpdateSettings { it.copy(ipVersion = version) }
+                            close()
+                        },
+                    )
+                }
+            }
+        }
+    }
+}

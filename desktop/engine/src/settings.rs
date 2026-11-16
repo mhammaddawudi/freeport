@@ -133,18 +133,7 @@ impl Settings {
     /// and the obfuscation, packet size and ClientHello split the tuner
     /// learns from measured speed. Older saves and the window cannot pin them.
     pub fn automatic(self) -> Settings {
-        let defaults = Settings::default();
-        Settings {
-            scan_mode: defaults.scan_mode,
-            noize: defaults.noize,
-            ip_version: defaults.ip_version,
-            fetch_ech: defaults.fetch_ech,
-            keepalive_secs: defaults.keepalive_secs,
-            fragment: defaults.fragment,
-            pinned_peer: defaults.pinned_peer,
-            auto_tune: true,
-            ..self
-        }
+        Settings { scan_mode: Settings::default().scan_mode, ..self }
     }
 
     /// Brings choices saved by an older build up to date.
@@ -202,16 +191,16 @@ mod tests {
     }
 
     #[test]
-    fn engine_choices_are_always_automatic() {
-        let pinned: Settings = serde_json::from_str(
+    fn only_the_scan_is_forced() {
+        let chosen: Settings = serde_json::from_str(
             r#"{"scan_mode":"ironclad","noize":"gfw","fragment":true,"pinned_peer":"1.2.3.4:5","auto_tune":false,"tun":true,"revision":1}"#,
         )
         .unwrap();
-        let auto = pinned.automatic();
+        let auto = chosen.automatic();
         assert_eq!(auto.scan_mode, ScanMode::Smart);
-        assert!(auto.auto_tune && !auto.fragment && auto.pinned_peer.is_empty());
-        assert_eq!(auto.noize, Settings::default().noize);
-        assert!(auto.tun, "routing choices stay the person's");
+        assert!(!auto.auto_tune && auto.fragment && auto.pinned_peer == "1.2.3.4:5");
+        assert!(auto.tun);
+        assert!(Settings::default().auto_tune, "a fresh install starts automatic");
     }
 
     #[test]

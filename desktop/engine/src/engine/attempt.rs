@@ -347,7 +347,7 @@ impl Engine {
         if recipe != tuner::Recipe::plain(settings.effective_noize()) {
             log::info!(target: "freeport", "[*] tuning: {} with {recipe:?}", settings.protocol.name());
         }
-        Settings { noize: recipe.noize, masque_mtu: recipe.masque_mtu, fragment: recipe.fragment, ..settings.clone() }
+        Settings { noize: recipe.noize, masque_mtu: recipe.masque_mtu, fragment: settings.fragment || recipe.fragment, ..settings.clone() }
     }
 
     async fn shared(&self, protocol: Protocol, settings: &Settings) -> Vec<SharedEdge> {

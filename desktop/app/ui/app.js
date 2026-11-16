@@ -18,6 +18,11 @@ const PROTOCOLS = [
 // V2Ray, Psiphon and Tor leave on their own: region unlock has nothing to ride on.
 const DIRECT = ["v2ray", "psiphon", "tor"];
 const COUNTRIES = ["", "DE", "NL", "US", "GB", "FR", "CA", "SE", "CH", "JP", "SG"];
+const NOIZE = {
+  wg: ["amnezia", "off", "light", "balanced", "aggressive"],
+  masque: ["off", "light", "firewall", "gfw"],
+};
+const IP_VERSIONS = ["v4", "v6", "both"];
 const PREFS_KEY = "freeport.prefs";
 
 const state = { status: { phase: "idle" }, settings: null, traffic: null, rates: { up: 0, down: 0 }, connectedAt: null, tab: "home", reach: {}, probing: false };
@@ -60,6 +65,9 @@ function toast(text) {
   toast.timer = setTimeout(() => { node.hidden = true; }, 3200);
 }
 
+function capitalize(word) {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -247,12 +255,16 @@ function renderSettings() {
   renderLan();
   const s = state.settings;
   if (!s) return;
+  const transport = s.protocol === "wire-guard" || s.protocol === "gool" ? "wg" : "masque";
+  fillSelect(document.querySelector('[data-setting="noize"]'), NOIZE[transport], (v) => (v === "amnezia" ? "AmneziaWG" : v === "gfw" ? "GFW" : capitalize(v)));
   document.querySelectorAll("[data-setting]").forEach((input) => {
     const value = s[input.dataset.setting];
     if (input.type === "checkbox") input.checked = !!value;
     else input.value = value ?? "";
   });
+  if (!NOIZE[transport].includes(s.noize)) document.querySelector('[data-setting="noize"]').value = NOIZE[transport][0];
   $("unlock").checked = s.region_unlock;
+  $("noize-row").classList.toggle("muted", !!s.auto_tune);
   const direct = DIRECT.includes(s.protocol);
   $("unlock").disabled = direct;
   $("unlock").closest(".card, .row, label")?.classList.toggle("muted", direct);
@@ -271,6 +283,15 @@ function readSettings() {
   return next;
 }
 
+// Settings the session reads at connect: a change reconnects a live session.
+const SESSION_KEYS = ["noize", "ip_version", "fetch_ech", "fragment", "keepalive_secs", "pinned_peer", "auto_tune"];
+
+async function applySettings(next) {
+  const before = state.settings;
+  await saveSettings(next);
+  const changed = SESSION_KEYS.some((key) => before[key] !== state.settings[key]);
+  if (changed && state.status.phase === "connected") await invoke("connect").catch((e) => toast(String(e)));
+}
 
 async function saveSettings(next, announce = true) {
   try {
@@ -358,9 +379,11 @@ function wire(prefs) {
   document.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () => invoke("open_link", { url: b.dataset.link }).catch((e) => toast(String(e)))));
   $("unlock").addEventListener("change", (e) => saveSettings({ ...state.settings, region_unlock: e.target.checked }, false));
   $("country").addEventListener("change", (e) => saveSettings({ ...state.settings, exit_country: e.target.value, region_unlock: true }, false));
-  $("apply-network").addEventListener("click", () => saveSettings(readSettings()));
+  $("save").addEventListener("click", () => applySettings(readSettings()));
+  $("apply-network").addEventListener("click", () => applySettings(readSettings()));
   document.querySelector('[data-setting="tun"]').addEventListener("change", () => saveSettings(readSettings(), false));
   document.querySelector('[data-setting="lan_share"]').addEventListener("change", async () => { await saveSettings(readSettings(), false); renderLan(); });
+  document.querySelector('[data-setting="auto_tune"]').addEventListener("change", () => saveSettings(readSettings(), false));
   document.querySelector('[data-setting="system_proxy"]').addEventListener("change", () => saveSettings(readSettings(), false));
   $("copy-logs").addEventListener("click", async () => {
     await navigator.clipboard.writeText($("logs").innerText).catch(() => {});
@@ -386,6 +409,7 @@ function wire(prefs) {
 
 function fillStaticSelects() {
   fillSelect($("country"), COUNTRIES, countryLabel);
+  fillSelect(document.querySelector('[data-setting="ip_version"]'), IP_VERSIONS, (v) => ({ v4: "IPv4", v6: "IPv6", both: "IPv4 + IPv6" })[v]);
   fillSelect($("language"), Object.keys(LANGUAGES), (v) => LANGUAGES[v].label);
   fillSelect($("theme"), ["dark", "light", "system"], (v) => t(`theme_${v}`));
   const prefs = loadPrefs();

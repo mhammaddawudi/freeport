@@ -412,7 +412,7 @@ class WarpEngine(
         if (!settings.autoTune || settings.protocol.noizeProfiles.isEmpty() || settings.protocol == Protocol.Auto) return settings
         val recipe = tuner.recipeFor(network, settings.protocol, settings.effectiveNoize)
         if (recipe != Recipe(settings.effectiveNoize)) log.info("[*] tuning: ${settings.protocol.displayName} with ${recipe.id} on this network")
-        return settings.copy(noize = recipe.noize, masqueMtu = recipe.masqueMtu, fragmentEnabled = recipe.fragment)
+        return settings.copy(noize = recipe.noize, masqueMtu = recipe.masqueMtu, fragmentEnabled = settings.fragmentEnabled || recipe.fragment)
     }
 
     /** What Automatic expects of [protocol] here: its measured best, or a prior. */

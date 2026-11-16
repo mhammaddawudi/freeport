@@ -50,25 +50,11 @@ data class WarpSettings(
         }
 
     /**
-     * Everything but where traffic goes is Freeport's to choose: the scan,
-     * and the obfuscation, packet size and ClientHello split the tuner
-     * learns from measured speed on each network. Older saves cannot pin them.
+     * The scan is Freeport's to choose and is not offered; older saves cannot
+     * pin another. The rest starts automatic (the tuner learns obfuscation,
+     * packet size and ClientHello split per network) and stays editable.
      */
-    fun automatic(): WarpSettings {
-        val defaults = WarpSettings()
-        return copy(
-            scanMode = defaults.scanMode,
-            noize = defaults.noize,
-            autoTune = true,
-            ipVersion = defaults.ipVersion,
-            fetchEch = defaults.fetchEch,
-            keepaliveSeconds = defaults.keepaliveSeconds,
-            fragmentEnabled = defaults.fragmentEnabled,
-            fragmentSize = defaults.fragmentSize,
-            fragmentDelayMs = defaults.fragmentDelayMs,
-            pinnedPeer = defaults.pinnedPeer,
-        )
-    }
+    fun automatic(): WarpSettings = copy(scanMode = WarpSettings().scanMode)
 
     companion object {
         const val DEFAULT_SOCKS_PORT = 1819
