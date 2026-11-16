@@ -132,16 +132,20 @@ pub enum ScanMode {
     Thorough,
     Stealth,
     Ironclad,
+    /// Freeport's own: wide like a deep scan, back a few seconds after the
+    /// first answer like a quick one. The only mode the app uses.
+    Smart,
 }
 
 impl ScanMode {
-    pub const ALL: [ScanMode; 6] = [
+    pub const ALL: [ScanMode; 7] = [
         ScanMode::Swift,
         ScanMode::Turbo,
         ScanMode::Balanced,
         ScanMode::Thorough,
         ScanMode::Stealth,
         ScanMode::Ironclad,
+        ScanMode::Smart,
     ];
 
     pub fn wire(self) -> &'static str {
@@ -152,6 +156,7 @@ impl ScanMode {
             ScanMode::Thorough => "thorough",
             ScanMode::Stealth => "stealth",
             ScanMode::Ironclad => "ironclad",
+            ScanMode::Smart => "smart",
         }
     }
 
@@ -159,7 +164,7 @@ impl ScanMode {
     /// noticeably slower first hops for it.
     pub fn wire_for(self, protocol: Protocol) -> &'static str {
         match (protocol, self) {
-            (Protocol::Gool, ScanMode::Swift) => ScanMode::Balanced.wire(),
+            (Protocol::Gool, ScanMode::Swift | ScanMode::Smart) => ScanMode::Balanced.wire(),
             _ => self.wire(),
         }
     }

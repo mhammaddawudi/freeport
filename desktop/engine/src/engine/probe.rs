@@ -17,7 +17,7 @@ pub const NO_ANSWER: i64 = -1;
 /// A scan may take this long on a slow line; running out keeps the last figure.
 const LANE: Duration = Duration::from_secs(30);
 /// Cloudflare's published MASQUE edges: a TCP connect to them is H2's quick ping.
-const MASQUE_EDGES: [&str; 2] = ["162.159.198.1:443", "162.159.198.2:443"];
+pub(crate) const MASQUE_EDGES: [&str; 2] = ["162.159.198.1:443", "162.159.198.2:443"];
 
 impl Engine {
     /// Each protocol's last round trip, and whether a ping is running.
@@ -95,6 +95,18 @@ impl Engine {
             _ => {}
         }
     }
+}
+
+/// The edge of `edges` that accepts a TCP connect soonest, all knocked at once.
+pub(crate) async fn quickest_edge(edges: &[std::net::SocketAddr]) -> Option<warp::api::Endpoint> {
+    let knocks = edges.iter().map(|edge| async move {
+        let started = std::time::Instant::now();
+        match timeout(Duration::from_secs(3), tokio::net::TcpStream::connect(*edge)).await {
+            Ok(Ok(_)) => Some(warp::api::Endpoint { ip: edge.ip(), port: edge.port(), rtt_ms: started.elapsed().as_millis().max(1) as u64 }),
+            _ => None,
+        }
+    });
+    futures::future::join_all(knocks).await.into_iter().flatten().min_by_key(|e| e.rtt_ms)
 }
 
 /// The quickest TCP connect to a MASQUE edge, all at once; about one round trip.

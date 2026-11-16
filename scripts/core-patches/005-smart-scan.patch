@@ -1,0 +1,91 @@
+--- a/warp/src/prober.rs
++++ b/warp/src/prober.rs
+@@ -476,6 +476,9 @@
+     Thorough,
+     Verified,
+     Ironclad,
++    /// Wide and quick at once: many probes over a large sample, returning a
++    /// few seconds after the first answer or once a handful are in hand.
++    Smart,
+ }
+ 
+ impl ScanMode {
+@@ -486,6 +489,7 @@
+             "thorough" | "deep" | "pro" => ScanMode::Thorough,
+             "verified" | "proven" | "stealth" | "quiet" => ScanMode::Verified,
+             "ironclad" | "real" | "verify" | "guaranteed" => ScanMode::Ironclad,
++            "smart" | "auto" => ScanMode::Smart,
+             _ => ScanMode::Balanced,
+         }
+     }
+@@ -498,6 +502,7 @@
+             ScanMode::Thorough => "thorough",
+             ScanMode::Verified => "verified",
+             ScanMode::Ironclad => "ironclad",
++            ScanMode::Smart => "smart",
+         }
+     }
+ 
+@@ -566,6 +571,16 @@
+                 full_subnet: false,
+                 sample_per_cidr: 140,
+             },
++            ScanMode::Smart => Strategy {
++                concurrency: 32,
++                per_probe_timeout: Duration::from_millis(5000),
++                overall_deadline: Duration::from_secs(90),
++                quiet_after_first: Duration::from_millis(3000),
++                target_successes: 4,
++                early_exit_first: false,
++                full_subnet: false,
++                sample_per_cidr: 200,
++            },
+         }
+     }
+ }
+--- a/warp/src/wg_prober.rs
++++ b/warp/src/wg_prober.rs
+@@ -26,6 +26,9 @@
+     Thorough,
+     Verified,
+     Ironclad,
++    /// Wide and quick at once: many probes over a large sample, returning a
++    /// few seconds after the first answer or once a handful are in hand.
++    Smart,
+ }
+ 
+ impl WgScanMode {
+@@ -36,6 +39,7 @@
+             "thorough" | "deep" | "pro" => WgScanMode::Thorough,
+             "verified" | "proven" | "stealth" | "quiet" => WgScanMode::Verified,
+             "ironclad" | "real" | "verify" | "guaranteed" => WgScanMode::Ironclad,
++            "smart" | "auto" => WgScanMode::Smart,
+             _ => WgScanMode::Balanced,
+         }
+     }
+@@ -48,6 +52,7 @@
+             WgScanMode::Thorough => "thorough",
+             WgScanMode::Verified => "verified",
+             WgScanMode::Ironclad => "ironclad",
++            WgScanMode::Smart => "smart",
+         }
+     }
+ 
+@@ -119,6 +124,17 @@
+                 early_exit_first: false,
+                 full_subnet: false,
+                 sample_per_cidr: 120,
++                pool_port_waves: 3,
++            },
++            WgScanMode::Smart => WgStrategy {
++                concurrency: 16,
++                per_probe_timeout: Duration::from_millis(5000),
++                overall_deadline: Duration::from_secs(60),
++                quiet_after_first: Duration::from_millis(3000),
++                target_successes: 4,
++                early_exit_first: false,
++                full_subnet: false,
++                sample_per_cidr: 160,
+                 pool_port_waves: 3,
+             },
+         }

@@ -44,9 +44,11 @@ const LATENCY_EVERY: Duration = Duration::from_secs(15);
 const LATENCY_KEPT: usize = 60;
 
 /// Long enough for a few rounds of H2 probes on a line with 2s round trips.
-const AUTO_LANE: Duration = Duration::from_secs(8);
+/// The Smart scan returns a few seconds after its first answer, so this is
+/// enough for H2 on a line with multi-second round trips.
+const AUTO_LANE: Duration = Duration::from_secs(12);
 const AUTO_PING: Duration = Duration::from_secs(20);
-const AUTO_GRACE: Duration = Duration::from_millis(2_500);
+const AUTO_GRACE: Duration = Duration::from_millis(4_000);
 const MAX_KNOWN_TRIES: usize = 2;
 /// Through Automatic a remembered edge either carries at once or is passed over.
 const AUTO_REMEMBERED_STARTUP: Duration = Duration::from_secs(8);
@@ -54,7 +56,7 @@ const AUTO_REMEMBERED_STARTUP: Duration = Duration::from_secs(8);
 /// over: some networks let WireGuard's handshake by and drop the rest.
 const AUTO_TUNNEL_STARTUP: Duration = Duration::from_secs(20);
 /// The second look at protocols the first round cut short.
-const AUTO_SECOND_LANE: Duration = Duration::from_secs(15);
+const AUTO_SECOND_LANE: Duration = Duration::from_secs(20);
 const SHARED_FETCH: Duration = Duration::from_secs(4);
 
 /// Enough to see whether an edge carries video, cheap enough for every connection.
@@ -186,7 +188,7 @@ impl Engine {
                     // later connections back from the edges known here.
                     if self.tuner.measured(*protocol).is_none() {
                         let missed = self.tuned(&base.with_protocol(*protocol));
-                        self.tuner.record(*protocol, tuner::Recipe { noize: missed.effective_noize(), masque_mtu: missed.masque_mtu }, 0);
+                        self.tuner.record(*protocol, tuner::Recipe::of(&missed), 0);
                     }
                 }
             }
@@ -248,7 +250,28 @@ impl Engine {
                     found
                 })
             });
-        race([wg_lane, masque], lane + AUTO_PING - AUTO_LANE).await
+        // HTTP/2 rides TCP 443: a connect to its known edges answers in about
+        // a round trip, so it is never left out behind a slower scan.
+        let h2_knock = identity_of(Protocol::MasqueH2).map(|_| {
+            let edges: Vec<std::net::SocketAddr> = self
+                .cache
+                .recall(Protocol::MasqueH2, base.ip_version)
+                .map(|e| e.socket())
+                .into_iter()
+                .chain(super::probe::MASQUE_EDGES.iter().filter_map(|e| e.parse().ok()))
+                .filter(|edge| !self.slow.lock().contains(edge))
+                .collect();
+            tokio::spawn(async move {
+                match super::probe::quickest_edge(&edges).await {
+                    Some(endpoint) => {
+                        log::info!(target: "freeport", "[+] {} edge {} accepts in {}ms", Protocol::MasqueH2.name(), endpoint.socket(), endpoint.rtt_ms);
+                        vec![(Protocol::MasqueH2, endpoint)]
+                    }
+                    None => Vec::new(),
+                }
+            })
+        });
+        race([h2_knock, wg_lane, masque], lane + AUTO_PING - AUTO_LANE).await
     }
 
     /// Opens the protocols found, best first, until one carries. A protocol
@@ -283,7 +306,7 @@ impl Engine {
             }
             log::warn!(target: "freeport", "[-] automatic: {} answered but did not carry ({}), trying the next", protocol.name(), outcome.reason);
             if !outcome.rotate {
-                self.tuner.record(protocol, tuner::Recipe { noize: chosen.effective_noize(), masque_mtu: chosen.masque_mtu }, 0);
+                self.tuner.record(protocol, tuner::Recipe::of(&chosen), 0);
             }
             let mut benched = self.benched.lock();
             if !benched.contains(&protocol) {
@@ -323,7 +346,7 @@ impl Engine {
         if recipe != tuner::Recipe::plain(settings.effective_noize()) {
             log::info!(target: "freeport", "[*] tuning: {} with {recipe:?}", settings.protocol.name());
         }
-        Settings { noize: recipe.noize, masque_mtu: recipe.masque_mtu, ..settings.clone() }
+        Settings { noize: recipe.noize, masque_mtu: recipe.masque_mtu, fragment: recipe.fragment, ..settings.clone() }
     }
 
     async fn shared(&self, protocol: Protocol, settings: &Settings) -> Vec<SharedEdge> {
@@ -621,7 +644,7 @@ impl Engine {
             // Refreshes the kept list through the tunnel for the next start.
             let _ = board::fetch(protocol, ip, Some(port)).await;
         });
-        self.tuner.record(settings.protocol, tuner::Recipe { noize: settings.effective_noize(), masque_mtu: settings.masque_mtu }, measured.kbps);
+        self.tuner.record(settings.protocol, tuner::Recipe::of(&settings), measured.kbps);
         if measured.kbps >= SLOW_KBPS {
             return None;
         }

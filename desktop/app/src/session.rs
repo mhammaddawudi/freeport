@@ -99,6 +99,7 @@ impl Session {
     /// changed. Returns true when this started the engine for the first time
     /// (the saved ports were taken at launch), so the caller can watch it.
     pub async fn save(&self, settings: Settings) -> Result<bool> {
+        let settings = settings.automatic();
         validate(&settings)?;
         let before = self.settings();
         let moved = (before.socks_port, before.http_port) != (settings.socks_port, settings.http_port);

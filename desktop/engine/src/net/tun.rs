@@ -21,6 +21,20 @@ pub fn is_available() -> bool {
     !SINGBOX.is_empty()
 }
 
+/// Cloudflare's WARP edges, which carry nothing else: Freeport's own
+/// tunnel to them must never loop back into the interface, and the process
+/// rule alone misses UDP on macOS (WireGuard, MASQUE over HTTP/3).
+const WARP_ONLY: [&str; 6] = [
+    "162.159.192.0/22",
+    "162.159.197.0/24",
+    "162.159.198.0/23",
+    "2606:4700:d0::/48",
+    "2606:4700:d1::/48",
+    "2606:4700:102::/48",
+];
+/// Shared with websites, so only its UDP — WireGuard's edges there — is left direct.
+const WARP_SHARED_UDP: [&str; 1] = ["188.114.96.0/22"];
+
 /// What goes through the interface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Scope {
@@ -48,8 +62,10 @@ pub fn config(socks_port: u16, scope: &Scope, own: &[String]) -> Value {
         json!({ "protocol": "dns", "action": "hijack-dns" }),
         json!({ "process_path_regex": own_rule, "outbound": "direct" }),
         json!({ "ip_is_private": true, "outbound": "direct" }),
+        json!({ "ip_cidr": WARP_ONLY, "outbound": "direct" }),
         // QUIC would ride the SOCKS relay badly; refused, browsers fall back to TCP at once.
         json!({ "network": "udp", "port": 443, "action": "reject" }),
+        json!({ "ip_cidr": WARP_SHARED_UDP, "network": "udp", "outbound": "direct" }),
     ];
     let mut dns_rules = Vec::new();
     if let Some(apps) = &proxied {
@@ -444,6 +460,16 @@ mod tests {
         let rules = value["route"]["rules"].as_array().unwrap();
         assert_eq!(rules.last().unwrap()["outbound"], "proxy");
         assert_eq!(value["dns"]["rules"][0]["server"], "remote");
+    }
+
+    #[test]
+    fn warp_edges_never_loop_into_the_interface() {
+        let value = config(1819, &Scope::Everything, &[]);
+        let rules = value["route"]["rules"].as_array().unwrap();
+        let warp = rules.iter().position(|r| r["ip_cidr"][0] == "162.159.192.0/22").unwrap();
+        let reject = rules.iter().position(|r| r["action"] == "reject").unwrap();
+        assert!(warp < reject, "H3 to the WARP edges must not meet the QUIC refusal");
+        assert_eq!(rules[warp]["outbound"], "direct");
     }
 
     #[test]

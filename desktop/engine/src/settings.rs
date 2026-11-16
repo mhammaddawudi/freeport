@@ -73,7 +73,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             protocol: Protocol::Auto,
-            scan_mode: ScanMode::Balanced,
+            scan_mode: ScanMode::Smart,
             noize: Noize::Firewall,
             ip_version: IpVersion::V4,
             socks_port: 1819,
@@ -120,12 +120,30 @@ impl Settings {
         let saved: Option<Settings> = fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str(&text).ok());
         match saved {
             Some(settings) if settings.revision < REVISION => {
-                let upgraded = settings.upgrade();
+                let upgraded = settings.upgrade().automatic();
                 let _ = upgraded.save();
                 upgraded
             }
-            Some(settings) => settings,
+            Some(settings) => settings.automatic(),
             None => Settings::default(),
+        }
+    }
+
+    /// Everything but where traffic goes is Freeport's to choose: the scan,
+    /// and the obfuscation, packet size and ClientHello split the tuner
+    /// learns from measured speed. Older saves and the window cannot pin them.
+    pub fn automatic(self) -> Settings {
+        let defaults = Settings::default();
+        Settings {
+            scan_mode: defaults.scan_mode,
+            noize: defaults.noize,
+            ip_version: defaults.ip_version,
+            fetch_ech: defaults.fetch_ech,
+            keepalive_secs: defaults.keepalive_secs,
+            fragment: defaults.fragment,
+            pinned_peer: defaults.pinned_peer,
+            auto_tune: true,
+            ..self
         }
     }
 
@@ -181,6 +199,19 @@ mod tests {
         assert_eq!(upgraded.revision, REVISION);
         let chosen: Settings = serde_json::from_str(r#"{"scan_mode":"turbo","revision":1}"#).unwrap();
         assert_eq!(chosen.scan_mode, ScanMode::Turbo);
+    }
+
+    #[test]
+    fn engine_choices_are_always_automatic() {
+        let pinned: Settings = serde_json::from_str(
+            r#"{"scan_mode":"ironclad","noize":"gfw","fragment":true,"pinned_peer":"1.2.3.4:5","auto_tune":false,"tun":true,"revision":1}"#,
+        )
+        .unwrap();
+        let auto = pinned.automatic();
+        assert_eq!(auto.scan_mode, ScanMode::Smart);
+        assert!(auto.auto_tune && !auto.fragment && auto.pinned_peer.is_empty());
+        assert_eq!(auto.noize, Settings::default().noize);
+        assert!(auto.tun, "routing choices stay the person's");
     }
 
     #[test]

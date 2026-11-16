@@ -29,18 +29,29 @@ pub const WIDE_H3_MTU: u16 = 1350;
 pub struct Recipe {
     pub noize: Noize,
     pub masque_mtu: u16,
+    /// HTTP/2 only: the TLS ClientHello split across packets.
+    pub fragment: bool,
 }
 
 impl Recipe {
     pub fn plain(noize: Noize) -> Recipe {
-        Recipe { noize, masque_mtu: 0 }
+        Recipe { noize, masque_mtu: 0, fragment: false }
+    }
+
+    /// The recipe `settings` were tuned to.
+    pub fn of(settings: &crate::settings::Settings) -> Recipe {
+        Recipe { noize: settings.effective_noize(), masque_mtu: settings.masque_mtu, fragment: settings.fragment }
     }
 
     fn id(&self) -> String {
-        match self.masque_mtu {
-            0 => self.noize.wire().to_string(),
-            mtu => format!("{}+mtu{mtu}", self.noize.wire()),
+        let mut id = self.noize.wire().to_string();
+        if self.masque_mtu > 0 {
+            id.push_str(&format!("+mtu{}", self.masque_mtu));
         }
+        if self.fragment {
+            id.push_str("+frag");
+        }
+        id
     }
 }
 
@@ -53,7 +64,11 @@ pub fn recipes(protocol: Protocol, preferred: Noize) -> Vec<Recipe> {
     noizes.extend(EXPLORE.iter().copied().filter(|n| choices.contains(n) && *n != first));
     let mut all: Vec<Recipe> = noizes.into_iter().map(Recipe::plain).collect();
     if protocol == Protocol::MasqueH3 {
-        all.push(Recipe { noize: first, masque_mtu: WIDE_H3_MTU });
+        all.push(Recipe { noize: first, masque_mtu: WIDE_H3_MTU, fragment: false });
+    }
+    // A split ClientHello gets HTTP/2 past filters that read the server name.
+    if protocol == Protocol::MasqueH2 {
+        all.push(Recipe { noize: first, masque_mtu: 0, fragment: true });
     }
     all
 }
@@ -175,10 +190,21 @@ mod tests {
         for noize in [Noize::Firewall, Noize::Off, Noize::Light] {
             tuner.record_at(Protocol::MasqueH3, plain(noize), 400, 10);
         }
-        let wide = Recipe { noize: Noize::Firewall, masque_mtu: WIDE_H3_MTU };
+        let wide = Recipe { noize: Noize::Firewall, masque_mtu: WIDE_H3_MTU, fragment: false };
         assert_eq!(tuner.recipe_at(Protocol::MasqueH3, Noize::Firewall, 10), wide);
         tuner.record_at(Protocol::MasqueH3, wide, 1_200, 10);
         assert_eq!(tuner.expected_at(Protocol::MasqueH3, 10), 1_200);
+    }
+
+    #[test]
+    fn http2_also_measures_a_split_client_hello() {
+        let tuner = Tuner::default();
+        for noize in [Noize::Firewall, Noize::Off, Noize::Light] {
+            tuner.record_at(Protocol::MasqueH2, plain(noize), 400, 10);
+        }
+        let split = Recipe { noize: Noize::Firewall, masque_mtu: 0, fragment: true };
+        assert_eq!(tuner.recipe_at(Protocol::MasqueH2, Noize::Firewall, 10), split);
+        assert_eq!(split.id(), "firewall+frag");
     }
 
     #[test]
