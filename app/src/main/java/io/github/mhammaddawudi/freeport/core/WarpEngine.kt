@@ -463,6 +463,8 @@ class WarpEngine(
             is CoreResult.Ok -> scanned.value
             is CoreResult.Err -> {
                 noteReach(protocol, NO_ANSWER)
+                // Counted against this recipe, so the tuner moves off one the network blocks.
+                tuner.record(network, protocol, Recipe(settings.effectiveNoize, settings.masqueMtu, settings.fragmentEnabled), 0)
                 return Outcome("scan: ${scanned.message}")
             }
         }
@@ -1181,7 +1183,9 @@ class WarpEngine(
         baseline = kbps
         tuner.record(network, settings.protocol, Recipe(settings.effectiveNoize, settings.masqueMtu, settings.fragmentEnabled), kbps)
         val bar = if (warms) WARM_SLOW_KBPS else SLOW_KBPS
-        if (kbps >= bar || settling || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
+        // Automatic keeps what it found: the person should not wait through
+        // another search, and the scout swaps in a faster edge in the background.
+        if (kbps >= bar || settling || viaAuto || rotations >= MAX_ROTATIONS || settings.pinnedPeer.isNotBlank()) return null
         if (kbps > (bestSlow?.kbps ?: 0L)) bestSlow = SlowEdge(settings, endpoint, kbps, viaAuto)
         rotations++
         slowEdges += endpoint.socket

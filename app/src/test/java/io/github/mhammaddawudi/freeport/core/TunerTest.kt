@@ -16,19 +16,29 @@ class TunerTest {
     }
 
     @Test
-    fun `a slow profile makes way for an unmeasured lighter one`() {
+    fun `wireguard keeps its disguise even when slow`() {
         tuner.record("m43211", Protocol.WireGuard, Recipe(NoizeProfile.Amnezia), 300)
-        assertEquals(Recipe(NoizeProfile.Off), tuner.recipeFor("m43211", Protocol.WireGuard, NoizeProfile.Amnezia))
-        tuner.record("m43211", Protocol.WireGuard, Recipe(NoizeProfile.Off), 0)
-        assertEquals(Recipe(NoizeProfile.Light), tuner.recipeFor("m43211", Protocol.WireGuard, NoizeProfile.Amnezia))
+        assertEquals(Recipe(NoizeProfile.Amnezia), tuner.recipeFor("m43211", Protocol.WireGuard, NoizeProfile.Amnezia))
     }
 
     @Test
-    fun `once every profile is measured the fastest wins`() {
-        listOf(NoizeProfile.Amnezia to 300L, NoizeProfile.Off to 0L, NoizeProfile.Light to 900L)
-            .forEach { (noize, kbps) -> tuner.record("w", Protocol.WireGuard, Recipe(noize), kbps) }
-        assertEquals(Recipe(NoizeProfile.Light), tuner.recipeFor("w", Protocol.WireGuard, NoizeProfile.Amnezia))
-        assertEquals(900L, tuner.speedOf("w", Protocol.WireGuard))
+    fun `a blocked default does not send masque to lighter profiles`() {
+        tuner.record("m43211", Protocol.MasqueH2, Recipe(NoizeProfile.Firewall), 0)
+        assertEquals(Recipe(NoizeProfile.Firewall, fragment = true), tuner.recipeFor("m43211", Protocol.MasqueH2, NoizeProfile.Firewall))
+        tuner.record("m43211", Protocol.MasqueH2, Recipe(NoizeProfile.Firewall, fragment = true), 0)
+        assertEquals(Recipe(NoizeProfile.Firewall), tuner.recipeFor("m43211", Protocol.MasqueH2, NoizeProfile.Firewall))
+    }
+
+    @Test
+    fun `a slow masque profile makes way for a lighter one, and the fastest wins`() {
+        tuner.record("w", Protocol.MasqueH2, Recipe(NoizeProfile.Firewall), 300)
+        assertEquals(Recipe(NoizeProfile.Off), tuner.recipeFor("w", Protocol.MasqueH2, NoizeProfile.Firewall))
+        tuner.record("w", Protocol.MasqueH2, Recipe(NoizeProfile.Off), 0)
+        assertEquals(Recipe(NoizeProfile.Light), tuner.recipeFor("w", Protocol.MasqueH2, NoizeProfile.Firewall))
+        tuner.record("w", Protocol.MasqueH2, Recipe(NoizeProfile.Light), 900)
+        tuner.record("w", Protocol.MasqueH2, Recipe(NoizeProfile.Firewall, fragment = true), 200)
+        assertEquals(Recipe(NoizeProfile.Light), tuner.recipeFor("w", Protocol.MasqueH2, NoizeProfile.Firewall))
+        assertEquals(900L, tuner.speedOf("w", Protocol.MasqueH2))
     }
 
     @Test

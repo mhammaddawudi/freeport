@@ -61,7 +61,11 @@ pub fn recipes(protocol: Protocol, preferred: Noize) -> Vec<Recipe> {
     let choices = protocol.noize_choices();
     let first = if choices.contains(&preferred) { preferred } else { choices[0] };
     let mut noizes = vec![first];
-    noizes.extend(EXPLORE.iter().copied().filter(|n| choices.contains(n) && *n != first));
+    // Plain WireGuard is fingerprinted where it is filtered at all, so it
+    // keeps its disguise; only MASQUE has lighter profiles to try.
+    if protocol != Protocol::WireGuard {
+        noizes.extend(EXPLORE.iter().copied().filter(|n| choices.contains(n) && *n != first));
+    }
     let mut all: Vec<Recipe> = noizes.into_iter().map(Recipe::plain).collect();
     if protocol == Protocol::MasqueH3 {
         all.push(Recipe { noize: first, masque_mtu: WIDE_H3_MTU, fragment: false });
@@ -121,10 +125,19 @@ impl Tuner {
         let tries = recipes(protocol, preferred);
         let measured: Vec<(Recipe, Option<u64>)> = tries.iter().map(|r| (*r, self.read(&key(protocol, *r), at))).collect();
         let best = measured.iter().filter_map(|(r, k)| k.map(|k| (*r, k))).max_by_key(|(_, k)| *k);
-        match best {
-            Some((recipe, kbps)) if kbps >= GOOD_KBPS => recipe,
-            _ => measured.iter().find(|(_, k)| k.is_none()).map(|(r, _)| *r).or(best.map(|(r, _)| r)).unwrap_or(tries[0]),
+        if let Some((recipe, kbps)) = best.filter(|(_, k)| *k >= GOOD_KBPS) {
+            return recipe;
         }
+        // Lighter obfuscation is only worth a look once the protocol is known
+        // to get through here; before that it is the likeliest to be blocked.
+        let works = best.is_some_and(|(_, k)| k > 0);
+        measured
+            .iter()
+            .filter(|(r, _)| works || r.noize == tries[0].noize)
+            .find(|(_, k)| k.is_none())
+            .map(|(r, _)| *r)
+            .or(best.filter(|_| works).map(|(r, _)| r))
+            .unwrap_or(tries[0])
     }
 
     /// The best speed measured for `protocol`, any profile; None when never measured.
@@ -172,16 +185,35 @@ mod tests {
     }
 
     #[test]
-    fn a_slow_profile_makes_way_for_a_lighter_one() {
+    fn a_slow_masque_profile_makes_way_for_a_lighter_one() {
         let tuner = Tuner::default();
-        assert_eq!(tuner.recipe_at(Protocol::WireGuard, Noize::Amnezia, 10), plain(Noize::Amnezia));
+        let p = Protocol::MasqueH3;
+        assert_eq!(tuner.recipe_at(p, Noize::Firewall, 10), plain(Noize::Firewall));
+        tuner.record_at(p, plain(Noize::Firewall), 300, 10);
+        assert_eq!(tuner.recipe_at(p, Noize::Firewall, 10), plain(Noize::Off));
+        tuner.record_at(p, plain(Noize::Off), 0, 10);
+        assert_eq!(tuner.recipe_at(p, Noize::Firewall, 10), plain(Noize::Light));
+        tuner.record_at(p, plain(Noize::Light), 900, 10);
+        tuner.record_at(p, Recipe { noize: Noize::Firewall, masque_mtu: WIDE_H3_MTU, fragment: false }, 200, 10);
+        assert_eq!(tuner.recipe_at(p, Noize::Firewall, 10), plain(Noize::Light));
+        assert_eq!(tuner.expected_at(p, 10), 900);
+    }
+
+    #[test]
+    fn wireguard_keeps_its_disguise() {
+        let tuner = Tuner::default();
         tuner.record_at(Protocol::WireGuard, plain(Noize::Amnezia), 300, 10);
-        assert_eq!(tuner.recipe_at(Protocol::WireGuard, Noize::Amnezia, 10), plain(Noize::Off));
-        tuner.record_at(Protocol::WireGuard, plain(Noize::Off), 0, 10);
-        assert_eq!(tuner.recipe_at(Protocol::WireGuard, Noize::Amnezia, 10), plain(Noize::Light));
-        tuner.record_at(Protocol::WireGuard, plain(Noize::Light), 900, 10);
-        assert_eq!(tuner.recipe_at(Protocol::WireGuard, Noize::Amnezia, 10), plain(Noize::Light));
-        assert_eq!(tuner.expected_at(Protocol::WireGuard, 10), 900);
+        assert_eq!(tuner.recipe_at(Protocol::WireGuard, Noize::Amnezia, 10), plain(Noize::Amnezia));
+    }
+
+    #[test]
+    fn a_blocked_default_does_not_try_lighter_profiles() {
+        let tuner = Tuner::default();
+        tuner.record_at(Protocol::MasqueH2, plain(Noize::Firewall), 0, 10);
+        let split = Recipe { noize: Noize::Firewall, masque_mtu: 0, fragment: true };
+        assert_eq!(tuner.recipe_at(Protocol::MasqueH2, Noize::Firewall, 10), split);
+        tuner.record_at(Protocol::MasqueH2, split, 0, 10);
+        assert_eq!(tuner.recipe_at(Protocol::MasqueH2, Noize::Firewall, 10), plain(Noize::Firewall));
     }
 
     #[test]

@@ -124,6 +124,8 @@ impl Engine {
             Ok(endpoint) => endpoint,
             Err(e) => {
                 self.note_reach(protocol, super::probe::NO_ANSWER);
+                // Counted against this recipe, so the tuner moves off one the network blocks.
+                self.tuner.record(protocol, tuner::Recipe::of(settings), 0);
                 return Outcome::failed(format!("scan: {e:#}"));
             }
         };
@@ -682,7 +684,9 @@ impl Engine {
             let _ = board::fetch(protocol, ip, Some(port)).await;
         });
         self.tuner.record(settings.protocol, tuner::Recipe::of(&settings), measured.kbps);
-        if measured.kbps >= SLOW_KBPS || self.settling.load(Ordering::SeqCst) {
+        // Automatic keeps what it found: the person should not wait through
+        // another search, and the scout swaps in a faster edge later.
+        if measured.kbps >= SLOW_KBPS || self.settling.load(Ordering::SeqCst) || self.status.borrow().via_auto {
             return None;
         }
         let mut best = self.best_slow.lock();

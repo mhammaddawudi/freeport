@@ -42,7 +42,11 @@ class Tuner(
         val measured = tries.associateWith { read(key(network, protocol, it)) }
         val best = measured.entries.filter { it.value != null }.maxByOrNull { it.value!!.kbps }
         if (best != null && best.value!!.kbps >= GOOD_KBPS) return best.key
-        return tries.firstOrNull { measured[it] == null } ?: best?.key ?: tries.first()
+        // Lighter obfuscation is only worth a look once the protocol is known
+        // to get through here; before that it is the likeliest to be blocked.
+        val works = best != null && best.value!!.kbps > 0
+        val open = if (works) tries else tries.filter { it.noize == tries.first().noize }
+        return open.firstOrNull { measured[it] == null } ?: best?.key?.takeIf { works } ?: tries.first()
     }
 
     /**
@@ -85,7 +89,10 @@ class Tuner(
             val profiles = protocol.noizeProfiles
             if (profiles.isEmpty()) return emptyList()
             val first = if (preferred in profiles) preferred else profiles.first()
-            val noizes = (listOf(first) + EXPLORE.filter { it in profiles }).distinct()
+            // Plain WireGuard is fingerprinted where it is filtered at all, so
+            // it keeps its disguise; only MASQUE has lighter profiles to try.
+            val explore = if (protocol == Protocol.WireGuard) emptyList() else EXPLORE
+            val noizes = (listOf(first) + explore.filter { it in profiles }).distinct()
             val wide = if (protocol == Protocol.MasqueH3) listOf(Recipe(first, WIDE_H3_MTU)) else emptyList()
             // A split ClientHello gets HTTP/2 past filters that read the server name.
             val split = if (protocol == Protocol.MasqueH2) listOf(Recipe(first, fragment = true)) else emptyList()
