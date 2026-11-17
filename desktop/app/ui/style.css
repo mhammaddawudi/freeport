@@ -283,12 +283,12 @@ i[data-glyph] { display: inline-flex; width: 20px; height: 20px; flex: none; }
 .flag-tile svg[viewBox="0 0 30 20"] { height: 16px; border-radius: 3px; box-shadow: 0 0 0 0.5px var(--hairline); }
 .region #claude { display: inline-block; margin-top: 6px; }
 .region #claude[hidden] { display: none; }
-.picker { display: none; margin-top: 14px; }
-.region.open .picker { display: block; }
+.country-picker { display: none; margin-top: 14px; }
+.region.open .country-picker { display: block; }
 .picker-current, .country { display: flex; align-items: center; width: 100%; min-height: 42px; padding: 8px 12px;
   border-radius: 12px; border: 1px solid var(--hairline); background: transparent; color: var(--ink);
   font: inherit; font-size: 13px; cursor: pointer; text-align: start; transition: border-color 0.15s, background 0.15s; }
-.picker-current:hover, .picker.expanded .picker-current { border-color: color-mix(in srgb, var(--mint) 55%, var(--hairline)); }
+.picker-current:hover, .country-picker.expanded .picker-current { border-color: color-mix(in srgb, var(--mint) 55%, var(--hairline)); }
 .picker-current:focus-visible, .country:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
 .country-row { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
 .countries { margin-top: 6px; max-height: 216px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column;
@@ -303,5 +303,5 @@ i[data-glyph] { display: inline-flex; width: 20px; height: 20px; flex: none; }
 .country-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chev, .tick { width: 10px; height: 10px; flex: none; }
 .chev { border: solid var(--muted); border-width: 0 1.6px 1.6px 0; transform: translateY(-2px) rotate(45deg); transition: transform 0.15s; }
-.picker.expanded .chev { transform: translateY(2px) rotate(-135deg); }
+.country-picker.expanded .chev { transform: translateY(2px) rotate(-135deg); }
 .tick { width: 5px; height: 10px; border: solid var(--mint); border-width: 0 2px 2px 0; transform: rotate(45deg); margin-inline-end: 4px; }
