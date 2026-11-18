@@ -59,7 +59,7 @@ internal class SessionHealth(
             nextProbeAt = now() + RETRY_AFTER_MISS_MS
             log.warn("[-] the tunnel did not carry a test connection ($tunnelMisses/$TUNNEL_MISSES)")
             // Psiphon rides the tunnel; probing it now would only blame it.
-            return if (tunnelMisses >= TUNNEL_MISSES) "the tunnel stopped carrying traffic" else null
+            return if (tunnelMisses >= TUNNEL_MISSES) TUNNEL_STOPPED else null
         }
         tunnelMisses = 0
 
@@ -106,6 +106,9 @@ internal class SessionHealth(
     }
 
     companion object {
+        /** Why a session ends when the tunnel itself stopped carrying. */
+        const val TUNNEL_STOPPED = "the tunnel stopped carrying traffic"
+
         /** How often a connection is opened through the tunnel and through Psiphon. */
         const val PROBE_EVERY_MS = 15_000L
 

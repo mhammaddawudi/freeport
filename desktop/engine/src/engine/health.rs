@@ -12,6 +12,8 @@ use super::relay::Health;
 use super::{Engine, Phase};
 use crate::net::ports;
 
+/// Why a session ends when the tunnel itself stopped carrying.
+pub(super) const TUNNEL_STOPPED: &str = "the tunnel stopped carrying traffic";
 /// How often a connection is opened through the tunnel and through Psiphon.
 const PROBE_EVERY: Duration = Duration::from_secs(15);
 /// After a miss the next probe comes sooner, so a dead hop is found in
@@ -73,7 +75,7 @@ impl Engine {
             watch.next_probe = Instant::now() + RETRY_AFTER_MISS;
             log::warn!(target: "freeport", "[-] the tunnel did not carry a test connection ({}/{TUNNEL_MISSES})", watch.tunnel_misses);
             if watch.tunnel_misses >= TUNNEL_MISSES {
-                return Some("the tunnel stopped carrying traffic".to_string());
+                return Some(TUNNEL_STOPPED.to_string());
             }
             // Psiphon rides the tunnel; probing it now would only blame it.
             return None;

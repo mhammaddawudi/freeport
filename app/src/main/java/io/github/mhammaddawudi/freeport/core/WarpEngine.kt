@@ -225,9 +225,8 @@ class WarpEngine(
 
     /**
      * Shows each protocol's round trip on this network while nothing is
-     * connected: at once from what was measured here before, then fresh —
-     * MASQUE over HTTP/2 by a TCP connect (a second or two), MASQUE over
-     * HTTP/3 and WireGuard by a scan, the way Automatic finds them. A scan
+     * connected: at once from what was measured here before, then fresh,
+     * each protocol by a scan, the way Automatic finds them. A scan
      * that runs out of time keeps the earlier figure; only a refusal with
      * nothing known shows as no answer.
      */
@@ -240,15 +239,18 @@ class WarpEngine(
                 val base = settings.current()
                 val tries = AUTO_CANDIDATES.associateWith { tuned(base.copy(protocol = it)) }
                 val known = tries.mapValues { (_, chosen) -> knownEdges(chosen) }
-                known.forEach { (protocol, edges) -> edges.minOfOrNull { it.rttMs }?.let { noteReach(protocol, it) } }
+                // Only scan round trips: measured entries saved by older builds hold
+                // the first-byte time through the tunnel, seconds rather than a ping.
+                tries.forEach { (protocol, chosen) ->
+                    cache.pool(cacheKey(chosen)).filterNot { it.measured }.map { it.edge.endpoint.rttMs }
+                        .filter { it > 0 }.minOrNull()?.let { noteReach(protocol, it) }
+                }
                 direct[Protocol.Configs]?.lastRttMs()?.let { noteReach(Protocol.Configs, it) }
 
                 coroutineScope {
-                    // A TCP connect needs no identity: HTTP/2 shows in a second.
-                    val knocked = async {
-                        val edges = (known.getValue(Protocol.MasqueH2) + MASQUE_EDGES).distinctBy { it.socket }
-                        EdgeReach.quickest(edges)?.also { noteReach(Protocol.MasqueH2, it) }
-                    }
+                    // HTTP/2 shows only once a real handshake answers: Cloudflare's
+                    // TCP 443 accepts on networks that then drop the tunnel itself,
+                    // so a TCP connect would show a ping for a protocol that never comes up.
                     // One at a time: MASQUE and WireGuard keep sibling identity files.
                     val opened = tries.mapValues { (_, chosen) -> (identityFor(chosen) as? CoreResult.Ok)?.value }
                     suspend fun scanned(protocol: Protocol) {
@@ -271,7 +273,7 @@ class WarpEngine(
                     }
                     launch {
                         scanned(Protocol.MasqueH3)
-                        if (knocked.await() == null) scanned(Protocol.MasqueH2)
+                        scanned(Protocol.MasqueH2)
                     }
                     launch { scanned(Protocol.WireGuard) }
                 }
@@ -655,19 +657,10 @@ class WarpEngine(
                     withTimeoutOrNull(laneMs) { ping(Protocol.MasqueH2) }
                     withTimeoutOrNull(laneMs) { ping(Protocol.MasqueH3) }
                 },
+                // HTTP/2 counts only when its scan completes a handshake: a TCP
+                // connect to 443 also succeeds where the tunnel is then dropped,
+                // and Automatic would keep opening a tunnel that never comes up.
                 launch { ping(Protocol.WireGuard) },
-                // HTTP/2 rides TCP 443: a connect to its known edges answers in
-                // about a round trip, so it is never cut short behind a slower scan.
-                launch {
-                    if (Protocol.MasqueH2 !in identities) return@launch
-                    val remembered = cache.recall(cacheKey(candidates.getValue(Protocol.MasqueH2)))
-                    val edges = (listOfNotNull(remembered) + MASQUE_EDGES).filter { it.socket !in slowEdges }
-                    EdgeReach.quickestEdge(edges)?.let { edge ->
-                        log.info("[+] ${Protocol.MasqueH2.displayName} edge ${edge.socket} accepts in ${edge.rttMs}ms")
-                        found.putIfAbsent(Protocol.MasqueH2, edge)
-                        noteReach(Protocol.MasqueH2, edge.rttMs)
-                    }
-                },
             )
             val all = launch { lanes.joinAll() }
             withTimeoutOrNull(laneMs * 2 + AUTO_GRACE_MS) {
@@ -1037,8 +1030,8 @@ class WarpEngine(
         // is swapped while the button still says connecting — the person
         // never sees a connection drop and come back.
         if (endpoint != null) {
-            judge(settings, endpoint, viaAuto)?.let { reason ->
-                return@coroutineScope Outcome(reason, rotate = true)
+            judge(settings, endpoint, viaAuto)?.let { verdict ->
+                return@coroutineScope Outcome(verdict.reason, rotate = !verdict.dead)
             }
             // It carried real data, so it is worth coming back to even if
             // Psiphon does not come up behind it.
@@ -1157,11 +1150,16 @@ class WarpEngine(
                         else -> unhealthy ?: "the session stopped"
                     }
                     val heldMs = System.currentTimeMillis() - since
-                    // An edge that drops a session within seconds is not one to
-                    // hurry back to.
-                    if (endpoint != null && heldMs < STABLE_MS && polled is JobState.Done) {
+                    // An edge whose tunnel dies within seconds is not one to
+                    // hurry back to, and Automatic tries the other protocols
+                    // first for a while instead of opening it again and again.
+                    val tunnelDied = polled is JobState.Done || unhealthy == SessionHealth.TUNNEL_STOPPED
+                    if (endpoint != null && heldMs < STABLE_MS && tunnelDied) {
                         forget(settings, viaAuto)
                         cache.dropFromPool(cacheKey(settings), endpoint.socket)
+                        slowEdges += endpoint.socket
+                        if (viaAuto) cache.markStalled(cacheKey(settings), System.currentTimeMillis())
+                        log.warn("[-] ${settings.protocol.displayName} dropped ${heldMs / 1000}s in; trying others first")
                     }
                     coroutineContext.cancelChildren()
                     return@coroutineScope Outcome(reason, connectedForMs = heldMs, connected = true)
@@ -1180,7 +1178,7 @@ class WarpEngine(
      * null to stay. Only [MAX_ROTATIONS] moves per session, so a network that
      * is slow everywhere still ends up connected.
      */
-    private suspend fun judge(settings: WarpSettings, endpoint: Endpoint, viaAuto: Boolean): String? {
+    private suspend fun judge(settings: WarpSettings, endpoint: Endpoint, viaAuto: Boolean): Verdict? {
         baseline = 0
         // WireGuard ramps up over its first seconds, and in packet mode this
         // probe takes the core's slower SOCKS path rather than the device's,
@@ -1190,7 +1188,17 @@ class WarpEngine(
             settings.socksPort,
             if (warms) WARM_JUDGE_BYTES else JUDGE_BYTES,
             if (warms) WARM_JUDGE_WINDOW_MS else JUDGE_WINDOW_MS,
-        ) ?: return null
+        ) ?: ThroughputProbe.measure(settings.socksPort, JUDGE_BYTES, DEAD_CHECK_MS)
+        if (measured == null) {
+            // The handshake went through and the download did not: a network
+            // that lets the tunnel up and drops its data. Held as connected, it
+            // would only be found dead by the health check half a minute later.
+            if (settling || settings.pinnedPeer.isNotBlank()) return null
+            slowEdges += endpoint.socket
+            forget(settings, viaAuto)
+            cache.dropFromPool(cacheKey(settings), endpoint.socket)
+            return Verdict("${endpoint.socket} opened but carried no data", dead = true)
+        }
         val kbps = measured.kbps
         log.info("[*] ${endpoint.socket} delivers $kbps KB/s, first byte in ${measured.firstByteMs}ms")
         val tested = endpoint.copy(rttMs = measured.firstByteMs)
@@ -1199,13 +1207,14 @@ class WarpEngine(
         // In the background, so the connection does not wait for it.
         val shared = network
         val key = cacheKey(settings)
-        if (kbps >= SLOW_KBPS) cache.addToPool(key, listOf(SharedEdge(tested, kbps)))
+        // The pool keeps the edge's handshake round trip: the first byte also
+        // pays for TLS through the tunnel and would show as a ping of seconds.
+        if (kbps >= SLOW_KBPS) cache.addToPool(key, listOf(SharedEdge(endpoint, kbps)))
         scope.launch {
             val up = ThroughputProbe.upload(settings.socksPort, UPLOAD_BYTES) ?: 0
             if (up > 0) log.info("[*] ${endpoint.socket} uploads $up KB/s")
-            val edge = SharedEdge(tested, kbps, up)
-            if (kbps >= SLOW_KBPS) cache.addToPool(key, listOf(edge))
-            board.report(settings.protocol, settings.ipVersion.wire, shared, edge, settings.socksPort)
+            if (kbps >= SLOW_KBPS) cache.addToPool(key, listOf(SharedEdge(endpoint, kbps, up)))
+            board.report(settings.protocol, settings.ipVersion.wire, shared, SharedEdge(tested, kbps, up), settings.socksPort)
             board.fetch(settings.protocol, settings.ipVersion.wire, shared, settings.socksPort)
         }
         baseline = kbps
@@ -1217,7 +1226,7 @@ class WarpEngine(
             // scout swaps in a faster edge in the background.
             if (!autoHasMore || kbps >= AUTO_GOOD_KBPS) return null
             if (kbps > (bestSlow?.kbps ?: 0L)) bestSlow = SlowEdge(settings, endpoint, kbps, viaAuto)
-            return "${settings.protocol.displayName} carries only $kbps KB/s here, comparing the next protocol"
+            return Verdict("${settings.protocol.displayName} carries only $kbps KB/s here, comparing the next protocol")
         }
         val bar = if (warms) WARM_SLOW_KBPS else SLOW_KBPS
         if (kbps >= bar || rotations >= MAX_ROTATIONS) return null
@@ -1226,8 +1235,11 @@ class WarpEngine(
         slowEdges += endpoint.socket
         forget(settings, viaAuto)
         cache.dropFromPool(key, endpoint.socket)
-        return "${endpoint.socket} carries only $kbps KB/s, moving to a faster edge"
+        return Verdict("${endpoint.socket} carries only $kbps KB/s, moving to a faster edge")
     }
+
+    /** Why [judge] passed over an edge; [dead] when it carried nothing at all, not just too little. */
+    private data class Verdict(val reason: String, val dead: Boolean = false)
 
     /**
      * Asks the guard whether the session looks slow and, if so, confirms it
@@ -1461,6 +1473,9 @@ class WarpEngine(
         const val WARM_JUDGE_WINDOW_MS = 6_000L
         const val WARM_SLOW_KBPS = 120L
 
+        /** A second, longer look before an edge that delivered nothing counts as dead: slow lines take seconds to the first byte. */
+        const val DEAD_CHECK_MS = 8_000L
+
         /** A shared edge's score is worth this much (percent) of one measured on this phone. */
         const val BOARD_HANDICAP = 130L
 
@@ -1500,8 +1515,6 @@ class WarpEngine(
         const val NO_ANSWER = -1L
         val AUTO_CANDIDATES = listOf(Protocol.MasqueH2, Protocol.MasqueH3, Protocol.WireGuard)
 
-        /** Cloudflare's published MASQUE edges, for the quick ping when none is known here. */
-        val MASQUE_EDGES = listOf(Endpoint("162.159.198.1", 443, 0), Endpoint("162.159.198.2", 443, 0))
 
         /** What Automatic assumes of a protocol not yet measured on a network; WireGuard leads until measured. */
         const val UNMEASURED_WARM_KBPS = 1_000L

@@ -65,6 +65,7 @@ const SHARED_FETCH: Duration = Duration::from_secs(4);
 /// Enough to see whether an edge carries video, cheap enough for every connection.
 const JUDGE_BYTES: usize = 2_000_000;
 const JUDGE_WINDOW: Duration = Duration::from_millis(2_500);
+const DEAD_CHECK: Duration = Duration::from_secs(8);
 const UPLOAD_BYTES: usize = 384 * 1024;
 
 /// Aborts a helper task when the attempt that started it ends.
@@ -266,28 +267,10 @@ impl Engine {
                     found
                 })
             });
-        // HTTP/2 rides TCP 443: a connect to its known edges answers in about
-        // a round trip, so it is never left out behind a slower scan.
-        let h2_knock = identity_of(Protocol::MasqueH2).map(|_| {
-            let edges: Vec<std::net::SocketAddr> = self
-                .cache
-                .recall(Protocol::MasqueH2, base.ip_version)
-                .map(|e| e.socket())
-                .into_iter()
-                .chain(super::probe::MASQUE_EDGES.iter().filter_map(|e| e.parse().ok()))
-                .filter(|edge| !self.slow.lock().contains(edge))
-                .collect();
-            tokio::spawn(async move {
-                match super::probe::quickest_edge(&edges).await {
-                    Some(endpoint) => {
-                        log::info!(target: "freeport", "[+] {} edge {} accepts in {}ms", Protocol::MasqueH2.name(), endpoint.socket(), endpoint.rtt_ms);
-                        vec![(Protocol::MasqueH2, endpoint)]
-                    }
-                    None => Vec::new(),
-                }
-            })
-        });
-        race([h2_knock, wg_lane, masque], lane + AUTO_PING - AUTO_LANE).await
+        // HTTP/2 counts only once its scan completes a handshake: a TCP
+        // connect to 443 also succeeds where the tunnel is then dropped, and
+        // Automatic would keep opening a tunnel that never comes up.
+        race([wg_lane, masque], lane + AUTO_PING - AUTO_LANE).await
     }
 
     /// Opens the protocols found, best first, until one carries. A protocol
@@ -630,8 +613,8 @@ impl Engine {
         if let (Some(endpoint), false) = (endpoint, pinned) {
             // Speed is checked before the proxy is handed over, so a slow
             // edge is swapped while the status still says connecting.
-            if let Some(reason) = self.judge(settings, endpoint, inner).await {
-                return Outcome { reason, held: Duration::ZERO, connected: false, rotate: true };
+            if let Some(verdict) = self.judge(settings, endpoint, inner).await {
+                return Outcome { reason: verdict.reason, held: Duration::ZERO, connected: false, rotate: !verdict.dead };
             }
             self.cache.remember(settings.protocol, settings.ip_version, endpoint);
         }
@@ -668,9 +651,20 @@ impl Engine {
             }
         };
         let held = since.elapsed();
-        if endpoint.is_some() && held < super::STABLE {
-            // An edge that drops a session within seconds is not one to hurry back to.
+        let tunnel_died = job.is_finished() || reason == super::health::TUNNEL_STOPPED;
+        if let (Some(endpoint), true) = (endpoint, held < super::STABLE && tunnel_died) {
+            // An edge whose tunnel dies within seconds is not one to hurry
+            // back to, and Automatic tries the other protocols first instead
+            // of opening the same one again and again.
             self.cache.forget(settings.protocol, settings.ip_version);
+            self.slow.lock().insert(endpoint.socket());
+            if self.status.borrow().via_auto {
+                let mut benched = self.benched.lock();
+                if !benched.contains(&settings.protocol) {
+                    benched.push(settings.protocol);
+                }
+            }
+            log::warn!(target: "freeport", "[-] {} dropped {}s in; trying others first", settings.protocol.name(), held.as_secs());
         }
         self.front.point_at(0);
         if relayed.is_some() {
@@ -686,12 +680,22 @@ impl Engine {
     /// Measures the edge through the fresh tunnel; Some(reason) when it is
     /// too slow for video. The upload is measured and the edge shared in
     /// the background, so the connection is not held up by it.
-    async fn judge(self: &Arc<Self>, settings: &Settings, endpoint: Endpoint, port: u16) -> Option<String> {
-        let measured = match board::measure(port, JUDGE_BYTES, JUDGE_WINDOW, 0).await {
+    async fn judge(self: &Arc<Self>, settings: &Settings, endpoint: Endpoint, port: u16) -> Option<Verdict> {
+        let first = board::measure(port, JUDGE_BYTES, JUDGE_WINDOW, 0).await;
+        // A second, longer look before the edge counts as dead: slow lines take seconds to the first byte.
+        let measured = match if first.is_ok() { first } else { board::measure(port, JUDGE_BYTES, DEAD_CHECK, 0).await } {
             Ok(measured) => measured,
             Err(e) => {
                 log::warn!(target: "freeport", "[-] could not measure {}: {e:#}", endpoint.socket());
-                return None;
+                // The tunnel came up and a download did not: a network that
+                // lets the handshake by and drops the data. Held as connected,
+                // it would only be found dead by the health check later.
+                if self.settling.load(Ordering::SeqCst) {
+                    return None;
+                }
+                self.slow.lock().insert(endpoint.socket());
+                self.cache.forget(settings.protocol, settings.ip_version);
+                return Some(Verdict::dead(format!("{} opened but carried no data", endpoint.socket())));
             }
         };
         log::info!(
@@ -726,10 +730,10 @@ impl Engine {
             if best.as_ref().map_or(true, |b| measured.kbps > b.kbps) {
                 *best = Some(SlowEdge { settings: settings.clone(), endpoint, kbps: measured.kbps, via_auto });
             }
-            return Some(format!(
+            return Some(Verdict::slow(format!(
                 "{} carries only {} KB/s here, comparing the next protocol",
                 settings.protocol.name(), measured.kbps
-            ));
+            )));
         }
         if measured.kbps >= SLOW_KBPS {
             return None;
@@ -741,7 +745,7 @@ impl Engine {
         drop(best);
         self.slow.lock().insert(endpoint.socket());
         self.cache.forget(protocol, ip);
-        Some(format!("{} carries only {} KB/s, trying another edge", endpoint.socket(), measured.kbps))
+        Some(Verdict::slow(format!("{} carries only {} KB/s, trying another edge", endpoint.socket(), measured.kbps)))
     }
 
     async fn start_relay(&self, settings: &Settings, inner: u16) -> Result<Option<u16>, String> {
@@ -809,6 +813,22 @@ impl Engine {
 
 /// Waits for the lanes; once one finds an edge, the rest get a short grace
 /// to beat it.
+/// Why `judge` passed over an edge; `dead` when it carried nothing at all.
+struct Verdict {
+    reason: String,
+    dead: bool,
+}
+
+impl Verdict {
+    fn slow(reason: String) -> Self {
+        Self { reason, dead: false }
+    }
+
+    fn dead(reason: String) -> Self {
+        Self { reason, dead: true }
+    }
+}
+
 fn names(protocols: &[Protocol]) -> String {
     protocols.iter().map(|p| p.name()).collect::<Vec<_>>().join(", ")
 }

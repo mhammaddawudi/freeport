@@ -30,19 +30,6 @@ object EdgeReach {
             .map { (edge, _) -> edge }
     }
 
-    /** The quickest TCP connect among [edges], all knocked at once: a round trip, about. */
-    suspend fun quickest(edges: List<Endpoint>): Long? = coroutineScope {
-        edges.map { edge -> async(Dispatchers.IO) { knock(edge) } }.awaitAll().filterNotNull().minOrNull()
-    }
-
-    /** The edge of [edges] that accepts a TCP connect soonest, with that time as its round trip. */
-    suspend fun quickestEdge(edges: List<Endpoint>): Endpoint? = coroutineScope {
-        edges.map { edge -> async(Dispatchers.IO) { knock(edge)?.let { edge.copy(rttMs = it.coerceAtLeast(1)) } } }
-            .awaitAll()
-            .filterNotNull()
-            .minByOrNull { it.rttMs }
-    }
-
     private fun knock(edge: Endpoint): Long? = runCatching {
         val started = SystemClock.elapsedRealtime()
         Socket().use { it.connect(InetSocketAddress(edge.ip, edge.port), TIMEOUT_MS) }

@@ -72,12 +72,27 @@ pub async fn claude(socks_port: u16) -> Result<ClaudeReach> {
     })
 }
 
-/// Time for a full HTTPS request through the session, in milliseconds.
+/// Round trip through the session, in milliseconds. The first request pays
+/// for the SOCKS hop, DNS, TCP and TLS and is not counted; the median of the
+/// rest, on the same kept-alive connection, is the ping. Timing a fresh
+/// request showed several round trips as one, over a second on most lines.
 pub async fn latency(socks_port: u16) -> Result<u64> {
     let client = client(socks_port)?;
-    let started = Instant::now();
     client.head(TRACE_URL).send().await?;
-    Ok(started.elapsed().as_millis() as u64)
+    let mut samples = Vec::with_capacity(LATENCY_SAMPLES);
+    for _ in 0..LATENCY_SAMPLES {
+        let started = Instant::now();
+        client.head(TRACE_URL).send().await?;
+        samples.push(started.elapsed().as_millis() as u64);
+    }
+    Ok(median(samples))
+}
+
+const LATENCY_SAMPLES: usize = 3;
+
+fn median(mut samples: Vec<u64>) -> u64 {
+    samples.sort_unstable();
+    samples[samples.len() / 2]
 }
 
 #[cfg(test)]
@@ -91,6 +106,11 @@ mod tests {
         assert_eq!(trace.country, "DE");
         assert_eq!(trace.colo, "FRA");
         assert!(trace.warp);
+    }
+
+    #[test]
+    fn the_ping_is_the_middle_sample() {
+        assert_eq!(median(vec![900, 120, 140]), 140);
     }
 
     #[test]
