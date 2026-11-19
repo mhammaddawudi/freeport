@@ -10,7 +10,7 @@ import androidx.core.app.NotificationCompat
 import io.github.mhammaddawudi.freeport.MainActivity
 import io.github.mhammaddawudi.freeport.R
 import io.github.mhammaddawudi.freeport.core.ConnectionState
-import io.github.mhammaddawudi.freeport.core.ScanProgress
+import java.util.Locale
 
 object VpnNotifications {
 
@@ -52,7 +52,7 @@ object VpnNotifications {
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_warp)
-            .setColor(0xFFFCBF11.toInt())
+            .setColor(BRAND)
             .setContentTitle(context.getString(titleOf(state)))
             .setContentText(detailOf(context, state))
             .setContentIntent(open)
@@ -62,45 +62,61 @@ object VpnNotifications {
             .setDeleteIntent(reshow)
             .setOnlyAlertOnce(true)
             .setSilent(true)
+            .setLocalOnly(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(0, context.getString(R.string.action_disconnect), disconnect)
+            .addAction(R.drawable.ic_stat_warp, context.getString(R.string.action_disconnect), disconnect)
 
         if (state is ConnectionState.Connected) {
             builder.setWhen(state.sinceMillis).setShowWhen(true).setUsesChronometer(true)
         } else {
-            builder.setShowWhen(false)
+            // Still on its way: a moving bar says so at a glance.
+            builder.setShowWhen(false).setProgress(0, 0, true)
         }
         return builder.build()
+    }
+
+    /** Whether [state] is a session worth a notification at all. */
+    fun shows(state: ConnectionState): Boolean = when (state) {
+        ConnectionState.Idle, ConnectionState.Disconnecting, is ConnectionState.Failed -> false
+        else -> true
     }
 
     private fun titleOf(state: ConnectionState): Int = when (state) {
         ConnectionState.Idle, ConnectionState.Disconnecting -> R.string.state_idle
         is ConnectionState.Preparing -> R.string.state_preparing
         is ConnectionState.Scanning -> R.string.state_scanning
-        is ConnectionState.Connecting -> R.string.state_connecting
+        is ConnectionState.Connecting -> if (state.relaying) R.string.state_relaying else R.string.state_connecting
         is ConnectionState.Connected -> R.string.state_connected
         is ConnectionState.Reconnecting -> R.string.state_reconnecting
         is ConnectionState.Failed -> R.string.state_failed
     }
 
+    /**
+     * The protocol, and once connected where traffic leaves. Never an edge's
+     * address or a raw reason: a notification shows on the lock screen and in
+     * screenshots, and an IP there says nothing to the person anyway.
+     */
     private fun detailOf(context: Context, state: ConnectionState): String = when (state) {
-        ConnectionState.Idle, ConnectionState.Disconnecting -> context.getString(R.string.app_name)
+        ConnectionState.Idle, ConnectionState.Disconnecting, is ConnectionState.Failed -> context.getString(R.string.app_name)
         is ConnectionState.Preparing -> state.protocol.displayName
-        is ConnectionState.Scanning -> {
-            val p = state.progress
-            if (p.phase == ScanProgress.Phase.Probing && p.total > 0) {
-                "${state.protocol.displayName} · ${p.probed}/${p.total}"
-            } else {
-                state.protocol.displayName
-            }
-        }
-        is ConnectionState.Connecting -> state.endpoint?.socket ?: state.protocol.displayName
+        is ConnectionState.Scanning -> state.protocol.displayName
+        is ConnectionState.Connecting ->
+            if (state.viaAuto) context.getString(R.string.auto_via, state.protocol.displayName) else state.protocol.displayName
         is ConnectionState.Connected -> {
             val carrier = if (state.viaAuto) context.getString(R.string.auto_via, state.protocol.displayName) else state.protocol.displayName
-            state.endpoint?.let { "$carrier · ${it.socket}" } ?: carrier
+            countryName(context, state.exitCountry)?.let { "$carrier · $it" } ?: carrier
         }
-        is ConnectionState.Reconnecting -> "${state.protocol.displayName} · ${state.reason}"
-        is ConnectionState.Failed -> state.message
+        is ConnectionState.Reconnecting -> state.protocol.displayName
     }
+
+    /** In the app's own language, which may differ from the phone's. */
+    private fun countryName(context: Context, code: String?): String? {
+        if (code.isNullOrBlank()) return null
+        val language = context.resources.configuration.locales[0] ?: Locale.getDefault()
+        return Locale("", code).getDisplayCountry(language).ifBlank { code }
+    }
+
+    private const val BRAND = 0xFFFCBF11.toInt()
 }

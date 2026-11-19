@@ -53,6 +53,14 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
     /** The current [tun] carries the tunnel's own addresses and feeds the core directly. */
     private var packetTun = false
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /**
+     * Whether the notification belongs to the running service. Once the
+     * service leaves the foreground, a notification posted with notify() is
+     * no longer removed with it, and an ongoing one cannot be swiped away
+     * before Android 14: it would stay up, saying connected, after the session.
+     */
+    @Volatile private var foreground = false
     private var activeNetwork: Network? = null
     private var networkWatch: ConnectivityManager.NetworkCallback? = null
 
@@ -64,16 +72,12 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
         if (intent?.action == ACTION_RESHOW) {
             // Swiped away (Android 14+ allows it even for ongoing ones): put
             // it straight back while the tunnel is still up.
-            val state = app.engine.state.value
             if (watcher?.isActive != true) {
                 // No session in this service: it was only started to answer.
                 stopSelf(startId)
                 return START_NOT_STICKY
             }
-            if (state !is ConnectionState.Idle && state !is ConnectionState.Failed) {
-                getSystemService(NotificationManager::class.java)
-                    .notify(VpnNotifications.NOTIFICATION_ID, VpnNotifications.build(this, state))
-            }
+            post(app.engine.state.value)
             return START_STICKY
         }
         if (intent?.action == ACTION_DISCONNECT) {
@@ -83,7 +87,7 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
             onTunnelDown()
             stopWatchingNetwork()
             releaseCpu()
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            leaveForeground()
             app.engine.disconnect { scope.launch { shutDown() } }
             return START_NOT_STICKY
         }
@@ -113,6 +117,7 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
     }
 
     override fun onDestroy() {
+        leaveForeground()
         watcher?.cancel()
         scope.cancel()
         stopWatchingNetwork()
@@ -408,14 +413,28 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
                     // (the app's button, a failure): leaving the notification
                     // up would show "Not connected" beside a Disconnect action.
                     is ConnectionState.Failed, ConnectionState.Idle -> shutDown()
-                    else -> getSystemService(NotificationManager::class.java)
-                        .notify(VpnNotifications.NOTIFICATION_ID, VpnNotifications.build(this@WarpVpnService, state))
+                    else -> post(state)
                 }
             }
         }
     }
 
+    /** Updates the notification, only while it is the running session's and the session is on. */
+    private fun post(state: ConnectionState) {
+        if (!foreground || !VpnNotifications.shows(state)) return
+        getSystemService(NotificationManager::class.java)
+            .notify(VpnNotifications.NOTIFICATION_ID, VpnNotifications.build(this, state))
+    }
+
+    /** Takes the notification down with the foreground, and makes sure it is gone. */
+    private fun leaveForeground() {
+        foreground = false
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        getSystemService(NotificationManager::class.java).cancel(VpnNotifications.NOTIFICATION_ID)
+    }
+
     private fun goForeground(state: ConnectionState) {
+        foreground = true
         val notification = VpnNotifications.build(this, state)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
@@ -434,7 +453,7 @@ class WarpVpnService : VpnService(), WarpEngine.TunnelHost {
         stopWatchingNetwork()
         releaseCpu()
         onTunnelDown()
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        leaveForeground()
         stopSelf()
 
         // Nothing on screen: let the process end so the core's leftover tasks
